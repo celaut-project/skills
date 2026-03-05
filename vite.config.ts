@@ -12,7 +12,11 @@ export default defineConfig({
     		alias: {
       			$lib: path.resolve("./src/lib"),
     		},
-  	}
+  	},
+	assetsInclude: ['**/*.es'],
+	optimizeDeps: {
+		exclude: ['reputation-system']
+	}
 });
 
 const config = {

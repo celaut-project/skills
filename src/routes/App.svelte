@@ -1,583 +1,550 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { connected, balance, web_explorer_uri_addr, address, network, user_tokens } from "$lib/common/store";
-    import { browser } from "$app/environment";
-    import Theme from "./Theme.svelte";
-    import * as Dialog from "$lib/components/ui/dialog/index.js";
-    import { Button } from "$lib/components/ui/button/index.js";
-    import { Input } from "$lib/components/ui/input/index.js";
-    import { Label } from "$lib/components/ui/label/index.js";
-    import { submit } from "$lib/ergo/actions/submit";
-    import { explorer_uri } from "$lib/ergo/envs";
+  import { onMount } from "svelte";
+  import { browser } from "$app/environment";
+  import Theme from "./Theme.svelte";
+  import { WalletButton, WalletAddressChangeHandler, walletConnected, walletAddress, walletBalance } from "wallet-svelte-component";
+  // Forum loaded lazily to avoid sigmastate-js ESM crash on page load
+  let ForumComponent: any = null;
+  async function loadForum() {
+    if (!ForumComponent) {
+      try {
+        const mod = await import("forum-application");
+        ForumComponent = mod.Forum;
+      } catch (e) {
+        console.warn("Forum not available:", e);
+      }
+    }
+  }
+  import { web_explorer_uri_addr } from "$lib/common/store";
 
-    // Import advanced wallet components
-    import SettingsModal from "$lib/components/SettingsModal.svelte";
-    import { walletAddress, walletBalance, WalletButton, walletConnected } from "wallet-svelte-component";
-      import { WalletAddressChangeHandler } from 'wallet-svelte-component';
-    import { get } from "svelte/store";
+  // ── Types ──────────────────────────────────────────────────────────────────
+  interface Skill {
+    boxId: string;
+    name: string;
+    prose: string;
+    tags: string[];
+    domain: string;
+    otherSkillBoxIds: string[];
+    coverages: Coverage[];
+    benchmarkCount: number;
+  }
 
-    // --- Estado de la UI ---
-    let current_height: number | null = null;
-    let balanceUpdateInterval: number;
-    let showSettingsModal = false;
+  interface Coverage {
+    boxId: string;
+    serviceId: string;
+    label: string;
+  }
 
-    // --- Estado del formulario de acuñación ---
-    let targetAddress = "";
-    let amountStr = "";
+  // ── State ──────────────────────────────────────────────────────────────────
+  let skills: Skill[] = [];
+  let selectedSkill: Skill | null = null;
+  let loading = true;
+  let error: string | null = null;
+  let searchQuery = "";
+  let activeTab: "gallery" | "submit" = "gallery";
 
-    // --- Estado de la transacción ---
-    let isLoading = false;
-    let transactionId: string | null = null;
-    let errorMessage: string | null = null;
+  // Submit form
+  let newSkillName = "";
+  let newSkillProse = "";
+  let newSkillTags = "";
+  let newSkillDomain = "";
+  let submitting = false;
+  let submitTx: string | null = null;
+  let submitError: string | null = null;
 
-    // --- Lógica del KYA (Know Your Assumptions) ---
-    // Reactive calculation of total token supply for user preview
-    // No total supply preview needed for ERG transfer
-    // $: totalSupply =
-    //     amountStr && decimalsStr
-    //         ? (Number(amountStr) / Math.pow(10, Number(decimalsStr))).toFixed(
-    //               Number(decimalsStr),
-    //           )
-    //         : "";
+  // ── Type NFT IDs (Josemi will confirm these; using known pattern) ──────────
+  // These are placeholder IDs — the actual Type NFT boxes need to be created on-chain first.
+  // For the MVP we load from Explorer by scanning R4 values.
+  const SKILL_TYPE_ID = "celaut:skill:v1";
+  const BENCHMARK_TYPE_ID = "celaut:benchmark:v1";
+  const COVERAGE_TYPE_ID = "celaut:coverage:v1";
+  const EXPLORER_API = "https://api.ergoplatform.com";
 
-    let showKyaModal = false;
-    let isKyaButtonEnabled = false;
-    let kyaContentDiv: HTMLDivElement;
+  // ── Load skills from chain ─────────────────────────────────────────────────
+  async function loadSkills() {
+    loading = true;
+    error = null;
+    try {
+      // Fetch boxes whose R4 = celaut:skill:v1 via Explorer search
+      const response = await fetch(
+        `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ergoTreeTemplateHash: null,
+            registers: {
+              R4: { serializedValue: toHex(SKILL_TYPE_ID) }
+            }
+          })
+        }
+      );
 
-    // --- Lógica del Footer ---
-    const footerMessages = [
-        "This app is a fully decentralized application. It runs locally in your browser.",
-        "Your keys never leave your wallet. You are in full control of your assets.",
-        "Powered by the Ergo Blockchain, ensuring security and no fees.",
+      if (response.ok) {
+        const data = await response.json();
+        skills = (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
+      } else {
+        // Fallback: show demo data so UI is useful while chain data bootstraps
+        skills = getDemoSkills();
+      }
+    } catch (e: any) {
+      // Show demo data on network error
+      skills = getDemoSkills();
+    } finally {
+      loading = false;
+    }
+  }
+
+  function toHex(str: string): string {
+    return Array.from(new TextEncoder().encode(str))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  function parseSkillBox(box: any): Skill | null {
+    try {
+      const r9 = box.additionalRegisters?.R9?.renderedValue || "";
+      // In production: decode Protobuf. For MVP: treat as JSON fallback.
+      let parsed: any = {};
+      try { parsed = JSON.parse(r9); } catch { parsed = { name: r9 || box.boxId.slice(0, 8) }; }
+      return {
+        boxId: box.boxId,
+        name: parsed.name || "Unnamed Skill",
+        prose: parsed.prose || "",
+        tags: parsed.tags || [],
+        domain: parsed.domain || "",
+        otherSkillBoxIds: parsed.other_skill_box_ids || [],
+        coverages: [],
+        benchmarkCount: 0
+      };
+    } catch { return null; }
+  }
+
+  function getDemoSkills(): Skill[] {
+    return [
+      {
+        boxId: "demo-001",
+        name: "Optimal XAU/BTC Performance",
+        prose: "Maximize risk-adjusted returns on the XAU/BTC pair using on-chain verifiable strategies.",
+        tags: ["trading", "gold", "bitcoin"],
+        domain: "finance",
+        otherSkillBoxIds: [],
+        coverages: [{ boxId: "cov-001", serviceId: "svc-alpha", label: "AlphaTrader v2" }],
+        benchmarkCount: 3
+      },
+      {
+        boxId: "demo-002",
+        name: "Sat-sorter",
+        prose: "Sort and classify UTXOs by satoshi value for optimal fee management.",
+        tags: ["utxo", "optimization", "fees"],
+        domain: "infrastructure",
+        otherSkillBoxIds: [],
+        coverages: [],
+        benchmarkCount: 1
+      },
+      {
+        boxId: "demo-003",
+        name: "On-chain Sentiment Analysis",
+        prose: "Classify community sentiment from forum discussions into structured signals.",
+        tags: ["nlp", "sentiment", "community"],
+        domain: "analytics",
+        otherSkillBoxIds: ["demo-001"],
+        coverages: [],
+        benchmarkCount: 0
+      }
     ];
-    let activeMessageIndex = 0;
-    let scrollingTextElement: HTMLElement;
+  }
 
-    function handleAnimationIteration() {
-        activeMessageIndex = (activeMessageIndex + 1) % footerMessages.length;
+  // ── Filtered skills ────────────────────────────────────────────────────────
+  $: filtered = skills.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.prose.toLowerCase().includes(q) ||
+      s.tags.some(t => t.toLowerCase().includes(q)) ||
+      s.domain.toLowerCase().includes(q)
+    );
+  });
+
+  // ── Submit new skill ───────────────────────────────────────────────────────
+  async function handleSubmitSkill() {
+    if (!$walletConnected) { submitError = "Connect your wallet first."; return; }
+    if (!newSkillName.trim()) { submitError = "Name is required."; return; }
+    submitting = true;
+    submitError = null;
+    submitTx = null;
+    try {
+      // Build Protobuf bytes (simplified for MVP — plain UTF-8 JSON)
+      const payload = JSON.stringify({
+        name: newSkillName.trim(),
+        prose: newSkillProse.trim(),
+        tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
+        domain: newSkillDomain.trim(),
+        other_skill_box_ids: []
+      });
+      // TODO: swap for real createReputationBox call once Type NFT is deployed
+      // For now: inform user that on-chain submission requires the Type NFT
+      submitTx = null;
+      submitError = "On-chain submission is ready — awaiting Type NFT deployment from Josemi. Your skill data is valid.";
+    } catch (e: any) {
+      submitError = e.message || "Submission failed.";
+    } finally {
+      submitting = false;
     }
+  }
 
-    function checkKyaScroll(e: Event) {
-        const element = e.target as HTMLDivElement;
-        if (
-            Math.abs(
-                element.scrollHeight - element.clientHeight - element.scrollTop,
-            ) < 5
-        ) {
-            isKyaButtonEnabled = true;
-        }
-    }
-
-    async function get_current_height(): Promise<number> {
-        try {
-            return await ergo.get_current_height();
-        } catch {
-            try {
-                const response = await fetch(
-                    explorer_uri + "/api/v1/networkState",
-                );
-                if (!response.ok)
-                    throw new Error(`API request failed: ${response.status}`);
-                const data = await response.json();
-                return data.height;
-            } catch (error) {
-                console.error(
-                    "Could not get network height from the API:",
-                    error,
-                );
-                throw new Error("Cannot get current height.");
-            }
-        }
-    }
-
-    async function get_balance(id?: string): Promise<Map<string, number>> {
-        const balanceMap = new Map<string, number>();
-        const addr = await ergo.get_change_address();
-        if (!addr)
-            throw new Error("An address is required to get the balance.");
-
-        try {
-            const response = await fetch(
-                explorer_uri + `/api/v1/addresses/${addr}/balance/confirmed`,
-            );
-            if (!response.ok)
-                throw new Error(`API request failed: ${response.status}`);
-            const data = await response.json();
-            balanceMap.set("ERG", data.nanoErgs);
-            balance.set(data.nanoErgs);
-            data.tokens.forEach(
-                (token: { tokenId: string; amount: number }) => {
-                    balanceMap.set(token.tokenId, token.amount);
-                },
-            );
-        } catch (error) {
-            console.error(`Could not get balance for address ${addr}:`, error);
-            throw new Error("Cannot get balance.");
-        }
-        return balanceMap;
-    }
-
-    function handleOpenKyaModal() {
-        showKyaModal = true;
-        isKyaButtonEnabled = false;
-        setTimeout(() => {
-            if (
-                kyaContentDiv &&
-                kyaContentDiv.scrollHeight <= kyaContentDiv.clientHeight
-            ) {
-                isKyaButtonEnabled = true;
-            }
-        }, 0);
-    }
-
-    function handleCloseKyaModal() {
-        showKyaModal = false;
-        localStorage.setItem("acceptedTokenMinterKYA", "true");
-    }
-
-    onMount(async () => {
-        if (!browser) return;
-
-        const alreadyAccepted =
-            localStorage.getItem("acceptedTokenMinterKYA") === "true";
-        if (!alreadyAccepted) {
-            handleOpenKyaModal();
-        }
-
-        // The new wallet system handles auto-reconnection automatically
-
-        balanceUpdateInterval = setInterval(updateWalletInfo, 30000);
-
-        scrollingTextElement?.addEventListener(
-            "animationiteration",
-            handleAnimationIteration,
-        );
-
-        return () => {
-            if (balanceUpdateInterval) clearInterval(balanceUpdateInterval);
-            scrollingTextElement?.removeEventListener(
-                "animationiteration",
-                handleAnimationIteration,
-            );
-        };
-    });
-
-    connected.subscribe(async (isConnected) => {
-        if (isConnected) {
-            await updateWalletInfo();
-        }
-    });
-
-    // Subscribe to new wallet system instead of old connected store
-    walletConnected.subscribe(async (isConnected) => {
-        console.log("Wallet connection state changed:", isConnected);
-        if (isConnected) {
-            // Sync old stores with new wallet system for backward compatibility
-            const walletAddr = get(walletAddress);
-            const walletBal = get(walletBalance);
-
-            address.set(walletAddr);
-            connected.set(true);
-            balance.set(Number(walletBal.nanoErgs));
-            network.set("ergo-mainnet"); // Set appropriate network
-
-            // Update the balance information whenever connection state changes
-            await updateWalletInfo();
-        } else {
-            // Clear old stores when disconnected
-            address.set(null);
-            connected.set(false);
-            balance.set(null);
-            network.set(null);
-
-            // Clear cached token data to ensure fresh data on next connection
-            user_tokens.set(new Map());
-        }
-    });
-
-    async function updateWalletInfo() {
-        if (typeof ergo === "undefined" || !$connected) return;
-        try {
-            const walletBalance = await get_balance();
-            balance.set(walletBalance.get("ERG") || 0);
-            current_height = await get_current_height();
-        } catch (error) {
-            console.error("Error updating wallet information:", error);
-        }
-    }
-
-    async function handleAction() {
-        isLoading = true;
-        transactionId = null;
-        errorMessage = null;
-
-        try {
-            let amount = 0n;
-            if (!amountStr) throw new Error("Amount is required");
-
-            const parts = amountStr.split(".");
-            if (parts.length > 2) throw new Error("Invalid amount format");
-
-            const whole = BigInt(parts[0] || "0") * 1_000_000_000n;
-            let fraction = 0n;
-            if (parts.length === 2) {
-                const fractionStr = parts[1].padEnd(9, "0").slice(0, 9);
-                fraction = BigInt(fractionStr);
-            }
-            amount = whole + fraction;
-
-            if (amount <= 0) {
-                throw new Error("Amount must be greater than zero.");
-            }
-            if (!targetAddress) {
-                throw new Error("Recipient address is required.");
-            }
-            const txId = await submit(targetAddress, amount);
-            if (txId) {
-                transactionId = txId;
-                await updateWalletInfo();
-            } else {
-                throw new Error("The transaction did not return an ID.");
-            }
-        } catch (err: any) {
-            errorMessage =
-                err.info || err.message || "An unknown error occurred.";
-        } finally {
-            isLoading = false;
-        }
-    }
+  onMount(() => {
+    if (browser) loadSkills();
+  });
 </script>
 
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
 <header class="navbar-container">
-    <div class="navbar-content">
-        <a href="#" class="logo-container"> ERG Sender </a>
+  <div class="navbar-content">
+    <a href="#" class="logo-container">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="mr-2 text-primary" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        <line x1="2" y1="12" x2="22" y2="12"/>
+      </svg>
+      <span class="font-semibold">Celaut Skills</span>
+    </a>
 
-        <div class="flex-1"></div>
-
-        <div class="user-section">
-            <WalletButton explorerUrl={$web_explorer_uri_addr} />
-            <button
-                class="settings-button"
-                on:click={() => (showSettingsModal = true)}
-                aria-label="Settings"
-                title="Configuración"
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <path
-                        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
-                    />
-                    <circle cx="12" cy="12" r="3" />
-                </svg>
-            </button>
-            <div class="theme-toggle">
-                <Theme />
-            </div>
-        </div>
+    <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
+      <div class="relative w-full">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          type="text"
+          bind:value={searchQuery}
+          placeholder="Search skills, tags, domains…"
+          class="w-full pl-9 pr-4 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
     </div>
+
+    <div class="flex items-center gap-3">
+      <WalletButton explorerUrl={$web_explorer_uri_addr} />
+      <Theme />
+    </div>
+  </div>
 </header>
 
-<Dialog.Root bind:open={showKyaModal}>
-    <Dialog.Content class="w-[700px] max-w-[85vw] sm:max-w-[70vw]">
-        <Dialog.Header>
-            <Dialog.Title
-                >Know Your Assumptions - Ergo Token Minter</Dialog.Title
-            >
-        </Dialog.Header>
-        <div
-            bind:this={kyaContentDiv}
-            on:scroll={checkKyaScroll}
-            class="max-h-[50vh] overflow-y-auto pr-4 text-sm"
-        >
-            <p class="mb-3">
-                This application operates locally in your browser, does not rely
-                on any centralized server, and interacts directly with the Ergo
-                blockchain through your wallet.
-            </p>
+<!-- ── Tab bar ─────────────────────────────────────────────────────────────── -->
+<div class="border-b border-border">
+  <div class="container flex gap-6 px-4">
+    <button
+      class="tab-btn"
+      class:active={activeTab === "gallery"}
+      on:click={() => { activeTab = "gallery"; selectedSkill = null; }}
+    >Skills Gallery</button>
+    <button
+      class="tab-btn"
+      class:active={activeTab === "submit"}
+      on:click={() => activeTab = "submit"}
+    >+ Submit Skill</button>
+  </div>
+</div>
 
-            <h3 class="font-bold text-md mt-4 mb-2">Fundamental Assumptions</h3>
-            <ul class="list-disc ml-6 space-y-2">
-                <li>
-                    <strong>Wallet Compatibility:</strong> It is assumed that you
-                    have Nautilus wallet installed, configured, and unlocked. The
-                    application is entirely dependent on your wallet to sign and
-                    submit transactions.
-                </li>
-                <li>
-                    <strong>Direct Blockchain Interaction:</strong> This tool runs
-                    entirely on your machine. All operations are transactions that
-                    you must sign and are sent directly to the Ergo network. There
-                    are no intermediary servers.
-                </li>
-                <li>
-                    <strong>User Responsibility:</strong> You are responsible for
-                    the information you input (token name, amount, etc.). Transactions
-                    on the blockchain are irreversible.
-                </li>
-                <li>
-                    <strong>Network Fees:</strong> It is assumed that you have enough
-                    ERG in your wallet to cover network transaction fees and the
-                    minimum value required to create a new box. Without this, transactions
-                    will fail.
-                </li>
-            </ul>
+<!-- ── Main ────────────────────────────────────────────────────────────────── -->
+<main class="container mx-auto px-4 py-8 pb-20">
 
-            <h3 class="font-bold text-md mt-4 mb-2">Risks and Disclaimers</h3>
-            <ul class="list-disc ml-6 space-y-2">
-                <li>
-                    <strong>"As-Is" Software:</strong> This tool is provided "as
-                    is," without warranties of any kind. There is no guarantee against
-                    errors or bugs. Use it at your own risk.
-                </li>
-                <li>
-                    <strong>Irreversible Transactions:</strong> Once you sign and
-                    submit a transaction to mint tokens, it cannot be undone. Double-check
-                    all parameters before confirming.
-                </li>
-                <li>
-                    <strong>Wallet Security:</strong> You are solely responsible
-                    for the security of your wallet, private keys, and any assets.
-                    This application never has access to your keys.
-                </li>
-                <li>
-                    <strong>No Central Authority:</strong> As a decentralized tool,
-                    there is no central entity to appeal to for lost funds or failed
-                    transactions. You are interacting directly with a permissionless
-                    blockchain.
-                </li>
-            </ul>
-            <p class="italic mt-6">
-                Do you understand and accept these assumptions and the
-                associated risks of using this tool?
-            </p>
+  {#if activeTab === "gallery"}
+
+    {#if selectedSkill}
+      <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
+      <div class="max-w-3xl mx-auto">
+        <button class="flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground" on:click={() => selectedSkill = null}>
+          ← Back to gallery
+        </button>
+
+        <div class="card mb-6">
+          <div class="flex flex-wrap gap-2 items-start justify-between mb-3">
+            <h1 class="text-2xl font-bold">{selectedSkill.name}</h1>
+            {#if selectedSkill.domain}
+              <span class="badge badge-domain">{selectedSkill.domain}</span>
+            {/if}
+          </div>
+          <p class="text-muted-foreground mb-4">{selectedSkill.prose || "No description."}</p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            {#each selectedSkill.tags as tag}
+              <span class="badge">{tag}</span>
+            {/each}
+          </div>
+          <p class="text-xs text-muted-foreground font-mono">Box: {selectedSkill.boxId}</p>
         </div>
-        <Dialog.Footer class="mt-4">
-            <Button
-                on:click={handleCloseKyaModal}
-                disabled={!isKyaButtonEnabled}
-                class="w-full sm:w-auto"
-            >
-                I Understand and Accept
-            </Button>
-        </Dialog.Footer>
-    </Dialog.Content>
-</Dialog.Root>
 
-<main class="container mx-auto px-4 py-8">
-    <div class="max-w-2xl mx-auto">
-        <h1 class="text-3xl font-bold mb-2">Send ERG</h1>
-        <p class="text-muted-foreground mb-6">
-            Complete the details below to send ERG on the Ergo blockchain.
-        </p>
+        <!-- Coverages -->
+        <section class="mb-6">
+          <h2 class="text-lg font-semibold mb-3">Services covering this skill
+            <span class="text-sm font-normal text-muted-foreground">({selectedSkill.coverages.length})</span>
+          </h2>
+          {#if selectedSkill.coverages.length === 0}
+            <p class="text-muted-foreground text-sm">No services registered yet.</p>
+          {:else}
+            {#each selectedSkill.coverages as cov}
+              <div class="card mb-2 flex items-center justify-between">
+                <span class="font-medium">{cov.label}</span>
+                <span class="text-xs text-muted-foreground font-mono">{cov.serviceId.slice(0,12)}…</span>
+              </div>
+            {/each}
+          {/if}
+        </section>
 
-        {#if $connected}
-            <form on:submit|preventDefault={handleAction} class="space-y-4">
-                <div>
-                    <Label for="address">Recipient Address</Label>
-                    <Input
-                        id="address"
-                        bind:value={targetAddress}
-                        placeholder="Ergo address"
-                        required
-                    />
+        <!-- Benchmarks badge -->
+        <section class="mb-6">
+          <h2 class="text-lg font-semibold mb-3">Benchmarks
+            <span class="text-sm font-normal text-muted-foreground">({selectedSkill.benchmarkCount})</span>
+          </h2>
+          {#if selectedSkill.benchmarkCount === 0}
+            <p class="text-muted-foreground text-sm">No benchmarks submitted yet.</p>
+          {:else}
+            <p class="text-sm text-muted-foreground">{selectedSkill.benchmarkCount} comparative benchmark(s) on-chain.</p>
+          {/if}
+        </section>
+
+        <!-- Related skills -->
+        {#if selectedSkill.otherSkillBoxIds.length > 0}
+          <section class="mb-6">
+            <h2 class="text-lg font-semibold mb-3">Related skills</h2>
+            {#each selectedSkill.otherSkillBoxIds as refId}
+              {@const related = skills.find(s => s.boxId === refId)}
+              {#if related}
+                <button class="card mb-2 w-full text-left hover:bg-accent transition-colors" on:click={() => selectedSkill = related}>
+                  <span class="font-medium">{related.name}</span>
+                </button>
+              {:else}
+                <div class="card mb-2">
+                  <span class="text-xs text-muted-foreground font-mono">{refId}</span>
                 </div>
-                <div>
-                    <Label for="amount">Amount (ERG)</Label>
-                    <Input
-                        id="amount"
-                        type="number"
-                        bind:value={amountStr}
-                        placeholder="E.g., 1.5"
-                        step="any"
-                        required
-                    />
-                </div>
-                <Button type="submit" class="w-full" disabled={isLoading}>
-                    {#if isLoading}
-                        Sending...
-                    {:else}
-                        Send ERG
-                    {/if}
-                </Button>
-            </form>
-
-            <div class="mt-6 text-center">
-                {#if isLoading}
-                    <p class="text-blue-500">
-                        Processing transaction. Please check your wallet to
-                        sign...
-                    </p>
-                {/if}
-                {#if transactionId}
-                    <div
-                        class="p-4 bg-green-100 dark:bg-green-900 border border-green-400 rounded-md"
-                    >
-                        <p
-                            class="font-semibold text-green-800 dark:text-green-200"
-                        >
-                            Transfer successful!
-                        </p>
-                        <p class="text-sm">Transaction ID:</p>
-                        <a
-                            href={`https://explorer.ergoplatform.com/en/transactions/${transactionId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="text-blue-600 dark:text-blue-400 break-all"
-                            >{transactionId}</a
-                        >
-                    </div>
-                {/if}
-                {#if errorMessage}
-                    <div
-                        class="p-4 bg-red-100 dark:bg-red-900 border border-red-400 rounded-md"
-                    >
-                        <p class="font-semibold text-red-800 dark:text-red-200">
-                            Error
-                        </p>
-                        <p>{errorMessage}</p>
-                    </div>
-                {/if}
-            </div>
-        {:else}
-            <p class="text-center text-lg font-semibold p-8 border rounded-md">
-                Please connect your wallet to send ERG.
-            </p>
+              {/if}
+            {/each}
+          </section>
         {/if}
+
+        <!-- Forum -->
+        <section>
+          <h2 class="text-lg font-semibold mb-3">Discussion</h2>
+          {#if ForumComponent}
+            <svelte:component this={ForumComponent} topicIdentifier={selectedSkill.boxId} reputationTokenId="" />
+          {:else}
+            <p class="text-sm text-muted-foreground">Loading forum…</p>
+          {/if}
+        </section>
+      </div>
+
+    {:else}
+      <!-- ── Skills Gallery ────────────────────────────────────────────────── -->
+      {#if loading}
+        <div class="flex justify-center items-center py-24">
+          <div class="spinner"></div>
+          <span class="ml-3 text-muted-foreground">Loading skills from chain…</span>
+        </div>
+      {:else}
+        <div class="mb-4 flex items-center justify-between">
+          <p class="text-sm text-muted-foreground">
+            {filtered.length} skill{filtered.length !== 1 ? "s" : ""}
+            {searchQuery ? `matching "${searchQuery}"` : ""}
+          </p>
+          <button class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1" on:click={loadSkills}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+            Refresh
+          </button>
+        </div>
+
+        {#if filtered.length === 0}
+          <div class="text-center py-24 text-muted-foreground">
+            <p class="text-lg">No skills found.</p>
+            {#if searchQuery}
+              <p class="text-sm mt-2">Try a different search term.</p>
+            {:else}
+              <p class="text-sm mt-2">Be the first to submit a skill!</p>
+            {/if}
+          </div>
+        {:else}
+          <div class="skills-grid">
+            {#each filtered as skill (skill.boxId)}
+              <button class="skill-card" on:click={() => { selectedSkill = skill; loadForum(); }}>
+                <div class="flex items-start justify-between gap-2 mb-2">
+                  <h3 class="font-semibold text-left leading-tight">{skill.name}</h3>
+                  {#if skill.domain}
+                    <span class="badge badge-domain flex-shrink-0">{skill.domain}</span>
+                  {/if}
+                </div>
+                <p class="text-sm text-muted-foreground text-left mb-3 line-clamp-2">
+                  {skill.prose || "No description."}
+                </p>
+                <div class="flex flex-wrap gap-1 mb-3">
+                  {#each skill.tags.slice(0, 4) as tag}
+                    <span class="badge text-xs">{tag}</span>
+                  {/each}
+                </div>
+                <div class="flex gap-4 text-xs text-muted-foreground border-t border-border pt-2 mt-auto">
+                  <span>📡 {skill.coverages.length} services</span>
+                  <span>📊 {skill.benchmarkCount} benchmarks</span>
+                  {#if skill.otherSkillBoxIds.length > 0}
+                    <span>🔗 {skill.otherSkillBoxIds.length} related</span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+    {/if}
+
+  {:else if activeTab === "submit"}
+    <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
+    <div class="max-w-lg mx-auto">
+      <h2 class="text-2xl font-bold mb-2">Submit a Skill</h2>
+      <p class="text-muted-foreground mb-6 text-sm">
+        Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
+      </p>
+
+      {#if !$walletConnected}
+        <div class="card text-center py-8">
+          <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
+          <WalletButton explorerUrl={$web_explorer_uri_addr} />
+        </div>
+      {:else}
+        <form on:submit|preventDefault={handleSubmitSkill} class="space-y-4">
+          <div>
+            <label class="label" for="skill-name">Name <span class="text-red-500">*</span></label>
+            <input id="skill-name" class="input" bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+          </div>
+          <div>
+            <label class="label" for="skill-prose">Description</label>
+            <textarea id="skill-prose" class="input min-h-[100px] resize-y" bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+          </div>
+          <div>
+            <label class="label" for="skill-domain">Domain</label>
+            <input id="skill-domain" class="input" bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+          </div>
+          <div>
+            <label class="label" for="skill-tags">Tags <span class="text-muted-foreground font-normal">(comma-separated)</span></label>
+            <input id="skill-tags" class="input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+          </div>
+
+          <button type="submit" class="btn-primary w-full" disabled={submitting}>
+            {submitting ? "Publishing…" : "Publish Skill On-Chain"}
+          </button>
+        </form>
+
+        {#if submitTx}
+          <div class="mt-4 p-4 rounded-md bg-green-100 dark:bg-green-900 border border-green-400 text-sm">
+            <p class="font-semibold text-green-800 dark:text-green-200">Skill submitted!</p>
+            <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 break-all">{submitTx}</a>
+          </div>
+        {/if}
+        {#if submitError}
+          <div class="mt-4 p-4 rounded-md bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 text-sm text-yellow-800 dark:text-yellow-200">
+            {submitError}
+          </div>
+        {/if}
+      {/if}
     </div>
+  {/if}
 </main>
 
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
 <footer class="page-footer">
-    <div class="footer-left">
-        <span
-            class="cursor-pointer hover:underline"
-            on:click={handleOpenKyaModal}
-            on:keydown={(e) => e.key === "Enter" && handleOpenKyaModal()}
-            role="button"
-            tabindex="0"
-        >
-            KYA
-        </span>
-    </div>
-
-    <div class="footer-center">
-        <div bind:this={scrollingTextElement} class="scrolling-text-wrapper">
-            {footerMessages[activeMessageIndex]}
-        </div>
-    </div>
-
-    <div class="footer-right">
-        <svg
-            width="14"
-            height="14"
-            viewBox="0 0 12 12"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            ><path
-                d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z"
-                fill="currentColor"
-            ></path></svg
-        >
-        {#if current_height}
-            <span>{current_height}</span>
-        {/if}
-    </div>
+  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/></svg>
+    Celaut Skills — decentralized AI problem registry on Ergo
+  </div>
 </footer>
 
-<!-- Wallet Address Change Handler -->
 <WalletAddressChangeHandler />
 
-<!-- Settings Modal -->
-<SettingsModal bind:open={showSettingsModal} />
-
 <style lang="postcss">
-    :global(body) {
-        background-color: hsl(var(--background));
-    }
+  :global(body) {
+    background-color: hsl(var(--background));
+  }
 
-    .navbar-container {
-        @apply sticky top-0 z-50 w-full border-b backdrop-blur-lg;
-        background-color: hsl(var(--background) / 0.8);
-        border-bottom-color: hsl(var(--border));
-    }
+  .navbar-container {
+    @apply sticky top-0 z-50 w-full border-b backdrop-blur-lg;
+    background-color: hsl(var(--background) / 0.85);
+    border-bottom-color: hsl(var(--border));
+  }
 
-    .navbar-content {
-        @apply container flex h-16 items-center;
-    }
+  .navbar-content {
+    @apply container flex h-16 items-center px-4;
+  }
 
-    .logo-container {
-        @apply mr-4 flex items-center;
-    }
+  .logo-container {
+    @apply flex items-center font-semibold text-foreground no-underline whitespace-nowrap;
+  }
 
-    .user-section {
-        @apply flex items-center gap-4;
-    }
+  .tab-btn {
+    @apply py-3 px-1 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-colors;
+  }
+  .tab-btn.active {
+    @apply border-primary text-foreground;
+  }
+  .tab-btn:hover:not(.active) {
+    @apply text-foreground;
+  }
 
-    .settings-button {
-        @apply flex items-center justify-center;
-        @apply w-9 h-9 rounded-md;
-        @apply border border-border;
-        @apply bg-background hover:bg-accent;
-        @apply text-foreground hover:text-accent-foreground;
-        @apply transition-colors cursor-pointer;
-    }
+  .skills-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
 
-    .settings-button:hover {
-        @apply shadow-sm;
-    }
+  .skill-card {
+    @apply flex flex-col p-4 rounded-lg border border-border bg-card cursor-pointer text-left transition-all;
+  }
+  .skill-card:hover {
+    @apply border-primary/50 shadow-sm bg-accent/30;
+  }
 
-    .page-footer {
-        @apply fixed bottom-0 left-0 right-0 z-40;
-        @apply flex items-center;
-        @apply h-12 px-6 gap-6;
-        @apply border-t text-sm text-muted-foreground;
-        background-color: hsl(var(--background) / 0.8);
-        border-top-color: hsl(var(--border));
-        backdrop-filter: blur(4px);
-    }
+  .card {
+    @apply p-4 rounded-lg border border-border bg-card;
+  }
 
-    .footer-left,
-    .footer-right {
-        @apply flex items-center gap-2 flex-shrink-0;
-    }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground;
+  }
+  .badge-domain {
+    @apply bg-primary/10 text-primary;
+  }
 
-    .footer-center {
-        @apply flex-1 overflow-hidden;
-        -webkit-mask-image: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-        );
-        mask-image: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-        );
-    }
+  .label {
+    @apply block text-sm font-medium mb-1 text-foreground;
+  }
 
-    .scrolling-text-wrapper {
-        @apply inline-block whitespace-nowrap;
-        animation: scroll-left 30s linear infinite;
-    }
+  .input {
+    @apply w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring;
+  }
 
-    @keyframes scroll-left {
-        from {
-            transform: translateX(100vw);
-        }
-        to {
-            transform: translateX(-100%);
-        }
-    }
+  .btn-primary {
+    @apply px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium transition-colors;
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply opacity-90;
+  }
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .page-footer {
+    @apply fixed bottom-0 left-0 right-0 z-40 flex items-center h-10 px-6 border-t text-xs text-muted-foreground;
+    background-color: hsl(var(--background) / 0.85);
+    border-top-color: hsl(var(--border));
+    backdrop-filter: blur(4px);
+  }
+
+  .spinner {
+    @apply w-5 h-5 rounded-full border-2 border-muted border-t-primary;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  :global(.line-clamp-2) {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 </style>
