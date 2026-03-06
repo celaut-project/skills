@@ -4,83 +4,91 @@
 
 @layer base {
   :root {
-    /* Variables de fuente basadas en tu tema */
     --font-heading: 'Montserrat', sans-serif;
-    --font-body: 'Inconsolata', monospace;
+    --font-body: 'Inter', sans-serif;
 
-    /* Tema de colores basado en las imágenes */
-    /* Colores principales: Un fondo crema claro y un texto casi negro para un contraste alto y elegante. */
-    --background: 33 60% 98%; /* Crema claro, aprox #FDFBF8 */
-    --foreground: 210 4% 9%;   /* Negro suave, #151617 */
+    /* Refined light theme */
+    --background: 220 20% 97%;
+    --foreground: 222 47% 11%;
 
-    /* Tarjetas: Un tono melocotón pálido para los recuadros. */
-    --card: #fdfaf780;         /* #F2DED0 */
-    --card-foreground: 210 4% 9%; /* #151617 */
+    --card: 220 20% 100%;
+    --card-foreground: 222 47% 11%;
 
-    --popover: 33 60% 98%;
-    --popover-foreground: 210 4% 9%;
+    --popover: 220 20% 100%;
+    --popover-foreground: 222 47% 11%;
 
-    /* Primario: Se usa el color del texto como acento principal para botones y enlaces. */
-    --primary: 210 4% 9%;         /* #151617 */
-    --primary-foreground: 0 0% 100%; /* Blanco, para el texto sobre el botón primario */
+    --primary: 238 60% 55%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Secundario: El fondo de la tarjeta puede funcionar como fondo secundario. */
-    --secondary: 28 55% 91%;        /* #F2DED0 */
-    --secondary-foreground: 210 4% 9%; /* #151617 */
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 47% 11%;
 
-    /* Muted: El segundo color de acento opcional para elementos discretos. */
-    --muted: 40 9% 72%;           /* #BAB6AA */
-    --muted-foreground: 210 4% 15%; /* Un poco más claro que el texto principal */
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 46%;
 
-    /* Acento: Se alinea con el color primario, ya que el tema es minimalista. */
-    --accent: 210 4% 9%;          /* #151617 */
+    --accent: 238 60% 55%;
     --accent-foreground: 0 0% 100%;
 
-    /* Destructivo: Un rojo estándar que no desentona. */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Bordes e Inputs: El color de texto se usa para los bordes, creando un look definido. */
-    --border: 210 4% 9%;         /* #151617 */
-    --input: 28 55% 91%;          /* #F2DED0 - para el fondo del input */
-    --ring: 40 9% 72%;            /* #BAB6AA - para el anillo de foco */
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 238 60% 55%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+
+    /* Accent gradient */
+    --gradient-primary: linear-gradient(135deg, hsl(238 60% 55%), hsl(270 60% 55%));
+    --gradient-primary-hover: linear-gradient(135deg, hsl(238 60% 48%), hsl(270 60% 48%));
+    --gradient-subtle: linear-gradient(135deg, hsl(238 60% 55% / 0.08), hsl(270 60% 55% / 0.08));
+    --gradient-hero: linear-gradient(135deg, hsl(238 60% 55% / 0.05), hsl(270 60% 55% / 0.03), transparent);
+
+    /* Glass */
+    --glass-bg: rgba(255, 255, 255, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
   }
 
   .dark {
-    /* --- CORRECCIÓN --- */
-    /* Se aumentó la luminosidad de la tarjeta para mayor contraste. */
-    --background: 210 4% 9%;         /* #151617 */
-    --foreground: 33 60% 98%;         /* #FDFBF8 */
+    --background: 224 28% 8%;
+    --foreground: 220 20% 95%;
 
-    --card: #252628;
-    --card-foreground: 33 60% 98%;
+    --card: 224 24% 12%;
+    --card-foreground: 220 20% 95%;
 
-    --popover: 210 4% 9%;
-    --popover-foreground: 33 60% 98%;
+    --popover: 224 24% 12%;
+    --popover-foreground: 220 20% 95%;
 
-    /* En modo oscuro, el primario es el color claro del texto. */
-    --primary: 33 60% 98%;
-    --primary-foreground: 210 4% 9%;
+    --primary: 238 55% 65%;
+    --primary-foreground: 0 0% 100%;
 
-    /* Actualizado para coincidir con el color de la tarjeta. */
-    --secondary: 210 4% 15%;
-    --secondary-foreground: 33 60% 98%;
+    --secondary: 224 20% 16%;
+    --secondary-foreground: 220 20% 95%;
 
-    --muted: 40 9% 25%;
-    --muted-foreground: 40 9% 72%;
+    --muted: 224 20% 18%;
+    --muted-foreground: 220 9% 55%;
 
-    --accent: 33 60% 98%;
-    --accent-foreground: 210 4% 9%;
+    --accent: 238 55% 65%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 33 60% 98%;
-    /* Actualizado para coincidir con el color de la tarjeta. */
-    --input: 210 4% 15%;
-    --ring: 40 9% 72%;
+    --border: 224 14% 20%;
+    --input: 224 14% 20%;
+    --ring: 238 55% 65%;
+
+    /* Dark accent gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(238 55% 65%), hsl(270 55% 65%));
+    --gradient-primary-hover: linear-gradient(135deg, hsl(238 55% 58%), hsl(270 55% 58%));
+    --gradient-subtle: linear-gradient(135deg, hsl(238 55% 65% / 0.1), hsl(270 55% 65% / 0.1));
+    --gradient-hero: linear-gradient(135deg, hsl(238 55% 65% / 0.06), hsl(270 55% 65% / 0.04), transparent);
+
+    /* Glass dark */
+    --glass-bg: rgba(30, 33, 45, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -91,10 +99,56 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
-    font-weight: 900; /* Corresponde a la variante "Negro" de Montserrat */
+    font-weight: 700;
     @apply text-foreground;
+    letter-spacing: -0.02em;
   }
+}
+
+/* Staggered card entrance animations */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted) / 0.5) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* Grid pattern for hero */
+.grid-pattern {
+  background-image:
+    linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+  background-size: 40px 40px;
 }

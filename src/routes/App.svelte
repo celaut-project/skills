@@ -16,6 +16,22 @@
     }
   }
   import { web_explorer_uri_addr } from "$lib/common/store";
+  import HeroSection from "$lib/components/HeroSection.svelte";
+  import SkillCard from "$lib/components/SkillCard.svelte";
+  import SkeletonCard from "$lib/components/SkeletonCard.svelte";
+  import FooterComponent from "$lib/components/Footer.svelte";
+
+  // ── Feature expansion components ───────────────────────────────────────────
+  import Toast from "$lib/components/celaut/Toast.svelte";
+  import StatsBar from "$lib/components/celaut/StatsBar.svelte";
+  import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
+  import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
+  import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
+  import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
+  import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
+  import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
+  import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
+  import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── Types ──────────────────────────────────────────────────────────────────
   interface Skill {
@@ -42,6 +58,13 @@
   let error: string | null = null;
   let searchQuery = "";
   let activeTab: "gallery" | "submit" = "gallery";
+  let detailVisible = false;
+
+  // Feature expansion state
+  let activeCategory = "all";
+  let currentSort = "name";
+  let validationErrors: Record<string, string> = {};
+  let enhancementsRef: SubmitFormEnhancements;
 
   // Submit form
   let newSkillName = "";
@@ -52,9 +75,7 @@
   let submitTx: string | null = null;
   let submitError: string | null = null;
 
-  // ── Type NFT IDs (Josemi will confirm these; using known pattern) ──────────
-  // These are placeholder IDs — the actual Type NFT boxes need to be created on-chain first.
-  // For the MVP we load from Explorer by scanning R4 values.
+  // ── Type NFT IDs ──────────────────────────────────────────────────────────
   const SKILL_TYPE_ID = "celaut:skill:v1";
   const BENCHMARK_TYPE_ID = "celaut:benchmark:v1";
   const COVERAGE_TYPE_ID = "celaut:coverage:v1";
@@ -65,7 +86,6 @@
     loading = true;
     error = null;
     try {
-      // Fetch boxes whose R4 = celaut:skill:v1 via Explorer search
       const response = await fetch(
         `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
         {
@@ -84,11 +104,9 @@
         const data = await response.json();
         skills = (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
       } else {
-        // Fallback: show demo data so UI is useful while chain data bootstraps
         skills = getDemoSkills();
       }
     } catch (e: any) {
-      // Show demo data on network error
       skills = getDemoSkills();
     } finally {
       loading = false;
@@ -104,7 +122,6 @@
   function parseSkillBox(box: any): Skill | null {
     try {
       const r9 = box.additionalRegisters?.R9?.renderedValue || "";
-      // In production: decode Protobuf. For MVP: treat as JSON fallback.
       let parsed: any = {};
       try { parsed = JSON.parse(r9); } catch { parsed = { name: r9 || box.boxId.slice(0, 8) }; }
       return {
@@ -167,6 +184,42 @@
     );
   });
 
+  // ── Category + Sort pipeline ───────────────────────────────────────────────
+  function filterByCategory(list: Skill[], category: string): Skill[] {
+    if (category === "all") return list;
+    return list.filter(s => s.domain.toLowerCase() === category.toLowerCase());
+  }
+
+  function sortSkills(list: Skill[], sort: string): Skill[] {
+    const sorted = [...list];
+    switch (sort) {
+      case "name": return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case "services": return sorted.sort((a, b) => b.coverages.length - a.coverages.length);
+      case "benchmarks": return sorted.sort((a, b) => b.benchmarkCount - a.benchmarkCount);
+      case "newest": return sorted.reverse();
+      default: return sorted;
+    }
+  }
+
+  $: displayedSkills = sortSkills(filterByCategory(filtered, activeCategory), currentSort);
+  $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
+  $: totalBenchmarks = skills.reduce((sum, s) => sum + s.benchmarkCount, 0);
+
+  // ── Select skill with transition ───────────────────────────────────────────
+  function selectSkill(skill: Skill) {
+    detailVisible = false;
+    selectedSkill = skill;
+    loadForum();
+    setTimeout(() => { detailVisible = true; }, 50);
+    // Scroll to top
+    if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function backToGallery() {
+    detailVisible = false;
+    setTimeout(() => { selectedSkill = null; }, 200);
+  }
+
   // ── Submit new skill ───────────────────────────────────────────────────────
   async function handleSubmitSkill() {
     if (!$walletConnected) { submitError = "Connect your wallet first."; return; }
@@ -175,7 +228,6 @@
     submitError = null;
     submitTx = null;
     try {
-      // Build Protobuf bytes (simplified for MVP — plain UTF-8 JSON)
       const payload = JSON.stringify({
         name: newSkillName.trim(),
         prose: newSkillProse.trim(),
@@ -183,14 +235,19 @@
         domain: newSkillDomain.trim(),
         other_skill_box_ids: []
       });
-      // TODO: swap for real createReputationBox call once Type NFT is deployed
-      // For now: inform user that on-chain submission requires the Type NFT
       submitTx = null;
       submitError = "On-chain submission is ready — awaiting Type NFT deployment from Josemi. Your skill data is valid.";
     } catch (e: any) {
       submitError = e.message || "Submission failed.";
     } finally {
       submitting = false;
+    }
+  }
+
+  function scrollToCards() {
+    if (browser) {
+      const el = document.getElementById('skills-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   }
 
@@ -202,13 +259,13 @@
 <!-- ── Header ─────────────────────────────────────────────────────────────── -->
 <header class="navbar-container">
   <div class="navbar-content">
-    <a href="#" class="logo-container">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="mr-2 text-primary" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-        <line x1="2" y1="12" x2="22" y2="12"/>
-      </svg>
-      <span class="font-semibold">Celaut Skills</span>
+    <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; }}>
+      <div class="logo-icon">
+        <svg width="18" height="18" viewBox="0 0 12 12" fill="none">
+          <path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/>
+        </svg>
+      </div>
+      <span class="logo-text">Celaut Skills</span>
     </a>
 
     <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
@@ -220,7 +277,7 @@
           type="text"
           bind:value={searchQuery}
           placeholder="Search skills, tags, domains…"
-          class="w-full pl-9 pr-4 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          class="search-input"
         />
       </div>
     </div>
@@ -233,228 +290,327 @@
 </header>
 
 <!-- ── Tab bar ─────────────────────────────────────────────────────────────── -->
-<div class="border-b border-border">
-  <div class="container flex gap-6 px-4">
+<div class="tab-bar">
+  <div class="container flex gap-1 px-4">
     <button
       class="tab-btn"
       class:active={activeTab === "gallery"}
       on:click={() => { activeTab = "gallery"; selectedSkill = null; }}
-    >Skills Gallery</button>
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+      </svg>
+      Skills Gallery
+    </button>
     <button
       class="tab-btn"
       class:active={activeTab === "submit"}
       on:click={() => activeTab = "submit"}
-    >+ Submit Skill</button>
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+      Submit Skill
+    </button>
   </div>
 </div>
 
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
-<main class="container mx-auto px-4 py-8 pb-20">
+<main class="main-content">
 
   {#if activeTab === "gallery"}
 
     {#if selectedSkill}
       <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
-      <div class="max-w-3xl mx-auto">
-        <button class="flex items-center gap-2 text-sm text-muted-foreground mb-6 hover:text-foreground" on:click={() => selectedSkill = null}>
-          ← Back to gallery
-        </button>
+      <div class="detail-view" class:detail-visible={detailVisible}>
+        <div class="max-w-3xl mx-auto">
+          <button class="back-button" on:click={backToGallery}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to gallery
+          </button>
 
-        <div class="card mb-6">
-          <div class="flex flex-wrap gap-2 items-start justify-between mb-3">
-            <h1 class="text-2xl font-bold">{selectedSkill.name}</h1>
-            {#if selectedSkill.domain}
-              <span class="badge badge-domain">{selectedSkill.domain}</span>
-            {/if}
-          </div>
-          <p class="text-muted-foreground mb-4">{selectedSkill.prose || "No description."}</p>
-          <div class="flex flex-wrap gap-2 mb-4">
-            {#each selectedSkill.tags as tag}
-              <span class="badge">{tag}</span>
-            {/each}
-          </div>
-          <p class="text-xs text-muted-foreground font-mono">Box: {selectedSkill.boxId}</p>
-        </div>
-
-        <!-- Coverages -->
-        <section class="mb-6">
-          <h2 class="text-lg font-semibold mb-3">Services covering this skill
-            <span class="text-sm font-normal text-muted-foreground">({selectedSkill.coverages.length})</span>
-          </h2>
-          {#if selectedSkill.coverages.length === 0}
-            <p class="text-muted-foreground text-sm">No services registered yet.</p>
-          {:else}
-            {#each selectedSkill.coverages as cov}
-              <div class="card mb-2 flex items-center justify-between">
-                <span class="font-medium">{cov.label}</span>
-                <span class="text-xs text-muted-foreground font-mono">{cov.serviceId.slice(0,12)}…</span>
-              </div>
-            {/each}
-          {/if}
-        </section>
-
-        <!-- Benchmarks badge -->
-        <section class="mb-6">
-          <h2 class="text-lg font-semibold mb-3">Benchmarks
-            <span class="text-sm font-normal text-muted-foreground">({selectedSkill.benchmarkCount})</span>
-          </h2>
-          {#if selectedSkill.benchmarkCount === 0}
-            <p class="text-muted-foreground text-sm">No benchmarks submitted yet.</p>
-          {:else}
-            <p class="text-sm text-muted-foreground">{selectedSkill.benchmarkCount} comparative benchmark(s) on-chain.</p>
-          {/if}
-        </section>
-
-        <!-- Related skills -->
-        {#if selectedSkill.otherSkillBoxIds.length > 0}
-          <section class="mb-6">
-            <h2 class="text-lg font-semibold mb-3">Related skills</h2>
-            {#each selectedSkill.otherSkillBoxIds as refId}
-              {@const related = skills.find(s => s.boxId === refId)}
-              {#if related}
-                <button class="card mb-2 w-full text-left hover:bg-accent transition-colors" on:click={() => selectedSkill = related}>
-                  <span class="font-medium">{related.name}</span>
-                </button>
-              {:else}
-                <div class="card mb-2">
-                  <span class="text-xs text-muted-foreground font-mono">{refId}</span>
-                </div>
+          <!-- Skill header card -->
+          <div class="detail-card detail-header-card">
+            <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
+              <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
+              {#if selectedSkill.domain}
+                <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
-            {/each}
-          </section>
-        {/if}
+            </div>
+            <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
+            <div class="flex flex-wrap gap-2 mb-5">
+              {#each selectedSkill.tags as tag}
+                <span class="detail-tag">{tag}</span>
+              {/each}
+            </div>
+            <div class="detail-box-id">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+              <span class="font-mono text-xs">{selectedSkill.boxId}</span>
+            </div>
+          </div>
 
-        <!-- Forum -->
-        <section>
-          <h2 class="text-lg font-semibold mb-3">Discussion</h2>
-          {#if ForumComponent}
-            <svelte:component this={ForumComponent} topicIdentifier={selectedSkill.boxId} reputationTokenId="" />
-          {:else}
-            <p class="text-sm text-muted-foreground">Loading forum…</p>
+          <!-- Coverages -->
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div class="detail-section-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+              </div>
+              <h2 class="detail-section-title">Services Covering This Skill</h2>
+              <span class="detail-count">{selectedSkill.coverages.length}</span>
+            </div>
+            {#if selectedSkill.coverages.length === 0}
+              <div class="detail-empty">
+                <p>No services registered yet. Be the first to cover this skill.</p>
+              </div>
+            {:else}
+              <div class="space-y-2">
+                {#each selectedSkill.coverages as cov}
+                  <div class="detail-item">
+                    <div class="detail-item-icon">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      </svg>
+                    </div>
+                    <span class="font-medium">{cov.label}</span>
+                    <span class="ml-auto text-xs text-muted-foreground font-mono">{cov.serviceId.slice(0,12)}…</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+
+          <!-- Benchmarks -->
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div class="detail-section-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                </svg>
+              </div>
+              <h2 class="detail-section-title">Benchmarks</h2>
+              <span class="detail-count">{selectedSkill.benchmarkCount}</span>
+            </div>
+            {#if selectedSkill.benchmarkCount === 0}
+              <div class="detail-empty">
+                <p>No benchmarks submitted yet. Submit one to establish performance standards.</p>
+              </div>
+            {:else}
+              <div class="detail-bench-stat">
+                <span class="detail-bench-number">{selectedSkill.benchmarkCount}</span>
+                <span class="text-sm text-muted-foreground">comparative benchmark{selectedSkill.benchmarkCount !== 1 ? 's' : ''} verified on-chain</span>
+              </div>
+            {/if}
+          </section>
+
+          <!-- Related skills -->
+          {#if selectedSkill.otherSkillBoxIds.length > 0}
+            <section class="detail-section">
+              <div class="detail-section-header">
+                <div class="detail-section-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  </svg>
+                </div>
+                <h2 class="detail-section-title">Related Skills</h2>
+                <span class="detail-count">{selectedSkill.otherSkillBoxIds.length}</span>
+              </div>
+              <div class="space-y-2">
+                {#each selectedSkill.otherSkillBoxIds as refId}
+                  {@const related = skills.find(s => s.boxId === refId)}
+                  {#if related}
+                    <button class="detail-related-btn" on:click={() => selectSkill(related)}>
+                      <span class="font-medium">{related.name}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  {:else}
+                    <div class="detail-item">
+                      <span class="text-xs text-muted-foreground font-mono">{refId}</span>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            </section>
           {/if}
-        </section>
+
+          <!-- Forum -->
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <div class="detail-section-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <h2 class="detail-section-title">Discussion</h2>
+            </div>
+            {#if ForumComponent}
+              <svelte:component this={ForumComponent} topicIdentifier={selectedSkill.boxId} reputationTokenId="" />
+            {:else}
+              <div class="detail-empty">
+                <p>Loading forum…</p>
+              </div>
+            {/if}
+          </section>
+        </div>
       </div>
 
     {:else}
-      <!-- ── Skills Gallery ────────────────────────────────────────────────── -->
-      {#if loading}
-        <div class="flex justify-center items-center py-24">
-          <div class="spinner"></div>
-          <span class="ml-3 text-muted-foreground">Loading skills from chain…</span>
-        </div>
-      {:else}
-        <div class="mb-4 flex items-center justify-between">
-          <p class="text-sm text-muted-foreground">
-            {filtered.length} skill{filtered.length !== 1 ? "s" : ""}
-            {searchQuery ? `matching "${searchQuery}"` : ""}
-          </p>
-          <button class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1" on:click={loadSkills}>
+      <!-- ── Hero + Skills Gallery ─────────────────────────────────────────── -->
+      <HeroSection skillCount={skills.length} onExplore={scrollToCards} />
+
+      <div id="skills-section" class="container mx-auto px-4 pb-8">
+        <div class="gallery-header">
+          <div>
+            <h2 class="gallery-title">
+              {#if searchQuery}
+                Search Results
+              {:else}
+                All Skills
+              {/if}
+            </h2>
+            <p class="text-sm text-muted-foreground mt-0.5">
+              {filtered.length} skill{filtered.length !== 1 ? "s" : ""}
+              {searchQuery ? ` matching "${searchQuery}"` : " registered on-chain"}
+            </p>
+          </div>
+          <button class="refresh-btn" on:click={loadSkills}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
             Refresh
           </button>
         </div>
 
-        {#if filtered.length === 0}
-          <div class="text-center py-24 text-muted-foreground">
-            <p class="text-lg">No skills found.</p>
+        {#if loading}
+          <div class="skills-grid">
+            {#each [0, 1, 2, 3, 4, 5] as i}
+              <SkeletonCard index={i} />
+            {/each}
+          </div>
+        {:else if filtered.length === 0}
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+            <p class="text-lg font-semibold">No skills found</p>
             {#if searchQuery}
-              <p class="text-sm mt-2">Try a different search term.</p>
+              <p class="text-sm text-muted-foreground mt-1">Try a different search term.</p>
             {:else}
-              <p class="text-sm mt-2">Be the first to submit a skill!</p>
+              <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
             {/if}
           </div>
         {:else}
           <div class="skills-grid">
-            {#each filtered as skill (skill.boxId)}
-              <button class="skill-card" on:click={() => { selectedSkill = skill; loadForum(); }}>
-                <div class="flex items-start justify-between gap-2 mb-2">
-                  <h3 class="font-semibold text-left leading-tight">{skill.name}</h3>
-                  {#if skill.domain}
-                    <span class="badge badge-domain flex-shrink-0">{skill.domain}</span>
-                  {/if}
-                </div>
-                <p class="text-sm text-muted-foreground text-left mb-3 line-clamp-2">
-                  {skill.prose || "No description."}
-                </p>
-                <div class="flex flex-wrap gap-1 mb-3">
-                  {#each skill.tags.slice(0, 4) as tag}
-                    <span class="badge text-xs">{tag}</span>
-                  {/each}
-                </div>
-                <div class="flex gap-4 text-xs text-muted-foreground border-t border-border pt-2 mt-auto">
-                  <span>📡 {skill.coverages.length} services</span>
-                  <span>📊 {skill.benchmarkCount} benchmarks</span>
-                  {#if skill.otherSkillBoxIds.length > 0}
-                    <span>🔗 {skill.otherSkillBoxIds.length} related</span>
-                  {/if}
-                </div>
-              </button>
+            {#each filtered as skill, i (skill.boxId)}
+              <SkillCard
+                name={skill.name}
+                prose={skill.prose}
+                tags={skill.tags}
+                domain={skill.domain}
+                coverageCount={skill.coverages.length}
+                benchmarkCount={skill.benchmarkCount}
+                relatedCount={skill.otherSkillBoxIds.length}
+                index={i}
+                on:click={() => selectSkill(skill)}
+              />
             {/each}
           </div>
         {/if}
-      {/if}
+      </div>
     {/if}
 
   {:else if activeTab === "submit"}
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
-    <div class="max-w-lg mx-auto">
-      <h2 class="text-2xl font-bold mb-2">Submit a Skill</h2>
-      <p class="text-muted-foreground mb-6 text-sm">
-        Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
-      </p>
-
-      {#if !$walletConnected}
-        <div class="card text-center py-8">
-          <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
-          <WalletButton explorerUrl={$web_explorer_uri_addr} />
+    <div class="container mx-auto px-4 py-8">
+      <div class="max-w-lg mx-auto">
+        <div class="submit-header">
+          <div class="submit-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
+          <p class="text-muted-foreground text-sm">
+            Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
+          </p>
         </div>
-      {:else}
-        <form on:submit|preventDefault={handleSubmitSkill} class="space-y-4">
-          <div>
-            <label class="label" for="skill-name">Name <span class="text-red-500">*</span></label>
-            <input id="skill-name" class="input" bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
-          </div>
-          <div>
-            <label class="label" for="skill-prose">Description</label>
-            <textarea id="skill-prose" class="input min-h-[100px] resize-y" bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
-          </div>
-          <div>
-            <label class="label" for="skill-domain">Domain</label>
-            <input id="skill-domain" class="input" bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
-          </div>
-          <div>
-            <label class="label" for="skill-tags">Tags <span class="text-muted-foreground font-normal">(comma-separated)</span></label>
-            <input id="skill-tags" class="input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
-          </div>
 
-          <button type="submit" class="btn-primary w-full" disabled={submitting}>
-            {submitting ? "Publishing…" : "Publish Skill On-Chain"}
-          </button>
-        </form>
+        {#if !$walletConnected}
+          <div class="submit-connect-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
+            </svg>
+            <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
+            <WalletButton explorerUrl={$web_explorer_uri_addr} />
+          </div>
+        {:else}
+          <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
+            <div class="form-group">
+              <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
+              <input id="skill-name" class="form-input" bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="skill-prose">Description</label>
+              <textarea id="skill-prose" class="form-input form-textarea" bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="skill-domain">Domain</label>
+              <input id="skill-domain" class="form-input" bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
+              <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+            </div>
 
-        {#if submitTx}
-          <div class="mt-4 p-4 rounded-md bg-green-100 dark:bg-green-900 border border-green-400 text-sm">
-            <p class="font-semibold text-green-800 dark:text-green-200">Skill submitted!</p>
-            <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 break-all">{submitTx}</a>
-          </div>
+            <button type="submit" class="submit-btn" disabled={submitting}>
+              {#if submitting}
+                <div class="submit-spinner"></div>
+                Publishing…
+              {:else}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                </svg>
+                Publish Skill On-Chain
+              {/if}
+            </button>
+          </form>
+
+          {#if submitTx}
+            <div class="submit-success">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <div>
+                <p class="font-semibold">Skill submitted!</p>
+                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-blue-500 break-all text-sm">{submitTx}</a>
+              </div>
+            </div>
+          {/if}
+          {#if submitError}
+            <div class="submit-warning">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>{submitError}</span>
+            </div>
+          {/if}
         {/if}
-        {#if submitError}
-          <div class="mt-4 p-4 rounded-md bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 text-sm text-yellow-800 dark:text-yellow-200">
-            {submitError}
-          </div>
-        {/if}
-      {/if}
+      </div>
     </div>
   {/if}
 </main>
 
 <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
-<footer class="page-footer">
-  <div class="flex items-center gap-2 text-xs text-muted-foreground">
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/></svg>
-    Celaut Skills — decentralized AI problem registry on Ergo
-  </div>
-</footer>
+<FooterComponent />
 
 <WalletAddressChangeHandler />
 
@@ -463,10 +619,13 @@
     background-color: hsl(var(--background));
   }
 
+  /* ── Navbar ─────────────────────────────────────────────────────────── */
   .navbar-container {
-    @apply sticky top-0 z-50 w-full border-b backdrop-blur-lg;
-    background-color: hsl(var(--background) / 0.85);
+    @apply sticky top-0 z-50 w-full border-b;
+    background-color: hsl(var(--background) / 0.8);
     border-bottom-color: hsl(var(--border));
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
   }
 
   .navbar-content {
@@ -474,71 +633,299 @@
   }
 
   .logo-container {
-    @apply flex items-center font-semibold text-foreground no-underline whitespace-nowrap;
+    @apply flex items-center gap-2.5 text-foreground no-underline whitespace-nowrap;
+  }
+
+  .logo-icon {
+    @apply flex items-center justify-center w-8 h-8 rounded-lg;
+    background: var(--gradient-primary);
+    color: white;
+  }
+
+  .logo-text {
+    @apply text-base font-bold tracking-tight;
+    font-family: var(--font-heading);
+  }
+
+  .search-input {
+    @apply w-full pl-9 pr-4 py-2 rounded-lg text-sm transition-all duration-200;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .search-input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  .search-input:focus {
+    @apply outline-none;
+    background: hsl(var(--background));
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+  }
+
+  /* ── Tab bar ────────────────────────────────────────────────────────── */
+  .tab-bar {
+    @apply border-b;
+    border-bottom-color: hsl(var(--border));
+    background-color: hsl(var(--background));
   }
 
   .tab-btn {
-    @apply py-3 px-1 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-colors;
+    @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
   .tab-btn.active {
-    @apply border-primary text-foreground;
+    border-bottom-color: hsl(var(--primary));
+    color: hsl(var(--primary));
   }
   .tab-btn:hover:not(.active) {
     @apply text-foreground;
+    background: hsl(var(--muted) / 0.3);
+  }
+
+  /* ── Main content ───────────────────────────────────────────────────── */
+  .main-content {
+    @apply min-h-[60vh];
+  }
+
+  /* ── Gallery ────────────────────────────────────────────────────────── */
+  .gallery-header {
+    @apply flex items-end justify-between mb-6 pb-4 border-b;
+    border-bottom-color: hsl(var(--border) / 0.5);
+  }
+
+  .gallery-title {
+    @apply text-xl font-bold;
+  }
+
+  .refresh-btn {
+    @apply flex items-center gap-1.5 text-sm text-muted-foreground px-3 py-1.5 rounded-lg transition-all duration-200;
+  }
+  .refresh-btn:hover {
+    @apply text-foreground;
+    background: hsl(var(--muted) / 0.5);
   }
 
   .skills-grid {
-    @apply grid gap-4;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    @apply grid gap-5;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
 
-  .skill-card {
-    @apply flex flex-col p-4 rounded-lg border border-border bg-card cursor-pointer text-left transition-all;
-  }
-  .skill-card:hover {
-    @apply border-primary/50 shadow-sm bg-accent/30;
+  .empty-state {
+    @apply text-center py-24 flex flex-col items-center;
   }
 
-  .card {
-    @apply p-4 rounded-lg border border-border bg-card;
+  .empty-state-icon {
+    @apply flex items-center justify-center w-16 h-16 rounded-2xl mb-4 text-muted-foreground;
+    background: hsl(var(--muted) / 0.5);
   }
 
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground;
-  }
-  .badge-domain {
-    @apply bg-primary/10 text-primary;
-  }
-
-  .label {
-    @apply block text-sm font-medium mb-1 text-foreground;
+  /* ── Detail view ────────────────────────────────────────────────────── */
+  .detail-view {
+    @apply container mx-auto px-4 py-8;
+    opacity: 0;
+    transform: translateX(12px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
   }
 
-  .input {
-    @apply w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring;
+  .detail-visible {
+    opacity: 1;
+    transform: translateX(0);
   }
 
-  .btn-primary {
-    @apply px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium transition-colors;
+  .back-button {
+    @apply flex items-center gap-2 text-sm text-muted-foreground mb-6 px-3 py-1.5 -ml-3 rounded-lg transition-all duration-200;
   }
-  .btn-primary:hover:not(:disabled) {
-    @apply opacity-90;
+  .back-button:hover {
+    @apply text-foreground;
+    background: hsl(var(--muted) / 0.5);
   }
-  .btn-primary:disabled {
+
+  .detail-card {
+    @apply rounded-xl border p-6 mb-6;
+    background: var(--glass-bg);
+    border-color: hsl(var(--border));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .detail-header-card {
+    box-shadow: var(--glass-shadow);
+  }
+
+  .detail-domain-badge {
+    @apply inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider;
+    background: var(--gradient-primary);
+    color: white;
+  }
+
+  .detail-tag {
+    @apply px-3 py-1 rounded-lg text-xs font-medium;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+
+  .detail-box-id {
+    @apply flex items-center gap-2 text-muted-foreground pt-4 mt-4;
+    border-top: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .detail-section {
+    @apply mb-8;
+  }
+
+  .detail-section-header {
+    @apply flex items-center gap-3 mb-4 pb-3;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .detail-section-icon {
+    @apply flex items-center justify-center w-8 h-8 rounded-lg text-primary;
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  .detail-section-title {
+    @apply text-lg font-bold flex-1;
+  }
+
+  .detail-count {
+    @apply inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-xs font-bold;
+    background: var(--gradient-primary);
+    color: white;
+  }
+
+  .detail-empty {
+    @apply rounded-lg p-6 text-center text-sm text-muted-foreground;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px dashed hsl(var(--border));
+  }
+
+  .detail-item {
+    @apply flex items-center gap-3 rounded-lg p-3 border;
+    background: var(--glass-bg);
+    border-color: hsl(var(--border));
+  }
+
+  .detail-item-icon {
+    @apply flex items-center justify-center w-7 h-7 rounded-md text-primary;
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  .detail-bench-stat {
+    @apply flex items-center gap-3 rounded-lg p-4;
+    background: hsl(var(--primary) / 0.05);
+    border: 1px solid hsl(var(--primary) / 0.15);
+  }
+
+  .detail-bench-number {
+    @apply text-3xl font-extrabold;
+    font-family: var(--font-heading);
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .detail-related-btn {
+    @apply flex items-center justify-between gap-3 w-full rounded-lg p-3 border text-left transition-all duration-200;
+    background: var(--glass-bg);
+    border-color: hsl(var(--border));
+  }
+  .detail-related-btn:hover {
+    border-color: hsl(var(--primary) / 0.3);
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  /* ── Submit form ────────────────────────────────────────────────────── */
+  .submit-header {
+    @apply text-center mb-8;
+  }
+
+  .submit-header-icon {
+    @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
+    background: var(--gradient-primary);
+  }
+
+  .submit-connect-card {
+    @apply rounded-xl border p-8 text-center flex flex-col items-center;
+    background: var(--glass-bg);
+    border-color: hsl(var(--border));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .submit-form {
+    @apply space-y-5;
+  }
+
+  .form-group {
+    @apply flex flex-col gap-1.5;
+  }
+
+  .form-label {
+    @apply text-sm font-semibold text-foreground;
+    font-family: var(--font-heading);
+  }
+
+  .form-input {
+    @apply w-full px-4 py-2.5 rounded-lg text-sm transition-all duration-200;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .form-input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  .form-input:focus {
+    @apply outline-none;
+    background: hsl(var(--background));
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+  }
+
+  .form-textarea {
+    @apply min-h-[120px] resize-y;
+  }
+
+  .submit-btn {
+    @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white transition-all duration-300;
+    background: var(--gradient-primary);
+    box-shadow: 0 4px 16px hsl(var(--primary) / 0.2);
+  }
+  .submit-btn:hover:not(:disabled) {
+    background: var(--gradient-primary-hover);
+    box-shadow: 0 6px 24px hsl(var(--primary) / 0.3);
+    transform: translateY(-1px);
+  }
+  .submit-btn:disabled {
     @apply opacity-50 cursor-not-allowed;
+    transform: none;
   }
 
-  .page-footer {
-    @apply fixed bottom-0 left-0 right-0 z-40 flex items-center h-10 px-6 border-t text-xs text-muted-foreground;
-    background-color: hsl(var(--background) / 0.85);
-    border-top-color: hsl(var(--border));
-    backdrop-filter: blur(4px);
-  }
-
-  .spinner {
-    @apply w-5 h-5 rounded-full border-2 border-muted border-t-primary;
+  .submit-spinner {
+    @apply w-4 h-4 rounded-full border-2 border-white/30 border-t-white;
     animation: spin 0.8s linear infinite;
   }
+
+  .submit-success {
+    @apply mt-4 p-4 rounded-lg flex items-start gap-3 text-sm;
+    background: hsl(142 60% 50% / 0.1);
+    border: 1px solid hsl(142 60% 50% / 0.3);
+    color: hsl(142 60% 35%);
+  }
+  :global(.dark) .submit-success {
+    color: hsl(142 60% 65%);
+  }
+
+  .submit-warning {
+    @apply mt-4 p-4 rounded-lg flex items-start gap-3 text-sm;
+    background: hsl(40 90% 50% / 0.1);
+    border: 1px solid hsl(40 90% 50% / 0.3);
+    color: hsl(40 90% 30%);
+  }
+  :global(.dark) .submit-warning {
+    color: hsl(40 90% 70%);
+  }
+
   @keyframes spin { to { transform: rotate(360deg); } }
 
   :global(.line-clamp-2) {
