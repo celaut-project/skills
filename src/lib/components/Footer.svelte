@@ -34,10 +34,8 @@
 <style lang="postcss">
   .page-footer {
     @apply w-full border-t py-6 px-6 mt-12;
-    background-color: hsl(var(--background) / 0.85);
+    background-color: hsl(var(--background));
     border-top-color: hsl(var(--border));
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
   }
 
   .footer-inner {

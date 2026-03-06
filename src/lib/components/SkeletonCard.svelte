@@ -25,7 +25,7 @@
 <style lang="postcss">
   .skeleton-card {
     @apply rounded-xl border overflow-hidden;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
     animation: fadeSlideIn 0.5s ease forwards;
     opacity: 0;

@@ -12,7 +12,7 @@
 
   let visible = false;
   onMount(() => {
-    setTimeout(() => { visible = true; }, 80 + index * 60);
+    setTimeout(() => { visible = true; }, 80 + index * 30);
   });
 
   const domainColors: Record<string, string> = {
@@ -31,9 +31,6 @@
   class:skill-card-visible={visible}
   on:click
 >
-  <!-- Card gradient overlay -->
-  <div class="card-gradient-overlay"></div>
-  
   <div class="card-inner">
     <div class="flex items-start justify-between gap-2 mb-3">
       <h3 class="card-title">{name}</h3>
@@ -84,12 +81,9 @@
 <style lang="postcss">
   .skill-card {
     @apply relative flex flex-col rounded-xl border text-left cursor-pointer overflow-hidden;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    box-shadow: var(--glass-shadow);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     opacity: 0;
     transform: translateY(16px);
   }
@@ -97,22 +91,12 @@
   .skill-card-visible {
     opacity: 1;
     transform: translateY(0);
+    transition: opacity 0.4s ease, transform 0.4s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .skill-card:hover {
-    transform: translateY(-4px) scale(1.01);
-    box-shadow: 0 12px 40px hsl(var(--primary) / 0.12), 0 0 0 1px hsl(var(--primary) / 0.2);
     border-color: hsl(var(--primary) / 0.3);
-  }
-
-  .card-gradient-overlay {
-    @apply absolute inset-0 opacity-0 pointer-events-none;
-    background: var(--gradient-subtle);
-    transition: opacity 0.3s ease;
-  }
-
-  .skill-card:hover .card-gradient-overlay {
-    opacity: 1;
+    box-shadow: 0 2px 8px hsl(var(--foreground) / 0.06);
   }
 
   .card-inner {

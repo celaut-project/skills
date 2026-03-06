@@ -8,8 +8,7 @@
 <style lang="postcss">
   .page-footer {
     @apply fixed bottom-0 left-0 right-0 z-40 flex items-center h-10 px-6 border-t text-xs text-muted-foreground;
-    background-color: hsl(var(--background) / 0.85);
+    background-color: hsl(var(--background));
     border-top-color: hsl(var(--border));
-    backdrop-filter: blur(4px);
   }
 </style>

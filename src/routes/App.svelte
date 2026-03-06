@@ -33,23 +33,9 @@
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import { toasts } from "$lib/components/celaut/toastStore";
 
-  // ── Types ──────────────────────────────────────────────────────────────────
-  interface Skill {
-    boxId: string;
-    name: string;
-    prose: string;
-    tags: string[];
-    domain: string;
-    otherSkillBoxIds: string[];
-    coverages: Coverage[];
-    benchmarkCount: number;
-  }
-
-  interface Coverage {
-    boxId: string;
-    serviceId: string;
-    label: string;
-  }
+  // ── API & Types ────────────────────────────────────────────────────────────
+  import { loadSkills as loadSkillsFromApi, getDemoSkills } from "$lib/api";
+  import type { Skill, Coverage } from "$lib/types";
 
   // ── State ──────────────────────────────────────────────────────────────────
   let skills: Skill[] = [];
@@ -75,101 +61,17 @@
   let submitTx: string | null = null;
   let submitError: string | null = null;
 
-  // ── Type NFT IDs ──────────────────────────────────────────────────────────
-  const SKILL_TYPE_ID = "celaut:skill:v1";
-  const BENCHMARK_TYPE_ID = "celaut:benchmark:v1";
-  const COVERAGE_TYPE_ID = "celaut:coverage:v1";
-  const EXPLORER_API = "https://api.ergoplatform.com";
-
   // ── Load skills from chain ─────────────────────────────────────────────────
   async function loadSkills() {
     loading = true;
     error = null;
     try {
-      const response = await fetch(
-        `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ergoTreeTemplateHash: null,
-            registers: {
-              R4: { serializedValue: toHex(SKILL_TYPE_ID) }
-            }
-          })
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        skills = (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
-      } else {
-        skills = getDemoSkills();
-      }
+      skills = await loadSkillsFromApi();
     } catch (e: any) {
       skills = getDemoSkills();
     } finally {
       loading = false;
     }
-  }
-
-  function toHex(str: string): string {
-    return Array.from(new TextEncoder().encode(str))
-      .map(b => b.toString(16).padStart(2, "0"))
-      .join("");
-  }
-
-  function parseSkillBox(box: any): Skill | null {
-    try {
-      const r9 = box.additionalRegisters?.R9?.renderedValue || "";
-      let parsed: any = {};
-      try { parsed = JSON.parse(r9); } catch { parsed = { name: r9 || box.boxId.slice(0, 8) }; }
-      return {
-        boxId: box.boxId,
-        name: parsed.name || "Unnamed Skill",
-        prose: parsed.prose || "",
-        tags: parsed.tags || [],
-        domain: parsed.domain || "",
-        otherSkillBoxIds: parsed.other_skill_box_ids || [],
-        coverages: [],
-        benchmarkCount: 0
-      };
-    } catch { return null; }
-  }
-
-  function getDemoSkills(): Skill[] {
-    return [
-      {
-        boxId: "demo-001",
-        name: "Optimal XAU/BTC Performance",
-        prose: "Maximize risk-adjusted returns on the XAU/BTC pair using on-chain verifiable strategies.",
-        tags: ["trading", "gold", "bitcoin"],
-        domain: "finance",
-        otherSkillBoxIds: [],
-        coverages: [{ boxId: "cov-001", serviceId: "svc-alpha", label: "AlphaTrader v2" }],
-        benchmarkCount: 3
-      },
-      {
-        boxId: "demo-002",
-        name: "Sat-sorter",
-        prose: "Sort and classify UTXOs by satoshi value for optimal fee management.",
-        tags: ["utxo", "optimization", "fees"],
-        domain: "infrastructure",
-        otherSkillBoxIds: [],
-        coverages: [],
-        benchmarkCount: 1
-      },
-      {
-        boxId: "demo-003",
-        name: "On-chain Sentiment Analysis",
-        prose: "Classify community sentiment from forum discussions into structured signals.",
-        tags: ["nlp", "sentiment", "community"],
-        domain: "analytics",
-        otherSkillBoxIds: ["demo-001"],
-        coverages: [],
-        benchmarkCount: 0
-      }
-    ];
   }
 
   // ── Filtered skills ────────────────────────────────────────────────────────
@@ -259,13 +161,6 @@
   $: if (newSkillProse) { delete validationErrors["prose"]; validationErrors = validationErrors; }
   $: if (newSkillDomain) { delete validationErrors["domain"]; validationErrors = validationErrors; }
 
-  function scrollToCards() {
-    if (browser) {
-      const el = document.getElementById('skills-section');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  }
-
   onMount(() => {
     if (browser) loadSkills();
   });
@@ -347,7 +242,7 @@
           </button>
 
           <!-- Skill header card -->
-          <div class="detail-card detail-header-card">
+          <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
               <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
               {#if selectedSkill.domain}
@@ -489,7 +384,7 @@
 
     {:else}
       <!-- ── Hero + Skills Gallery ─────────────────────────────────────────── -->
-      <HeroSection skillCount={skills.length} onExplore={scrollToCards} />
+      <HeroSection skillCount={skills.length} />
 
       <div id="skills-section" class="container mx-auto px-4 pb-8">
         <!-- How It Works -->
@@ -682,10 +577,8 @@
   /* ── Navbar ─────────────────────────────────────────────────────────── */
   .navbar-container {
     @apply sticky top-0 z-50 w-full border-b;
-    background-color: hsl(var(--background) / 0.8);
+    background-color: hsl(var(--background));
     border-bottom-color: hsl(var(--border));
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
   }
 
   .navbar-content {
@@ -698,7 +591,7 @@
 
   .logo-icon {
     @apply flex items-center justify-center w-8 h-8 rounded-lg;
-    background: var(--gradient-primary);
+    background: hsl(var(--primary));
     color: white;
   }
 
@@ -802,20 +695,14 @@
 
   .detail-card {
     @apply rounded-xl border p-6 mb-6;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-
-  .detail-header-card {
-    box-shadow: var(--glass-shadow);
   }
 
   .detail-domain-badge {
     @apply inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider;
-    background: var(--gradient-primary);
-    color: white;
+    background: hsl(var(--primary) / 0.12);
+    color: hsl(var(--primary));
   }
 
   .detail-tag {
@@ -849,7 +736,7 @@
 
   .detail-count {
     @apply inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-xs font-bold;
-    background: var(--gradient-primary);
+    background: hsl(var(--primary));
     color: white;
   }
 
@@ -861,7 +748,7 @@
 
   .detail-item {
     @apply flex items-center gap-3 rounded-lg p-3 border;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
   }
 
@@ -879,15 +766,12 @@
   .detail-bench-number {
     @apply text-3xl font-extrabold;
     font-family: var(--font-heading);
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: hsl(var(--primary));
   }
 
   .detail-related-btn {
     @apply flex items-center justify-between gap-3 w-full rounded-lg p-3 border text-left transition-all duration-200;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
   }
   .detail-related-btn:hover {
@@ -902,15 +786,13 @@
 
   .submit-header-icon {
     @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
-    background: var(--gradient-primary);
+    background: hsl(var(--primary));
   }
 
   .submit-connect-card {
     @apply rounded-xl border p-8 text-center flex flex-col items-center;
-    background: var(--glass-bg);
+    background: hsl(var(--card));
     border-color: hsl(var(--border));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
   }
 
   .submit-form {
@@ -959,18 +841,14 @@
   }
 
   .submit-btn {
-    @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white transition-all duration-300;
-    background: var(--gradient-primary);
-    box-shadow: 0 4px 16px hsl(var(--primary) / 0.2);
+    @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white transition-all duration-200;
+    background: hsl(var(--primary));
   }
   .submit-btn:hover:not(:disabled) {
-    background: var(--gradient-primary-hover);
-    box-shadow: 0 6px 24px hsl(var(--primary) / 0.3);
-    transform: translateY(-1px);
+    background: hsl(var(--primary) / 0.9);
   }
   .submit-btn:disabled {
     @apply opacity-50 cursor-not-allowed;
-    transform: none;
   }
 
   .submit-spinner {
