@@ -148,3 +148,43 @@ button[class*="wallet-connect"] div[style*="ef4444"] {
   margin-left: auto;
   margin-right: auto;
 }
+
+/* ── Final polish ─────────────────────────────────────────────────────────── */
+
+/* Stronger wallet button red dot override */
+button[class*="wallet"] [style*="ef4444"],
+button[class*="wallet"] [style*="red"],
+div[class*="wallet"] [style*="ef4444"],
+[class*="WalletButton"] [style*="ef4444"],
+[class*="wallet"] span[style*="background"] {
+  background-color: hsl(var(--muted-foreground) / 0.3) !important;
+}
+
+/* Card hover: subtle lift */
+.skill-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.skill-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsl(var(--foreground) / 0.06);
+}
+
+/* Author address label */
+.author-address {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.65rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 0.25rem;
+}
+
+/* Mobile: filter pills scroll horizontally */
+@media (max-width: 640px) {
+  .filter-chips {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .filter-chips::-webkit-scrollbar { display: none; }
+}

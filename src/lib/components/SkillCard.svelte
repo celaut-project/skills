@@ -64,14 +64,14 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <span class="card-stat-value">{coverageCount}</span>
-        <span class="card-stat-label">services</span>
+        <span class="card-stat-label">{coverageCount === 1 ? 'service' : 'services'}</span>
       </div>
       <div class="card-stat" class:card-stat-muted={benchmarkCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
         </svg>
         <span class="card-stat-value">{benchmarkCount}</span>
-        <span class="card-stat-label">benchmarks</span>
+        <span class="card-stat-label">{benchmarkCount === 1 ? 'benchmark' : 'benchmarks'}</span>
       </div>
       <div class="card-stat" class:card-stat-muted={resultCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -120,48 +120,48 @@
   }
 
   .domain-finance {
-    background: hsl(142 60% 50% / 0.12);
-    color: hsl(142 60% 40%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
   :global(.dark) .domain-finance {
-    background: hsl(142 60% 50% / 0.15);
-    color: hsl(142 60% 65%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .domain-infra {
-    background: hsl(215 15% 50% / 0.12);
-    color: hsl(215 15% 35%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
   :global(.dark) .domain-infra {
-    background: hsl(215 15% 50% / 0.15);
-    color: hsl(215 15% 70%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .domain-analytics {
-    background: hsl(38 80% 50% / 0.12);
-    color: hsl(38 80% 35%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
   :global(.dark) .domain-analytics {
-    background: hsl(38 80% 50% / 0.15);
-    color: hsl(38 80% 65%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .domain-nlp {
-    background: hsl(38 80% 50% / 0.12);
-    color: hsl(38 80% 35%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
   :global(.dark) .domain-nlp {
-    background: hsl(38 80% 50% / 0.15);
-    color: hsl(38 80% 65%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .domain-security {
-    background: hsl(0 70% 50% / 0.12);
-    color: hsl(0 70% 40%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
   :global(.dark) .domain-security {
-    background: hsl(0 70% 50% / 0.15);
-    color: hsl(0 70% 65%);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .domain-default {

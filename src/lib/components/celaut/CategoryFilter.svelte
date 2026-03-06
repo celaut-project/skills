@@ -58,8 +58,9 @@
   }
 
   .chip-active {
-    background-color: hsl(var(--foreground));
-    color: hsl(var(--background));
-    border-color: hsl(var(--foreground));
+    background-color: hsl(var(--foreground) / 0.12);
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--foreground) / 0.4);
+    font-weight: 600;
   }
 </style>
