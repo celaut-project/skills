@@ -222,8 +222,16 @@
 
   // ── Submit new skill ───────────────────────────────────────────────────────
   async function handleSubmitSkill() {
-    if (!$walletConnected) { submitError = "Connect your wallet first."; return; }
-    if (!newSkillName.trim()) { submitError = "Name is required."; return; }
+    // Run validation
+    if (enhancementsRef) {
+      validationErrors = enhancementsRef.validate();
+      if (Object.keys(validationErrors).length > 0) {
+        toasts.error("Please fix the form errors before submitting.");
+        return;
+      }
+    }
+    if (!$walletConnected) { submitError = "Connect your wallet first."; toasts.error("Connect your wallet first."); return; }
+    if (!newSkillName.trim()) { submitError = "Name is required."; validationErrors = { name: "Skill name is required." }; return; }
     submitting = true;
     submitError = null;
     submitTx = null;
@@ -237,12 +245,19 @@
       });
       submitTx = null;
       submitError = "On-chain submission is ready — awaiting Type NFT deployment from Josemi. Your skill data is valid.";
+      toasts.info("Skill data validated. Awaiting Type NFT deployment.");
     } catch (e: any) {
       submitError = e.message || "Submission failed.";
+      toasts.error(submitError || "Submission failed.");
     } finally {
       submitting = false;
     }
   }
+
+  // Clear validation errors when fields change
+  $: if (newSkillName) { delete validationErrors["name"]; validationErrors = validationErrors; }
+  $: if (newSkillProse) { delete validationErrors["prose"]; validationErrors = validationErrors; }
+  $: if (newSkillDomain) { delete validationErrors["domain"]; validationErrors = validationErrors; }
 
   function scrollToCards() {
     if (browser) {
@@ -354,6 +369,12 @@
             </div>
           </div>
 
+          <!-- Skill Metadata -->
+          <SkillMetadata skillBoxId={selectedSkill.boxId} />
+
+          <!-- Claim Coverage Button -->
+          <ClaimCoverageButton />
+
           <!-- Coverages -->
           <section class="detail-section">
             <div class="detail-section-header">
@@ -385,6 +406,9 @@
               </div>
             {/if}
           </section>
+
+          <!-- Benchmark Leaderboard -->
+          <SkillLeaderboard skillBoxId={selectedSkill.boxId} benchmarkCount={selectedSkill.benchmarkCount} />
 
           <!-- Benchmarks -->
           <section class="detail-section">
@@ -468,6 +492,15 @@
       <HeroSection skillCount={skills.length} onExplore={scrollToCards} />
 
       <div id="skills-section" class="container mx-auto px-4 pb-8">
+        <!-- How It Works -->
+        <HowItWorks />
+
+        <!-- Stats Bar -->
+        <StatsBar totalSkills={skills.length} {totalServices} {totalBenchmarks} />
+
+        <!-- Category Filter -->
+        <CategoryFilter {activeCategory} on:filter={(e) => { activeCategory = e.detail; }} />
+
         <div class="gallery-header">
           <div>
             <h2 class="gallery-title">
@@ -478,14 +511,18 @@
               {/if}
             </h2>
             <p class="text-sm text-muted-foreground mt-0.5">
-              {filtered.length} skill{filtered.length !== 1 ? "s" : ""}
-              {searchQuery ? ` matching "${searchQuery}"` : " registered on-chain"}
+              {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
+              {searchQuery ? ` matching "${searchQuery}"` : ""}
+              {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
             </p>
           </div>
-          <button class="refresh-btn" on:click={loadSkills}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
-            Refresh
-          </button>
+          <div class="flex items-center gap-3">
+            <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
+            <button class="refresh-btn" on:click={loadSkills}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {#if loading}
@@ -494,7 +531,7 @@
               <SkeletonCard index={i} />
             {/each}
           </div>
-        {:else if filtered.length === 0}
+        {:else if displayedSkills.length === 0}
           <div class="empty-state">
             <div class="empty-state-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -502,15 +539,15 @@
               </svg>
             </div>
             <p class="text-lg font-semibold">No skills found</p>
-            {#if searchQuery}
-              <p class="text-sm text-muted-foreground mt-1">Try a different search term.</p>
+            {#if searchQuery || activeCategory !== "all"}
+              <p class="text-sm text-muted-foreground mt-1">Try a different search term or category.</p>
             {:else}
               <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
             {/if}
           </div>
         {:else}
           <div class="skills-grid">
-            {#each filtered as skill, i (skill.boxId)}
+            {#each displayedSkills as skill, i (skill.boxId)}
               <SkillCard
                 name={skill.name}
                 prose={skill.prose}
@@ -556,20 +593,40 @@
           <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
             <div class="form-group">
               <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
-              <input id="skill-name" class="form-input" bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+              <input id="skill-name" class="form-input" class:form-input-error={validationErrors["name"]} bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+              {#if validationErrors["name"]}
+                <p class="field-error-msg">{validationErrors["name"]}</p>
+              {/if}
             </div>
             <div class="form-group">
               <label class="form-label" for="skill-prose">Description</label>
-              <textarea id="skill-prose" class="form-input form-textarea" bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+              <textarea id="skill-prose" class="form-input form-textarea" class:form-input-error={validationErrors["prose"]} bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+              {#if validationErrors["prose"]}
+                <p class="field-error-msg">{validationErrors["prose"]}</p>
+              {/if}
             </div>
             <div class="form-group">
               <label class="form-label" for="skill-domain">Domain</label>
-              <input id="skill-domain" class="form-input" bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+              <input id="skill-domain" class="form-input" class:form-input-error={validationErrors["domain"]} bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+              {#if validationErrors["domain"]}
+                <p class="field-error-msg">{validationErrors["domain"]}</p>
+              {/if}
             </div>
             <div class="form-group">
               <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
               <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
             </div>
+
+            <!-- Enhanced form sections: Related Skills + Preview -->
+            <SubmitFormEnhancements
+              bind:this={enhancementsRef}
+              {skills}
+              name={newSkillName}
+              prose={newSkillProse}
+              domain={newSkillDomain}
+              tags={newSkillTags}
+              errors={validationErrors}
+            />
 
             <button type="submit" class="submit-btn" disabled={submitting}>
               {#if submitting}
@@ -611,6 +668,9 @@
 
 <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
 <FooterComponent />
+
+<!-- ── Toast Notifications ──────────────────────────────────────────────── -->
+<Toast />
 
 <WalletAddressChangeHandler />
 
@@ -884,6 +944,18 @@
 
   .form-textarea {
     @apply min-h-[120px] resize-y;
+  }
+
+  .form-input-error {
+    border-color: hsl(var(--destructive)) !important;
+  }
+  .form-input-error:focus {
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.15) !important;
+  }
+
+  .field-error-msg {
+    @apply text-xs mt-1;
+    color: hsl(var(--destructive));
   }
 
   .submit-btn {
