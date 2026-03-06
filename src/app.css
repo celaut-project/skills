@@ -117,3 +117,26 @@
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius);
 }
+
+/* Override WalletButton red dot → neutral gray for "not connected" state */
+.wallet-connect-button div[style*="background-color: #ef4444"],
+button[class*="wallet-connect"] div[style*="ef4444"] {
+  background-color: hsl(var(--muted-foreground)) !important;
+  opacity: 0.5;
+}
+
+/* Dark mode border refinements */
+.dark .skill-card,
+.dark .stats-bar,
+.dark .how-it-works {
+  border-color: hsl(var(--border) / 0.7);
+}
+
+/* Improve gallery header stacking on mobile */
+@media (max-width: 480px) {
+  .gallery-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+}

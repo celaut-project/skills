@@ -110,8 +110,13 @@
 
 <style lang="postcss">
   .skills-grid {
-    @apply grid gap-4;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    @apply flex flex-wrap justify-center gap-4;
+  }
+
+  .skills-grid > :global(*) {
+    flex: 1 1 280px;
+    max-width: 380px;
+    min-width: 260px;
   }
 
   .spinner {

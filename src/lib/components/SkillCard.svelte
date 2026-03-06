@@ -50,30 +50,28 @@
     </div>
 
     <div class="card-stats">
-      <div class="card-stat">
+      <div class="card-stat" class:card-stat-muted={coverageCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
         </svg>
         <span class="card-stat-value">{coverageCount}</span>
         <span class="card-stat-label">services</span>
       </div>
-      <div class="card-stat">
+      <div class="card-stat" class:card-stat-muted={benchmarkCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
         </svg>
         <span class="card-stat-value">{benchmarkCount}</span>
         <span class="card-stat-label">benchmarks</span>
       </div>
-      {#if relatedCount > 0}
-        <div class="card-stat">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-          </svg>
-          <span class="card-stat-value">{relatedCount}</span>
-          <span class="card-stat-label">related</span>
-        </div>
-      {/if}
+      <div class="card-stat" class:card-stat-muted={relatedCount === 0}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        <span class="card-stat-value">{relatedCount}</span>
+        <span class="card-stat-label">related</span>
+      </div>
     </div>
   </div>
 </button>
@@ -199,6 +197,13 @@
   }
 
   .card-stat-label {
+    @apply text-muted-foreground;
+  }
+
+  .card-stat-muted {
+    @apply opacity-40;
+  }
+  .card-stat-muted .card-stat-value {
     @apply text-muted-foreground;
   }
 </style>

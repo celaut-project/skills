@@ -659,8 +659,13 @@
   }
 
   .skills-grid {
-    @apply grid gap-5;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    @apply flex flex-wrap justify-center gap-5;
+  }
+
+  .skills-grid > :global(*) {
+    flex: 1 1 300px;
+    max-width: 400px;
+    min-width: 280px;
   }
 
   .empty-state {

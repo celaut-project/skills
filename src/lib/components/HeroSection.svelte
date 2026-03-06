@@ -39,7 +39,7 @@
 
 <style lang="postcss">
   .hero-section {
-    @apply relative overflow-hidden py-8 md:py-12 px-4;
+    @apply relative overflow-hidden py-5 md:py-7 px-4;
     opacity: 0;
     transition: opacity 0.6s ease;
   }
@@ -53,7 +53,7 @@
   }
 
   .hero-badge {
-    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4;
+    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-3;
     background: hsl(var(--primary) / 0.08);
     color: hsl(var(--primary));
     border: 1px solid hsl(var(--primary) / 0.15);
@@ -65,7 +65,7 @@
   }
 
   .hero-description {
-    @apply text-sm md:text-base text-muted-foreground max-w-md mx-auto mb-4 leading-relaxed;
+    @apply text-sm md:text-base text-muted-foreground max-w-md mx-auto mb-3 leading-relaxed;
     font-family: var(--font-body);
   }
 
