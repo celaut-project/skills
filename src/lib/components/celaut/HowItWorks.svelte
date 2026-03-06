@@ -33,7 +33,7 @@
       <div class="how-relationships">
         <p>
           <strong>Skills</strong> define problems. <strong>Coverages</strong> are services that claim to solve them.
-          <strong>Benchmarks</strong> are on-chain proof of comparative performance.
+          <strong>Benchmarks</strong> define how to measure. <strong>Results</strong> are on-chain proof of performance.
         </p>
       </div>
 
@@ -45,20 +45,20 @@
             <div class="step-desc">Publish a Skill describing the problem to solve.</div>
           </div>
         </div>
-        <div class="step-arrow">→</div>
+        <div class="step-arrow">&rarr;</div>
         <div class="step">
           <div class="step-number">2</div>
           <div class="step-content">
-            <div class="step-title">Cover</div>
-            <div class="step-desc">Deploy a service and register a Coverage claim.</div>
+            <div class="step-title">Benchmark</div>
+            <div class="step-desc">Define a Benchmark with metrics and thresholds.</div>
           </div>
         </div>
-        <div class="step-arrow">→</div>
+        <div class="step-arrow">&rarr;</div>
         <div class="step">
           <div class="step-number">3</div>
           <div class="step-content">
-            <div class="step-title">Benchmark</div>
-            <div class="step-desc">Run comparative tests and publish results on-chain.</div>
+            <div class="step-title">Compete</div>
+            <div class="step-desc">Services submit Results and rank on the leaderboard.</div>
           </div>
         </div>
       </div>
@@ -151,8 +151,8 @@
     width: 1.75rem;
     height: 1.75rem;
     border-radius: 50%;
-    background-color: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
+    background-color: hsl(var(--foreground));
+    color: hsl(var(--background));
     display: flex;
     align-items: center;
     justify-content: center;

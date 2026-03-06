@@ -34,8 +34,8 @@
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { loadSkills as loadSkillsFromApi, getDemoSkills } from "$lib/api";
-  import type { Skill, Coverage } from "$lib/types";
+  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId } from "$lib/api";
+  import type { Skill, Coverage, Benchmark } from "$lib/types";
 
   // ── State ──────────────────────────────────────────────────────────────────
   let skills: Skill[] = [];
@@ -46,13 +46,17 @@
   let activeTab: "gallery" | "submit" = "gallery";
   let detailVisible = false;
 
+  // Detail view sub-tab
+  let detailTab: "benchmarks" | "coverages" | "create-benchmark" = "benchmarks";
+  let selectedBenchmarkId: string | null = null;
+
   // Feature expansion state
   let activeCategory = "all";
   let currentSort = "name";
   let validationErrors: Record<string, string> = {};
   let enhancementsRef: SubmitFormEnhancements;
 
-  // Submit form
+  // Submit skill form
   let newSkillName = "";
   let newSkillProse = "";
   let newSkillTags = "";
@@ -60,6 +64,12 @@
   let submitting = false;
   let submitTx: string | null = null;
   let submitError: string | null = null;
+
+  // Create Benchmark form
+  let benchmarkName = "";
+  let benchmarkDescription = "";
+  let benchmarkMetric = "";
+  let benchmarkHigherIsBetter = true;
 
   // ── Load skills from chain ─────────────────────────────────────────────────
   async function loadSkills() {
@@ -97,7 +107,7 @@
     switch (sort) {
       case "name": return sorted.sort((a, b) => a.name.localeCompare(b.name));
       case "services": return sorted.sort((a, b) => b.coverages.length - a.coverages.length);
-      case "benchmarks": return sorted.sort((a, b) => b.benchmarkCount - a.benchmarkCount);
+      case "results": return sorted.sort((a, b) => b.resultCount - a.resultCount);
       case "newest": return sorted.reverse();
       default: return sorted;
     }
@@ -105,15 +115,16 @@
 
   $: displayedSkills = sortSkills(filterByCategory(filtered, activeCategory), currentSort);
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
-  $: totalBenchmarks = skills.reduce((sum, s) => sum + s.benchmarkCount, 0);
+  $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
     detailVisible = false;
     selectedSkill = skill;
+    detailTab = "benchmarks";
+    selectedBenchmarkId = null;
     loadForum();
     setTimeout(() => { detailVisible = true; }, 50);
-    // Scroll to top
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -124,7 +135,6 @@
 
   // ── Submit new skill ───────────────────────────────────────────────────────
   async function handleSubmitSkill() {
-    // Run validation
     if (enhancementsRef) {
       validationErrors = enhancementsRef.validate();
       if (Object.keys(validationErrors).length > 0) {
@@ -146,7 +156,7 @@
         other_skill_box_ids: []
       });
       submitTx = null;
-      submitError = "On-chain submission is ready — awaiting Type NFT deployment from Josemi. Your skill data is valid.";
+      submitError = "On-chain submission is ready -- awaiting Type NFT deployment from Josemi. Your skill data is valid.";
       toasts.info("Skill data validated. Awaiting Type NFT deployment.");
     } catch (e: any) {
       submitError = e.message || "Submission failed.";
@@ -154,6 +164,25 @@
     } finally {
       submitting = false;
     }
+  }
+
+  // ── Create Benchmark ───────────────────────────────────────────────────────
+  function handleCreateBenchmark() {
+    if (!benchmarkName.trim()) {
+      toasts.error("Benchmark name is required.");
+      return;
+    }
+    if (!benchmarkMetric.trim()) {
+      toasts.error("Metric is required.");
+      return;
+    }
+    console.log('Create benchmark:', { name: benchmarkName, description: benchmarkDescription, metric: benchmarkMetric, higherIsBetter: benchmarkHigherIsBetter });
+    toasts.info("Benchmark created (pending Type NFT deployment)");
+    benchmarkName = "";
+    benchmarkDescription = "";
+    benchmarkMetric = "";
+    benchmarkHigherIsBetter = true;
+    detailTab = "benchmarks";
   }
 
   // Clear validation errors when fields change
@@ -186,7 +215,7 @@
         <input
           type="text"
           bind:value={searchQuery}
-          placeholder="Search skills, tags, domains…"
+          placeholder="Search skills, tags, domains..."
           class="search-input"
         />
       </div>
@@ -233,7 +262,7 @@
     {#if selectedSkill}
       <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
       <div class="detail-view" class:detail-visible={detailVisible}>
-        <div class="max-w-3xl mx-auto">
+        <div class="detail-container">
           <button class="back-button" on:click={backToGallery}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -255,89 +284,124 @@
                 <span class="detail-tag">{tag}</span>
               {/each}
             </div>
-            <div class="detail-box-id">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-              </svg>
-              <span class="font-mono text-xs">{selectedSkill.boxId}</span>
-            </div>
           </div>
 
           <!-- Skill Metadata -->
-          <SkillMetadata skillBoxId={selectedSkill.boxId} />
+          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} />
 
           <!-- Claim Coverage Button -->
           <ClaimCoverageButton />
 
-          <!-- Coverages -->
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <div class="detail-section-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-                </svg>
+          <!-- Detail sub-tabs -->
+          <div class="detail-tabs">
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "benchmarks"}
+              on:click={() => { detailTab = "benchmarks"; selectedBenchmarkId = null; }}
+            >
+              Benchmarks
+              <span class="detail-tab-count">{selectedSkill.benchmarks.length}</span>
+            </button>
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "coverages"}
+              on:click={() => detailTab = "coverages"}
+            >
+              Coverages
+              <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
+            </button>
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "create-benchmark"}
+              on:click={() => detailTab = "create-benchmark"}
+            >
+              Create Benchmark
+            </button>
+          </div>
+
+          <!-- Benchmarks Tab -->
+          {#if detailTab === "benchmarks"}
+            <SkillLeaderboard benchmarks={selectedSkill.benchmarks} bind:selectedBenchmarkId />
+          {/if}
+
+          <!-- Coverages Tab -->
+          {#if detailTab === "coverages"}
+            <section class="detail-section">
+              <div class="detail-section-header">
+                <h2 class="detail-section-title">Services Covering This Skill</h2>
+                <span class="detail-count">{selectedSkill.coverages.length}</span>
               </div>
-              <h2 class="detail-section-title">Services Covering This Skill</h2>
-              <span class="detail-count">{selectedSkill.coverages.length}</span>
-            </div>
-            {#if selectedSkill.coverages.length === 0}
-              <div class="detail-empty">
-                <p>No services registered yet. Be the first to cover this skill.</p>
-              </div>
-            {:else}
-              <div class="space-y-2">
-                {#each selectedSkill.coverages as cov}
-                  <div class="detail-item">
-                    <div class="detail-item-icon">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                      </svg>
+              {#if selectedSkill.coverages.length === 0}
+                <div class="detail-empty">
+                  <p>No services registered yet. Be the first to cover this skill.</p>
+                </div>
+              {:else}
+                <div class="space-y-2">
+                  {#each selectedSkill.coverages as cov}
+                    <div class="detail-item">
+                      <div class="detail-item-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                      </div>
+                      <span class="font-medium">{cov.label}</span>
+                      <span class="ml-auto text-xs text-muted-foreground">
+                        <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatServiceId(cov.serviceId, cov.boxId)}</code>
+                      </span>
                     </div>
-                    <span class="font-medium">{cov.label}</span>
-                    <span class="ml-auto text-xs text-muted-foreground font-mono">{cov.serviceId.slice(0,12)}…</span>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          {/if}
+
+          <!-- Create Benchmark Tab -->
+          {#if detailTab === "create-benchmark"}
+            <section class="detail-section">
+              <div class="detail-section-header">
+                <h2 class="detail-section-title">Create Benchmark</h2>
+              </div>
+              <form class="create-benchmark-form" on:submit|preventDefault={handleCreateBenchmark}>
+                <div class="form-group">
+                  <label class="form-label" for="bench-name">Name <span class="text-red-500">*</span></label>
+                  <input id="bench-name" class="form-input" bind:value={benchmarkName} placeholder="e.g. Sharpe Ratio (30d rolling)" required />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="bench-desc">Description</label>
+                  <textarea id="bench-desc" class="form-input form-textarea" bind:value={benchmarkDescription} placeholder="What does this benchmark measure?"></textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="bench-metric">Metric <span class="text-red-500">*</span></label>
+                  <input id="bench-metric" class="form-input" bind:value={benchmarkMetric} placeholder="e.g. accuracy, latency_ms, f1_score" required />
+                </div>
+                <div class="form-group form-toggle-group">
+                  <label class="form-label" for="bench-higher">Higher is better?</label>
+                  <div class="toggle-wrapper">
+                    <button
+                      type="button"
+                      class="toggle-btn"
+                      class:toggle-active={benchmarkHigherIsBetter}
+                      on:click={() => benchmarkHigherIsBetter = !benchmarkHigherIsBetter}
+                    >
+                      <span class="toggle-indicator" class:toggle-indicator-on={benchmarkHigherIsBetter}></span>
+                    </button>
+                    <span class="toggle-label">{benchmarkHigherIsBetter ? 'Yes' : 'No'}</span>
                   </div>
-                {/each}
-              </div>
-            {/if}
-          </section>
-
-          <!-- Benchmark Leaderboard -->
-          <SkillLeaderboard skillBoxId={selectedSkill.boxId} benchmarkCount={selectedSkill.benchmarkCount} />
-
-          <!-- Benchmarks -->
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <div class="detail-section-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-                </svg>
-              </div>
-              <h2 class="detail-section-title">Benchmarks</h2>
-              <span class="detail-count">{selectedSkill.benchmarkCount}</span>
-            </div>
-            {#if selectedSkill.benchmarkCount === 0}
-              <div class="detail-empty">
-                <p>No benchmarks submitted yet. Submit one to establish performance standards.</p>
-              </div>
-            {:else}
-              <div class="detail-bench-stat">
-                <span class="detail-bench-number">{selectedSkill.benchmarkCount}</span>
-                <span class="text-sm text-muted-foreground">comparative benchmark{selectedSkill.benchmarkCount !== 1 ? 's' : ''} verified on-chain</span>
-              </div>
-            {/if}
-          </section>
+                </div>
+                <button type="submit" class="submit-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                  </svg>
+                  Create Benchmark
+                </button>
+              </form>
+            </section>
+          {/if}
 
           <!-- Related skills -->
           {#if selectedSkill.otherSkillBoxIds.length > 0}
             <section class="detail-section">
               <div class="detail-section-header">
-                <div class="detail-section-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                  </svg>
-                </div>
                 <h2 class="detail-section-title">Related Skills</h2>
                 <span class="detail-count">{selectedSkill.otherSkillBoxIds.length}</span>
               </div>
@@ -364,18 +428,13 @@
           <!-- Forum -->
           <section class="detail-section">
             <div class="detail-section-header">
-              <div class="detail-section-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-              </div>
               <h2 class="detail-section-title">Discussion</h2>
             </div>
             {#if ForumComponent}
               <svelte:component this={ForumComponent} topicIdentifier={selectedSkill.boxId} reputationTokenId="" />
             {:else}
               <div class="detail-empty">
-                <p>Loading forum…</p>
+                <p>Loading forum...</p>
               </div>
             {/if}
           </section>
@@ -386,12 +445,12 @@
       <!-- ── Hero + Skills Gallery ─────────────────────────────────────────── -->
       <HeroSection skillCount={skills.length} />
 
-      <div id="skills-section" class="container mx-auto px-4 pb-8">
+      <div id="skills-section" class="container mx-auto px-8 pb-8">
         <!-- How It Works -->
         <HowItWorks />
 
         <!-- Stats Bar -->
-        <StatsBar totalSkills={skills.length} {totalServices} {totalBenchmarks} />
+        <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
 
         <!-- Category Filter -->
         <CategoryFilter {activeCategory} on:filter={(e) => { activeCategory = e.detail; }} />
@@ -448,8 +507,10 @@
                 prose={skill.prose}
                 tags={skill.tags}
                 domain={skill.domain}
+                author={skill.author}
                 coverageCount={skill.coverages.length}
-                benchmarkCount={skill.benchmarkCount}
+                benchmarkCount={skill.benchmarks.length}
+                resultCount={skill.resultCount}
                 relatedCount={skill.otherSkillBoxIds.length}
                 index={i}
                 on:click={() => selectSkill(skill)}
@@ -462,7 +523,7 @@
 
   {:else if activeTab === "submit"}
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
-    <div class="container mx-auto px-4 py-8">
+    <div class="container mx-auto px-8 py-8">
       <div class="max-w-lg mx-auto">
         <div class="submit-header">
           <div class="submit-header-icon">
@@ -512,7 +573,6 @@
               <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
             </div>
 
-            <!-- Enhanced form sections: Related Skills + Preview -->
             <SubmitFormEnhancements
               bind:this={enhancementsRef}
               {skills}
@@ -526,7 +586,7 @@
             <button type="submit" class="submit-btn" disabled={submitting}>
               {#if submitting}
                 <div class="submit-spinner"></div>
-                Publishing…
+                Publishing...
               {:else}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
@@ -543,7 +603,7 @@
               </svg>
               <div>
                 <p class="font-semibold">Skill submitted!</p>
-                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-blue-500 break-all text-sm">{submitTx}</a>
+                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(142 50% 42%);">{submitTx}</a>
               </div>
             </div>
           {/if}
@@ -582,7 +642,10 @@
   }
 
   .navbar-content {
-    @apply container flex h-16 items-center px-4;
+    @apply flex h-16 items-center px-8;
+    max-width: 1440px;
+    margin: 0 auto;
+    width: 100%;
   }
 
   .logo-container {
@@ -591,8 +654,8 @@
 
   .logo-icon {
     @apply flex items-center justify-center w-8 h-8 rounded-lg;
-    background: hsl(var(--primary));
-    color: white;
+    background: hsl(var(--foreground));
+    color: hsl(var(--background));
   }
 
   .logo-text {
@@ -612,8 +675,8 @@
   .search-input:focus {
     @apply outline-none;
     background: hsl(var(--background));
-    border-color: hsl(var(--primary) / 0.5);
-    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
   }
 
   /* ── Tab bar ────────────────────────────────────────────────────────── */
@@ -627,8 +690,8 @@
     @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
   .tab-btn.active {
-    border-bottom-color: hsl(var(--primary));
-    color: hsl(var(--primary));
+    border-bottom-color: hsl(var(--foreground));
+    color: hsl(var(--foreground));
   }
   .tab-btn:hover:not(.active) {
     @apply text-foreground;
@@ -659,13 +722,15 @@
   }
 
   .skills-grid {
-    @apply flex flex-wrap justify-center gap-5;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.25rem;
   }
 
-  .skills-grid > :global(*) {
-    flex: 1 1 300px;
-    max-width: 400px;
-    min-width: 280px;
+  @media (min-width: 1200px) {
+    .skills-grid {
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    }
   }
 
   .empty-state {
@@ -679,7 +744,9 @@
 
   /* ── Detail view ────────────────────────────────────────────────────── */
   .detail-view {
-    @apply container mx-auto px-4 py-8;
+    @apply px-8 py-8;
+    max-width: 1440px;
+    margin: 0 auto;
     opacity: 0;
     transform: translateX(12px);
     transition: opacity 0.4s ease, transform 0.4s ease;
@@ -688,6 +755,11 @@
   .detail-visible {
     opacity: 1;
     transform: translateX(0);
+  }
+
+  .detail-container {
+    max-width: 900px;
+    margin: 0 auto;
   }
 
   .back-button {
@@ -706,8 +778,8 @@
 
   .detail-domain-badge {
     @apply inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider;
-    background: hsl(var(--primary) / 0.12);
-    color: hsl(var(--primary));
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .detail-tag {
@@ -716,9 +788,49 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .detail-box-id {
-    @apply flex items-center gap-2 text-muted-foreground pt-4 mt-4;
-    border-top: 1px solid hsl(var(--border) / 0.5);
+  /* ── Detail sub-tabs ─────────────────────────────────────────────── */
+  .detail-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+    padding-bottom: 0;
+  }
+
+  .detail-tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .detail-tab-btn:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .detail-tab-active {
+    color: hsl(var(--foreground));
+    border-bottom-color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+
+  .detail-tab-count {
+    font-size: 0.6875rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
   }
 
   .detail-section {
@@ -730,19 +842,14 @@
     border-bottom: 1px solid hsl(var(--border) / 0.5);
   }
 
-  .detail-section-icon {
-    @apply flex items-center justify-center w-8 h-8 rounded-lg text-primary;
-    background: hsl(var(--primary) / 0.1);
-  }
-
   .detail-section-title {
     @apply text-lg font-bold flex-1;
   }
 
   .detail-count {
     @apply inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-xs font-bold;
-    background: hsl(var(--primary));
-    color: white;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .detail-empty {
@@ -758,20 +865,9 @@
   }
 
   .detail-item-icon {
-    @apply flex items-center justify-center w-7 h-7 rounded-md text-primary;
-    background: hsl(var(--primary) / 0.1);
-  }
-
-  .detail-bench-stat {
-    @apply flex items-center gap-3 rounded-lg p-4;
-    background: hsl(var(--primary) / 0.05);
-    border: 1px solid hsl(var(--primary) / 0.15);
-  }
-
-  .detail-bench-number {
-    @apply text-3xl font-extrabold;
-    font-family: var(--font-heading);
-    color: hsl(var(--primary));
+    @apply flex items-center justify-center w-7 h-7 rounded-md;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .detail-related-btn {
@@ -780,8 +876,61 @@
     border-color: hsl(var(--border));
   }
   .detail-related-btn:hover {
-    border-color: hsl(var(--primary) / 0.3);
-    background: hsl(var(--primary) / 0.05);
+    border-color: hsl(var(--foreground) / 0.2);
+    background: hsl(var(--muted) / 0.3);
+  }
+
+  /* ── Create Benchmark form ──────────────────────────────────────── */
+  .create-benchmark-form {
+    @apply space-y-5;
+  }
+
+  .form-toggle-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .toggle-btn {
+    position: relative;
+    width: 2.75rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    border: none;
+    cursor: pointer;
+    background: hsl(var(--muted));
+    transition: background 0.2s;
+  }
+
+  .toggle-active {
+    background: hsl(142 50% 42%);
+  }
+
+  .toggle-indicator {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.2s;
+  }
+
+  .toggle-indicator-on {
+    transform: translateX(1.25rem);
+  }
+
+  .toggle-label {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
   }
 
   /* ── Submit form ────────────────────────────────────────────────────── */
@@ -791,7 +940,7 @@
 
   .submit-header-icon {
     @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
-    background: hsl(var(--primary));
+    background: hsl(var(--foreground));
   }
 
   .submit-connect-card {
@@ -825,8 +974,8 @@
   .form-input:focus {
     @apply outline-none;
     background: hsl(var(--background));
-    border-color: hsl(var(--primary) / 0.5);
-    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
   }
 
   .form-textarea {
@@ -847,10 +996,10 @@
 
   .submit-btn {
     @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white transition-all duration-200;
-    background: hsl(var(--primary));
+    background: hsl(142 50% 42%);
   }
   .submit-btn:hover:not(:disabled) {
-    background: hsl(var(--primary) / 0.9);
+    background: hsl(142 50% 38%);
   }
   .submit-btn:disabled {
     @apply opacity-50 cursor-not-allowed;

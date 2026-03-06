@@ -4,69 +4,69 @@
 
 @layer base {
   :root {
-    --font-heading: 'Montserrat', sans-serif;
-    --font-body: 'Inter', sans-serif;
+    --font-heading: 'Inter', system-ui, sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
 
-    /* Refined light theme */
-    --background: 220 20% 97%;
-    --foreground: 222 47% 11%;
+    /* Neutral light theme — slate/gray, no purple/blue */
+    --background: 210 11% 97%;
+    --foreground: 220 14% 10%;
 
-    --card: 220 20% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 14% 10%;
 
-    --popover: 220 20% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 14% 10%;
 
-    --primary: 238 60% 55%;
+    --primary: 142 50% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 93%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 210 10% 93%;
+    --secondary-foreground: 220 14% 10%;
 
-    --muted: 220 14% 93%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 210 10% 93%;
+    --muted-foreground: 215 8% 46%;
 
-    --accent: 238 60% 55%;
+    --accent: 142 50% 42%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 238 60% 55%;
+    --border: 214 12% 87%;
+    --input: 214 12% 87%;
+    --ring: 142 50% 42%;
 
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 224 28% 8%;
-    --foreground: 220 20% 95%;
+    --background: 220 16% 7%;
+    --foreground: 210 11% 93%;
 
-    --card: 224 24% 12%;
-    --card-foreground: 220 20% 95%;
+    --card: 220 14% 11%;
+    --card-foreground: 210 11% 93%;
 
-    --popover: 224 24% 12%;
-    --popover-foreground: 220 20% 95%;
+    --popover: 220 14% 11%;
+    --popover-foreground: 210 11% 93%;
 
-    --primary: 238 55% 65%;
+    --primary: 142 50% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 224 20% 16%;
-    --secondary-foreground: 220 20% 95%;
+    --secondary: 220 12% 15%;
+    --secondary-foreground: 210 11% 93%;
 
-    --muted: 224 20% 18%;
-    --muted-foreground: 220 9% 55%;
+    --muted: 220 12% 17%;
+    --muted-foreground: 215 8% 55%;
 
-    --accent: 238 55% 65%;
+    --accent: 142 50% 50%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 224 14% 20%;
-    --input: 224 14% 20%;
-    --ring: 238 55% 65%;
+    --border: 220 12% 20%;
+    --input: 220 12% 20%;
+    --ring: 142 50% 50%;
   }
 }
 
@@ -118,7 +118,7 @@
   border-radius: var(--radius);
 }
 
-/* Override WalletButton red dot → neutral gray for "not connected" state */
+/* Override WalletButton red dot */
 .wallet-connect-button div[style*="background-color: #ef4444"],
 button[class*="wallet-connect"] div[style*="ef4444"] {
   background-color: hsl(var(--muted-foreground)) !important;
@@ -139,4 +139,12 @@ button[class*="wallet-connect"] div[style*="ef4444"] {
     align-items: flex-start;
     gap: 0.75rem;
   }
+}
+
+/* ── Wider layout ─────────────────────────────────────────────────────────── */
+.container {
+  max-width: 1440px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
 }

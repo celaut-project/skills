@@ -1,5 +1,9 @@
 /**
  * Core domain types for Celaut Skills — decentralized AI problem registry on Ergo.
+ *
+ * Hierarchy:
+ *   Skill → Benchmark (defines HOW to measure) → Result (actual measurement)
+ *          → Coverage (which services claim to solve this skill)
  */
 
 /** A Skill represents a registered AI problem/capability on-chain. */
@@ -9,60 +13,49 @@ export interface Skill {
   prose: string;
   tags: string[];
   domain: string;
+  author: string;
   otherSkillBoxIds: string[];
   coverages: Coverage[];
-  benchmarkCount: number;
+  benchmarks: Benchmark[];
+  resultCount: number;
 }
 
 /** A Coverage links a service (AI agent) to a Skill it can address. */
 export interface Coverage {
   boxId: string;
-  serviceId: string;
+  serviceId?: string;
   label: string;
 }
 
 /**
- * BenchmarkSchema defines the structure/schema for how benchmarks
+ * A Benchmark defines the structure/criteria for how results
  * are evaluated for a given skill — metrics, units, pass thresholds.
+ * (Previously called BenchmarkSchema)
  */
-export interface BenchmarkSchema {
-  schemaId: string;
+export interface Benchmark {
+  id: string;
   skillBoxId: string;
   name: string;
   description: string;
-  metrics: BenchmarkMetric[];
-  version: number;
-}
-
-/** A single metric definition within a BenchmarkSchema. */
-export interface BenchmarkMetric {
-  key: string;
-  label: string;
-  unit: string;
+  metric: string;
   higherIsBetter: boolean;
-  passThreshold?: number;
+  author: string;
+  results: Result[];
 }
 
 /**
- * A Benchmark is an individual benchmark result submitted on-chain,
- * evaluating a service's performance against a Skill's BenchmarkSchema.
+ * A Result is an individual benchmark result submitted on-chain,
+ * evaluating a service's performance against a Skill's Benchmark.
+ * (Previously called Benchmark)
  */
-export interface Benchmark {
-  boxId: string;
-  skillBoxId: string;
+export interface Result {
+  id: string;
+  benchmarkId: string;
   serviceId: string;
-  schemaId: string;
-  submitter: string;
+  score: number;
+  notes: string;
+  author: string;
   timestamp: number;
-  results: BenchmarkResult[];
-  passed: boolean;
-}
-
-/** A single metric result within a Benchmark submission. */
-export interface BenchmarkResult {
-  metricKey: string;
-  value: number;
-  passed: boolean;
 }
 
 /** Tab options for the main navigation. */

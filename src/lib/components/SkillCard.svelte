@@ -5,8 +5,10 @@
   export let prose: string;
   export let tags: string[];
   export let domain: string;
+  export let author: string = '';
   export let coverageCount: number;
   export let benchmarkCount: number;
+  export let resultCount: number;
   export let relatedCount: number;
   export let index: number = 0;
 
@@ -24,6 +26,7 @@
   };
 
   $: domainClass = domainColors[domain.toLowerCase()] || 'domain-default';
+  $: truncatedAuthor = author ? `${author.slice(0, 8)}...${author.slice(-4)}` : '';
 </script>
 
 <button
@@ -43,6 +46,12 @@
       {prose || "No description available."}
     </p>
 
+    {#if truncatedAuthor}
+      <div class="card-author">
+        <span class="font-mono text-[10px] text-muted-foreground">{truncatedAuthor}</span>
+      </div>
+    {/if}
+
     <div class="card-tags">
       {#each tags.slice(0, 4) as tag}
         <span class="card-tag">{tag}</span>
@@ -52,7 +61,7 @@
     <div class="card-stats">
       <div class="card-stat" class:card-stat-muted={coverageCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <span class="card-stat-value">{coverageCount}</span>
         <span class="card-stat-label">services</span>
@@ -64,13 +73,12 @@
         <span class="card-stat-value">{benchmarkCount}</span>
         <span class="card-stat-label">benchmarks</span>
       </div>
-      <div class="card-stat" class:card-stat-muted={relatedCount === 0}>
+      <div class="card-stat" class:card-stat-muted={resultCount === 0}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
         </svg>
-        <span class="card-stat-value">{relatedCount}</span>
-        <span class="card-stat-label">related</span>
+        <span class="card-stat-value">{resultCount}</span>
+        <span class="card-stat-label">results</span>
       </div>
     </div>
   </div>
@@ -93,7 +101,7 @@
   }
 
   .skill-card:hover {
-    border-color: hsl(var(--primary) / 0.3);
+    border-color: hsl(var(--foreground) / 0.2);
     box-shadow: 0 2px 8px hsl(var(--foreground) / 0.06);
   }
 
@@ -121,30 +129,30 @@
   }
 
   .domain-infra {
-    background: hsl(210 60% 50% / 0.12);
-    color: hsl(210 60% 40%);
+    background: hsl(215 15% 50% / 0.12);
+    color: hsl(215 15% 35%);
   }
   :global(.dark) .domain-infra {
-    background: hsl(210 60% 50% / 0.15);
-    color: hsl(210 60% 65%);
+    background: hsl(215 15% 50% / 0.15);
+    color: hsl(215 15% 70%);
   }
 
   .domain-analytics {
-    background: hsl(280 60% 55% / 0.12);
-    color: hsl(280 60% 40%);
+    background: hsl(38 80% 50% / 0.12);
+    color: hsl(38 80% 35%);
   }
   :global(.dark) .domain-analytics {
-    background: hsl(280 60% 55% / 0.15);
-    color: hsl(280 60% 65%);
+    background: hsl(38 80% 50% / 0.15);
+    color: hsl(38 80% 65%);
   }
 
   .domain-nlp {
-    background: hsl(30 80% 50% / 0.12);
-    color: hsl(30 80% 35%);
+    background: hsl(38 80% 50% / 0.12);
+    color: hsl(38 80% 35%);
   }
   :global(.dark) .domain-nlp {
-    background: hsl(30 80% 50% / 0.15);
-    color: hsl(30 80% 65%);
+    background: hsl(38 80% 50% / 0.15);
+    color: hsl(38 80% 65%);
   }
 
   .domain-security {
@@ -157,16 +165,20 @@
   }
 
   .domain-default {
-    background: hsl(var(--primary) / 0.1);
-    color: hsl(var(--primary));
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .card-prose {
-    @apply text-sm text-muted-foreground text-left mb-4 leading-relaxed;
+    @apply text-sm text-muted-foreground text-left mb-3 leading-relaxed;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  .card-author {
+    @apply mb-3;
   }
 
   .card-tags {

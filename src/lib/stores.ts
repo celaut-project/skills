@@ -4,7 +4,7 @@
  */
 
 import { writable, derived } from 'svelte/store';
-import type { Skill, ActiveTab } from './types';
+import type { Skill, Benchmark, ActiveTab } from './types';
 
 // ── Core Stores ──────────────────────────────────────────────────────────────
 
@@ -13,6 +13,9 @@ export const skills = writable<Skill[]>([]);
 
 /** Currently selected skill for detail view, or null for gallery. */
 export const selectedSkill = writable<Skill | null>(null);
+
+/** Currently selected benchmark for detail view, or null. */
+export const selectedBenchmark = writable<Benchmark | null>(null);
 
 /** Current search query for filtering skills. */
 export const searchQuery = writable<string>('');
@@ -42,4 +45,9 @@ export const filteredSkills = derived(
         s.domain.toLowerCase().includes(q)
     );
   }
+);
+
+/** Total results across all skills. */
+export const totalResults = derived(skills, ($skills) =>
+  $skills.reduce((sum, s) => sum + s.resultCount, 0)
 );

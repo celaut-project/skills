@@ -8,7 +8,7 @@
   const sortOptions = [
     { value: 'name', label: 'Name (A-Z)' },
     { value: 'services', label: 'Most Services' },
-    { value: 'benchmarks', label: 'Most Benchmarks' },
+    { value: 'results', label: 'Most Results' },
     { value: 'newest', label: 'Newest' }
   ];
 
@@ -63,6 +63,6 @@
   }
 
   .sort-select:focus {
-    box-shadow: 0 0 0 2px hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.15);
   }
 </style>

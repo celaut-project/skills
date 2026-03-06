@@ -117,10 +117,11 @@
         </div>
       {/if}
       <div class="preview-footer">
-        <span>📡 0 services</span>
-        <span>📊 0 benchmarks</span>
+        <span>0 services</span>
+        <span>0 benchmarks</span>
+        <span>0 results</span>
         {#if selectedRelated.length > 0}
-          <span>🔗 {selectedRelated.length} related</span>
+          <span>{selectedRelated.length} related</span>
         {/if}
       </div>
     </div>
@@ -191,7 +192,7 @@
   }
 
   .related-checkbox {
-    accent-color: hsl(var(--primary));
+    accent-color: hsl(var(--foreground));
   }
 
   .related-name {
@@ -202,8 +203,8 @@
     font-size: 0.7rem;
     padding: 0.125rem 0.5rem;
     border-radius: 9999px;
-    background-color: hsl(var(--primary) / 0.1);
-    color: hsl(var(--primary));
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
   }
 
   .validation-summary {
@@ -258,8 +259,8 @@
     font-size: 0.7rem;
     padding: 0.125rem 0.5rem;
     border-radius: 9999px;
-    background-color: hsl(var(--primary) / 0.1);
-    color: hsl(var(--primary));
+    background-color: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
     flex-shrink: 0;
   }
 

@@ -53,7 +53,7 @@
     border-left: 3px solid hsl(var(--destructive));
   }
   .toast-info {
-    border-left: 3px solid hsl(var(--primary));
+    border-left: 3px solid hsl(215 15% 50%);
   }
 
   .toast-icon {
@@ -77,8 +77,8 @@
     color: hsl(var(--destructive));
   }
   .toast-info .toast-icon {
-    background-color: hsl(var(--primary) / 0.15);
-    color: hsl(var(--primary));
+    background-color: hsl(215 15% 50% / 0.15);
+    color: hsl(215 15% 50%);
   }
 
   .toast-message {

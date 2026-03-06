@@ -54,9 +54,9 @@
 
   .hero-badge {
     @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-3;
-    background: hsl(var(--primary) / 0.08);
-    color: hsl(var(--primary));
-    border: 1px solid hsl(var(--primary) / 0.15);
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
   }
 
   .hero-title {
@@ -80,7 +80,7 @@
   .hero-stat-value {
     @apply text-xl md:text-2xl font-bold;
     font-family: var(--font-heading);
-    color: hsl(var(--primary));
+    color: hsl(var(--foreground));
   }
 
   .hero-stat-label {

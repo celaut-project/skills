@@ -1,11 +1,23 @@
 <script lang="ts">
+  import { walletConnected, walletAddress } from 'wallet-svelte-component';
+  import { toasts } from './toastStore';
+
   let showTooltip = false;
+
+  function handleClaim() {
+    if ($walletConnected) {
+      console.log('Claim coverage clicked. Wallet:', $walletAddress);
+      toasts.info('Coverage submission coming soon. Wallet connected.');
+    }
+  }
 </script>
 
 <div class="claim-wrapper">
   <button
     class="claim-btn"
-    disabled
+    class:claim-btn-active={$walletConnected}
+    disabled={!$walletConnected}
+    on:click={handleClaim}
     on:mouseenter={() => showTooltip = true}
     on:mouseleave={() => showTooltip = false}
     on:focus={() => showTooltip = true}
@@ -16,8 +28,8 @@
     </svg>
     Claim Coverage
   </button>
-  {#if showTooltip}
-    <div class="claim-tooltip">Connect wallet &amp; deploy service first</div>
+  {#if showTooltip && !$walletConnected}
+    <div class="claim-tooltip">Connect wallet to claim coverage</div>
   {/if}
 </div>
 
@@ -41,6 +53,19 @@
     color: hsl(var(--muted-foreground));
     cursor: not-allowed;
     opacity: 0.6;
+    transition: all 0.2s ease;
+  }
+
+  .claim-btn-active {
+    background-color: hsl(142 50% 42%);
+    color: white;
+    border-color: hsl(142 50% 38%);
+    cursor: pointer;
+    opacity: 1;
+  }
+
+  .claim-btn-active:hover {
+    background-color: hsl(142 50% 38%);
   }
 
   .claim-tooltip {
