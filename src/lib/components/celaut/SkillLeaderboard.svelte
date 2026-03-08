@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Benchmark, Result } from '$lib/types';
-  import { formatServiceId } from '$lib/api';
+  import type { Benchmark, Result, DiscussionEntry } from '$lib/types';
+  import { formatServiceId, formatSourceHash } from '$lib/api';
   import { toasts } from './toastStore';
 
   export let benchmarks: Benchmark[] = [];
@@ -11,6 +11,21 @@
   let submitServiceId = '';
   let submitScore = '';
   let submitNotes = '';
+
+  // Discussion state per benchmark
+  let expandedDiscussions: Record<string, boolean> = {};
+  // Discussion state per result
+  let expandedResultDiscussions: Record<string, boolean> = {};
+
+  function toggleDiscussion(id: string) {
+    expandedDiscussions[id] = !expandedDiscussions[id];
+    expandedDiscussions = expandedDiscussions;
+  }
+
+  function toggleResultDiscussion(id: string) {
+    expandedResultDiscussions[id] = !expandedResultDiscussions[id];
+    expandedResultDiscussions = expandedResultDiscussions;
+  }
 
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
@@ -26,10 +41,50 @@
     return new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  function relativeTime(ts: number): string {
+    if (!ts) return '-';
+    const now = Date.now() / 1000;
+    const diff = now - ts;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
+    return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
   function formatAuthor(author: string): string {
     if (!author) return '-';
     if (author.length <= 12) return author;
     return `${author.slice(0, 6)}...${author.slice(-4)}`;
+  }
+
+  function formatScore(score: number): string {
+    if (score === 0) return '0';
+    if (Math.abs(score) >= 100) return score.toFixed(1);
+    if (Math.abs(score) >= 10) return score.toFixed(2);
+    return score.toPrecision(3);
+  }
+
+  function truncateNotes(notes: string, maxLen: number = 30): string {
+    if (!notes) return '-';
+    if (notes.length <= maxLen) return notes;
+    return notes.slice(0, maxLen) + '…';
+  }
+
+  function computeStats(results: Result[]): { mean: number; stddev: number } {
+    if (results.length === 0) return { mean: 0, stddev: 0 };
+    const scores = results.map(r => r.score);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / scores.length;
+    return { mean, stddev: Math.sqrt(variance) };
+  }
+
+  async function copyHash(hash: string) {
+    try {
+      await navigator.clipboard.writeText(hash);
+      toasts.info('Hash copied to clipboard');
+    } catch {
+      toasts.error('Failed to copy');
+    }
   }
 
   function handleSubmitResult() {
@@ -82,8 +137,30 @@
               <p class="benchmark-description">{benchmark.description}</p>
               <p class="benchmark-author">Created by <span class="font-mono text-xs">{formatAuthor(benchmark.author)}</span></p>
 
-              <!-- Results Leaderboard -->
+              <!-- Source Hash -->
+              {#if benchmark.sourceHash}
+                <div class="source-hash-row">
+                  <span class="source-hash-label">📄 Source:</span>
+                  <code class="source-hash-value">{formatSourceHash(benchmark.sourceHash)}</code>
+                  <button class="copy-btn" on:click={() => copyHash(benchmark.sourceHash || '')} title="Copy full hash">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  </button>
+                </div>
+              {/if}
+
+              <!-- Results Table -->
               {#if benchmark.results.length > 0}
+                {@const stats = computeStats(benchmark.results)}
+                <div class="stats-summary">
+                  <span class="stats-label">Mean:</span>
+                  <span class="stats-value">{formatScore(stats.mean)}</span>
+                  <span class="stats-separator">±</span>
+                  <span class="stats-value">{formatScore(stats.stddev)}</span>
+                  <span class="stats-label stats-label-secondary">({benchmark.results.length} results)</span>
+                </div>
+
                 <div class="leaderboard-table-wrapper">
                   <table class="leaderboard-table">
                     <thead>
@@ -91,6 +168,7 @@
                         <th class="th-rank">Rank</th>
                         <th class="th-service">Service ID</th>
                         <th class="th-score">Score</th>
+                        <th class="th-notes">Notes</th>
                         <th class="th-author">Author</th>
                         <th class="th-date">Date</th>
                       </tr>
@@ -99,23 +177,102 @@
                       {#each sortResults(benchmark.results, benchmark.higherIsBetter) as result, i}
                         <tr class="leaderboard-row">
                           <td class="td-rank">
-                            <span class="rank-num">#{i + 1}</span>
+                            <span class="rank-num" class:rank-gold={i === 0} class:rank-silver={i === 1} class:rank-bronze={i === 2}>#{i + 1}</span>
                           </td>
                           <td class="td-service">
                             <code class="service-id">{formatServiceId(result.serviceId)}</code>
                           </td>
-                          <td class="td-score">{typeof result.score === 'number' && result.score < 10 ? result.score.toFixed(3) : result.score.toFixed(1)}</td>
+                          <td class="td-score">{formatScore(result.score)}</td>
+                          <td class="td-notes" title={result.notes || ''}>{truncateNotes(result.notes)}</td>
                           <td class="td-author">
                             <span class="font-mono text-xs">{formatAuthor(result.author)}</span>
                           </td>
-                          <td class="td-date">{formatDate(result.timestamp)}</td>
+                          <td class="td-date">{relativeTime(result.timestamp)}</td>
                         </tr>
+                        <!-- Result Source Hash & Discussion -->
+                        {#if result.sourceHash || (result.discussion && result.discussion.length > 0)}
+                          <tr class="result-extras-row">
+                            <td colspan="6" class="result-extras-cell">
+                              {#if result.sourceHash}
+                                <div class="source-hash-row source-hash-inline">
+                                  <span class="source-hash-label">📄</span>
+                                  <code class="source-hash-value">{formatSourceHash(result.sourceHash)}</code>
+                                  <button class="copy-btn" on:click={() => copyHash(result.sourceHash || '')} title="Copy full hash">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                                    </svg>
+                                  </button>
+                                </div>
+                              {/if}
+                              {#if result.discussion && result.discussion.length > 0}
+                                <button class="discussion-toggle discussion-toggle-inline" on:click={() => toggleResultDiscussion(result.id)}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                                  </svg>
+                                  {result.discussion.length} {result.discussion.length === 1 ? 'comment' : 'comments'}
+                                  <svg
+                                    class="discussion-chevron"
+                                    class:discussion-chevron-open={expandedResultDiscussions[result.id]}
+                                    width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                  >
+                                    <polyline points="6 9 12 15 18 9"/>
+                                  </svg>
+                                </button>
+                                {#if expandedResultDiscussions[result.id]}
+                                  <div class="discussion-entries">
+                                    {#each result.discussion as entry}
+                                      <div class="discussion-entry">
+                                        <div class="discussion-meta">
+                                          <span class="font-mono text-[10px]">{formatAuthor(entry.author)}</span>
+                                          <span class="discussion-time">{relativeTime(entry.timestamp)}</span>
+                                        </div>
+                                        <p class="discussion-text">{entry.text}</p>
+                                      </div>
+                                    {/each}
+                                  </div>
+                                {/if}
+                              {/if}
+                            </td>
+                          </tr>
+                        {/if}
                       {/each}
                     </tbody>
                   </table>
                 </div>
               {:else}
                 <p class="no-results">No results submitted yet.</p>
+              {/if}
+
+              <!-- Benchmark Discussion -->
+              {#if benchmark.discussion && benchmark.discussion.length > 0}
+                <div class="discussion-section">
+                  <button class="discussion-toggle" on:click={() => toggleDiscussion(benchmark.id)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                    </svg>
+                    Discussion ({benchmark.discussion.length})
+                    <svg
+                      class="discussion-chevron"
+                      class:discussion-chevron-open={expandedDiscussions[benchmark.id]}
+                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    >
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  {#if expandedDiscussions[benchmark.id]}
+                    <div class="discussion-entries">
+                      {#each benchmark.discussion as entry}
+                        <div class="discussion-entry">
+                          <div class="discussion-meta">
+                            <span class="font-mono text-[10px]">{formatAuthor(entry.author)}</span>
+                            <span class="discussion-time">{relativeTime(entry.timestamp)}</span>
+                          </div>
+                          <p class="discussion-text">{entry.text}</p>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
               {/if}
 
               <!-- Submit Result Button/Form -->
@@ -292,9 +449,96 @@
   .benchmark-author {
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
   }
 
+  /* ── Source Hash ────────────────────────────────────────────────────── */
+  .source-hash-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.3);
+    width: fit-content;
+  }
+
+  .source-hash-inline {
+    margin-bottom: 0.25rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .source-hash-label {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+  }
+
+  .source-hash-value {
+    font-size: 0.6875rem;
+    font-family: monospace;
+    color: hsl(var(--foreground));
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  .copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.25rem;
+    border: none;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .copy-btn:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  /* ── Stats Summary ─────────────────────────────────────────────────── */
+  .stats-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px solid hsl(var(--border) / 0.5);
+    font-size: 0.8125rem;
+  }
+
+  .stats-label {
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+    font-size: 0.75rem;
+  }
+
+  .stats-label-secondary {
+    margin-left: 0.25rem;
+    font-weight: 400;
+  }
+
+  .stats-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--foreground));
+  }
+
+  .stats-separator {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+  }
+
+  /* ── Leaderboard Table ─────────────────────────────────────────────── */
   .leaderboard-table-wrapper {
     border: 1px solid hsl(var(--border));
     border-radius: 0.5rem;
@@ -324,8 +568,9 @@
 
   .th-rank { width: 3.5rem; text-align: center; }
   .th-score { width: 5rem; text-align: right; }
+  .th-notes { width: 10rem; }
   .th-author { width: 7rem; }
-  .th-date { width: 7rem; text-align: right; }
+  .th-date { width: 5.5rem; text-align: right; }
 
   .leaderboard-row {
     border-top: 1px solid hsl(var(--border));
@@ -350,6 +595,10 @@
     font-weight: 600;
   }
 
+  .rank-gold { color: hsl(45 90% 55%); }
+  .rank-silver { color: hsl(0 0% 70%); }
+  .rank-bronze { color: hsl(30 60% 55%); }
+
   .td-service {
     font-weight: 500;
   }
@@ -368,6 +617,15 @@
     color: hsl(var(--foreground));
   }
 
+  .td-notes {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    max-width: 10rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .td-author {
     color: hsl(var(--muted-foreground));
   }
@@ -376,6 +634,14 @@
     text-align: right;
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
+  }
+
+  .result-extras-row {
+    border-top: none;
+  }
+
+  .result-extras-cell {
+    padding: 0.125rem 0.75rem 0.5rem 3.5rem !important;
   }
 
   .no-results, .no-benchmarks {
@@ -387,6 +653,79 @@
     text-align: center;
   }
 
+  /* ── Discussion ────────────────────────────────────────────────────── */
+  .discussion-section {
+    margin-bottom: 1rem;
+  }
+
+  .discussion-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.2);
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .discussion-toggle:hover {
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--foreground));
+  }
+
+  .discussion-toggle-inline {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    border: none;
+    background: none;
+  }
+
+  .discussion-chevron {
+    transition: transform 0.2s;
+  }
+
+  .discussion-chevron-open {
+    transform: rotate(180deg);
+  }
+
+  .discussion-entries {
+    margin-top: 0.5rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid hsl(var(--border));
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .discussion-entry {
+    padding: 0.375rem 0;
+  }
+
+  .discussion-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.125rem;
+  }
+
+  .discussion-time {
+    font-size: 0.625rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .discussion-text {
+    font-size: 0.75rem;
+    color: hsl(var(--foreground));
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* ── Submit Form ───────────────────────────────────────────────────── */
   .submit-result-btn {
     display: inline-flex;
     align-items: center;
