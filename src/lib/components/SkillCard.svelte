@@ -10,6 +10,7 @@
   export let benchmarkCount: number;
   export let resultCount: number;
   export let relatedCount: number;
+  export let showAuthor: boolean = false;
   export let index: number = 0;
 
   let visible = false;
@@ -47,7 +48,10 @@
     </p>
 
     {#if truncatedAuthor}
-      <div class="card-author">
+      <div class="card-author" class:card-author-prominent={showAuthor}>
+        {#if showAuthor}
+          <span class="author-badge">by</span>
+        {/if}
         <span class="font-mono text-[10px] text-muted-foreground">{truncatedAuthor}</span>
       </div>
     {/if}
@@ -179,6 +183,17 @@
 
   .card-author {
     @apply mb-3;
+  }
+
+  .card-author-prominent {
+    @apply flex items-center gap-1 px-2 py-0.5 rounded-md w-fit;
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  .author-badge {
+    font-size: 10px;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
   }
 
   .card-tags {
