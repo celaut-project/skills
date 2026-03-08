@@ -2,9 +2,38 @@
   import type { Benchmark, Result, DiscussionEntry } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
   import { toasts } from './toastStore';
+  import { FileCard, fetchFileSourcesByHash } from 'source-application';
+  import type { FileSource } from 'source-application';
+  import { reputation_proof, explorer_uri, source_explorer_url } from '$lib/common/store';
+  import { web_explorer_uri_tkn } from '$lib/ergo/envs';
 
   export let benchmarks: Benchmark[] = [];
   export let selectedBenchmarkId: string | null = null;
+  export let onAddSource: ((hash: string) => void) | undefined = undefined;
+
+  // Source cache per hash
+  let sourceCache: Record<string, FileSource[]> = {};
+
+  async function loadSources(hash: string) {
+    if (!hash || sourceCache[hash]) return;
+    try {
+      const fetched = await fetchFileSourcesByHash($explorer_uri, hash);
+      sourceCache[hash] = fetched ?? [];
+      sourceCache = sourceCache; // trigger reactivity
+    } catch {
+      sourceCache[hash] = [];
+      sourceCache = sourceCache;
+    }
+  }
+
+  // Load sources when a benchmark with sourceHash is expanded
+  $: if (selectedBenchmarkId) {
+    const bench = benchmarks.find(b => b.id === selectedBenchmarkId);
+    if (bench?.sourceHash) loadSources(bench.sourceHash);
+    bench?.results?.forEach(r => {
+      if (r.sourceHash) loadSources(r.sourceHash);
+    });
+  }
 
   // Submit result form state
   let showSubmitForm = false;
@@ -137,17 +166,29 @@
               <p class="benchmark-description">{benchmark.description}</p>
               <p class="benchmark-author">Created by <span class="font-mono text-xs">{formatAuthor(benchmark.author)}</span></p>
 
-              <!-- Source Hash -->
+              <!-- Source Hash (FileCard) -->
               {#if benchmark.sourceHash}
-                <div class="source-hash-row">
-                  <span class="source-hash-label">📄 Source:</span>
-                  <code class="source-hash-value">{formatSourceHash(benchmark.sourceHash)}</code>
-                  <button class="copy-btn" on:click={() => copyHash(benchmark.sourceHash || '')} title="Copy full hash">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                  </button>
-                </div>
+                <details class="source-details-inline">
+                  <summary class="source-summary-inline">
+                    <span>📄 Source:</span>
+                    <code class="source-hash-code">{formatSourceHash(benchmark.sourceHash)}</code>
+                  </summary>
+                  <div class="source-card-inline">
+                    <FileCard
+                      fileHash={benchmark.sourceHash}
+                      profile={$reputation_proof}
+                      sources={sourceCache[benchmark.sourceHash] || []}
+                      explorerUri={$explorer_uri}
+                      source_explorer_url={$source_explorer_url}
+                      webExplorerUriTkn={web_explorer_uri_tkn}
+                    />
+                    {#if $reputation_proof && onAddSource}
+                      <button class="add-source-btn-sm" on:click={() => onAddSource?.(benchmark.sourceHash || '')}>
+                        + Add Source
+                      </button>
+                    {/if}
+                  </div>
+                </details>
               {/if}
 
               <!-- Results Table -->
@@ -194,15 +235,27 @@
                           <tr class="result-extras-row">
                             <td colspan="6" class="result-extras-cell">
                               {#if result.sourceHash}
-                                <div class="source-hash-row source-hash-inline">
-                                  <span class="source-hash-label">📄</span>
-                                  <code class="source-hash-value">{formatSourceHash(result.sourceHash)}</code>
-                                  <button class="copy-btn" on:click={() => copyHash(result.sourceHash || '')} title="Copy full hash">
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                                    </svg>
-                                  </button>
-                                </div>
+                                <details class="source-details-result">
+                                  <summary class="source-summary-result">
+                                    <span>📄</span>
+                                    <code class="source-hash-code-sm">{formatSourceHash(result.sourceHash)}</code>
+                                  </summary>
+                                  <div class="source-card-result">
+                                    <FileCard
+                                      fileHash={result.sourceHash}
+                                      profile={$reputation_proof}
+                                      sources={sourceCache[result.sourceHash] || []}
+                                      explorerUri={$explorer_uri}
+                                      source_explorer_url={$source_explorer_url}
+                                      webExplorerUriTkn={web_explorer_uri_tkn}
+                                    />
+                                    {#if $reputation_proof && onAddSource}
+                                      <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>
+                                        + Add Source
+                                      </button>
+                                    {/if}
+                                  </div>
+                                </details>
                               {/if}
                               {#if result.discussion && result.discussion.length > 0}
                                 <button class="discussion-toggle discussion-toggle-inline" on:click={() => toggleResultDiscussion(result.id)}>
@@ -453,52 +506,84 @@
   }
 
   /* ── Source Hash ────────────────────────────────────────────────────── */
-  .source-hash-row {
+  /* ── Source Details (FileCard wrappers) ───────────────────────────── */
+  .source-details-inline,
+  .source-details-result {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  .source-details-result {
+    margin-bottom: 0.25rem;
+  }
+
+  .source-summary-inline,
+  .source-summary-result {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: 0.375rem;
     padding: 0.375rem 0.625rem;
-    border-radius: 0.375rem;
-    background: hsl(var(--muted) / 0.3);
-    width: fit-content;
-  }
-
-  .source-hash-inline {
-    margin-bottom: 0.25rem;
-    padding: 0.25rem 0.5rem;
-  }
-
-  .source-hash-label {
+    cursor: pointer;
     font-size: 0.6875rem;
-    color: hsl(var(--muted-foreground));
     font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    list-style: none;
+    background: hsl(var(--muted) / 0.2);
+    transition: background 0.15s;
   }
 
-  .source-hash-value {
-    font-size: 0.6875rem;
+  .source-summary-inline:hover,
+  .source-summary-result:hover {
+    background: hsl(var(--muted) / 0.4);
+  }
+
+  .source-summary-inline::-webkit-details-marker,
+  .source-summary-result::-webkit-details-marker {
+    display: none;
+  }
+
+  .source-hash-code {
+    font-size: 0.625rem;
     font-family: monospace;
     color: hsl(var(--foreground));
-    padding: 0.125rem 0.25rem;
-    border-radius: 0.25rem;
+    padding: 0.0625rem 0.25rem;
+    border-radius: 0.1875rem;
     background: hsl(var(--muted) / 0.5);
   }
 
-  .copy-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 0.25rem;
-    border: none;
-    background: none;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
+  .source-hash-code-sm {
+    font-size: 0.5625rem;
+    font-family: monospace;
+    color: hsl(var(--foreground));
+    padding: 0.0625rem 0.1875rem;
+    border-radius: 0.125rem;
+    background: hsl(var(--muted) / 0.5);
   }
 
-  .copy-btn:hover {
+  .source-card-inline,
+  .source-card-result {
+    padding: 0.5rem;
+  }
+
+  .add-source-btn-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted) / 0.3);
+    border: 1px solid hsl(var(--border));
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .add-source-btn-sm:hover {
     color: hsl(var(--foreground));
     background: hsl(var(--muted) / 0.5);
   }

@@ -5,12 +5,18 @@ import {
     DEFAULT_EXPLORER_URI_TOKEN,
     DEFAULT_EXPLORER_URI_ADDR
 } from './constants';
+import type { ReputationProof } from 'source-application';
 
 // Wallet stores
 export const address = writable<string | null>(null);
 export const network = writable<string | null>(null);
 export const connected = writable<boolean>(false);
 export const balance = writable<number | null>(null);
+
+// Reputation / source-application stores
+export const reputation_proof = writable<ReputationProof | null>(null);
+export const explorer_uri = writable<string>('https://api.ergoplatform.com');
+export const source_explorer_url = writable<string>('https://reputation-systems.github.io/source-application');
 
 // Token cache for user tokens
 export const user_tokens = writable<Map<string, any>>(new Map());

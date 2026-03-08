@@ -288,6 +288,7 @@ export function getDemoSkills(): Skill[] {
       domain: 'infrastructure',
       author: '9f5ZKbECVTm25JTRQHDHGM4rME3G1JAA',
       otherSkillBoxIds: [],
+      sourceHash: '7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b',
       coverages: [
         { boxId: 'cov-003', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2', label: 'UTXOptimizer' }
       ],
@@ -318,6 +319,7 @@ export function getDemoSkills(): Skill[] {
       domain: 'analytics',
       author: '9hY16vzHmmfyVBwKeFGHvb2bMFsG4Q1d',
       otherSkillBoxIds: ['demo-001', 'demo-004'],
+      sourceHash: '1122334455667788990011223344556677889900aabbccddeeff00112233445566',
       coverages: [],
       benchmarks: [
         {
@@ -361,7 +363,7 @@ export function getDemoSkills(): Skill[] {
           higherIsBetter: true,
           author: '9gNYeyfRFUipiWZ3AJ9p5bHh1PcWnU2F',
           results: [
-            { id: 'res-014', benchmarkId: 'bench-005', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', score: 96.8, notes: 'Near-perfect detection', author: '9gNYeyfRFUipiWZ3AJ9p5bHh1PcWnU2F', timestamp: 1734220800 },
+            { id: 'res-014', benchmarkId: 'bench-005', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', score: 96.8, notes: 'Near-perfect detection', author: '9gNYeyfRFUipiWZ3AJ9p5bHh1PcWnU2F', timestamp: 1734220800, sourceHash: 'deadbeef01234567890abcdef01234567890abcdef01234567890abcdef012345' },
             { id: 'res-015', benchmarkId: 'bench-005', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', score: 93.1, notes: '', author: '9hY16vzHmmfyVBwKeFGHvb2bMFsG4Q1d', timestamp: 1733616000 },
             { id: 'res-016', benchmarkId: 'bench-005', serviceId: 'QmC2tL9pKdG6VyT4tA1mWq3eHc7jYa5k8', score: 89.4, notes: 'Misses some subtle sandwich attacks', author: '9f5ZKbECVTm25JTRQHDHGM4rME3G1JAA', timestamp: 1733011200 },
             { id: 'res-023', benchmarkId: 'bench-005', serviceId: 'QmD9xR6pLfE5WyT3tB8mYq2eDf1bZa7h9', score: 84.7, notes: '', author: '9gNYeyfRFUipiWZ3AJ9p5bHh1PcWnU2F', timestamp: 1732406400 },
