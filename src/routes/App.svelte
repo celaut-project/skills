@@ -34,7 +34,7 @@
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
+  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId } from "$lib/api";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -116,27 +116,6 @@
   $: displayedSkills = sortSkills(filterByCategory(filtered, activeCategory), currentSort);
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
-
-  // Track duplicate skill names to show author disambiguation
-  $: skillNameCounts = skills.reduce((acc, s) => {
-    acc[s.name] = (acc[s.name] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  function truncateAuthor(author: string): string {
-    if (!author) return '';
-    if (author.length <= 12) return author;
-    return `${author.slice(0, 8)}…${author.slice(-4)}`;
-  }
-
-  async function copySourceHash(hash: string) {
-    try {
-      await navigator.clipboard.writeText(hash);
-      toasts.info('Hash copied to clipboard');
-    } catch {
-      toasts.error('Failed to copy');
-    }
-  }
 
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
@@ -300,25 +279,6 @@
               {/if}
             </div>
             <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
-            {#if selectedSkill.sourceHash}
-              <div class="source-hash-row">
-                <span class="source-hash-label">📄 Source:</span>
-                <code class="source-hash-value">{formatSourceHash(selectedSkill.sourceHash)}</code>
-                <button class="copy-hash-btn" on:click={() => copySourceHash(selectedSkill?.sourceHash || '')} title="Copy full hash">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                  </svg>
-                </button>
-              </div>
-            {/if}
-            {#if skillNameCounts[selectedSkill.name] > 1}
-              <div class="duplicate-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                </svg>
-                <span>{skillNameCounts[selectedSkill.name]} authors submitted this skill</span>
-              </div>
-            {/if}
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
                 <span class="detail-tag">{tag}</span>
@@ -327,7 +287,7 @@
           </div>
 
           <!-- Skill Metadata -->
-          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
+          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} />
 
           <!-- Claim Coverage Button -->
           <ClaimCoverageButton />
@@ -552,7 +512,6 @@
                 benchmarkCount={skill.benchmarks.length}
                 resultCount={skill.resultCount}
                 relatedCount={skill.otherSkillBoxIds.length}
-                showAuthor={skillNameCounts[skill.name] > 1}
                 index={i}
                 on:click={() => selectSkill(skill)}
               />
@@ -1078,66 +1037,5 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  /* ── Source Hash ────────────────────────────────────────────────────── */
-  .source-hash-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    padding: 0.375rem 0.625rem;
-    border-radius: 0.375rem;
-    background: hsl(var(--muted) / 0.3);
-    width: fit-content;
-  }
-
-  .source-hash-label {
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    font-weight: 500;
-  }
-
-  .source-hash-value {
-    font-size: 0.75rem;
-    font-family: monospace;
-    color: hsl(var(--foreground));
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-    background: hsl(var(--muted) / 0.5);
-  }
-
-  .copy-hash-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 0.25rem;
-    border: none;
-    background: none;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .copy-hash-btn:hover {
-    color: hsl(var(--foreground));
-    background: hsl(var(--muted) / 0.5);
-  }
-
-  /* ── Duplicate Skill Notice ────────────────────────────────────────── */
-  .duplicate-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    padding: 0.375rem 0.75rem;
-    border-radius: 0.375rem;
-    background: hsl(40 90% 50% / 0.08);
-    border: 1px solid hsl(40 90% 50% / 0.2);
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    width: fit-content;
   }
 </style>

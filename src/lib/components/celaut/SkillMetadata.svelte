@@ -1,20 +1,6 @@
 <script lang="ts">
-  import { formatSourceHash } from '$lib/api';
-  import { toasts } from './toastStore';
-
   export let author: string = '';
   export let boxId: string = '';
-  export let sourceHash: string = '';
-
-  async function copyHash() {
-    if (!sourceHash) return;
-    try {
-      await navigator.clipboard.writeText(sourceHash);
-      toasts.info('Hash copied to clipboard');
-    } catch {
-      toasts.error('Failed to copy');
-    }
-  }
 </script>
 
 <div class="skill-meta">
@@ -26,19 +12,6 @@
     <span class="meta-label">Box ID</span>
     <span class="meta-value meta-mono">{boxId}</span>
   </div>
-  {#if sourceHash}
-    <div class="meta-row">
-      <span class="meta-label">📄 Source Hash</span>
-      <span class="meta-value meta-mono meta-hash">
-        {formatSourceHash(sourceHash)}
-        <button class="copy-btn" on:click={copyHash} title="Copy full hash">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-          </svg>
-        </button>
-      </span>
-    </div>
-  {/if}
 </div>
 
 <style lang="postcss">
@@ -76,29 +49,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .meta-hash {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-
-  .copy-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 0.25rem;
-    border: none;
-    background: none;
-    color: hsl(var(--muted-foreground));
-    cursor: pointer;
-    transition: color 0.15s;
-  }
-
-  .copy-btn:hover {
-    color: hsl(var(--foreground));
   }
 </style>

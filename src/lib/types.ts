@@ -6,13 +6,6 @@
  *          → Coverage (which services claim to solve this skill)
  */
 
-/** A discussion entry on a benchmark or result. */
-export interface DiscussionEntry {
-  author: string;
-  text: string;
-  timestamp: number;
-}
-
 /** A Skill represents a registered AI problem/capability on-chain. */
 export interface Skill {
   boxId: string;
@@ -25,8 +18,6 @@ export interface Skill {
   coverages: Coverage[];
   benchmarks: Benchmark[];
   resultCount: number;
-  /** Blake2b256 hash of off-chain source file */
-  sourceHash?: string;
 }
 
 /** A Coverage links a service (AI agent) to a Skill it can address. */
@@ -50,10 +41,6 @@ export interface Benchmark {
   higherIsBetter: boolean;
   author: string;
   results: Result[];
-  /** Blake2b256 hash of off-chain source file */
-  sourceHash?: string;
-  /** Discussion entries (UI-only for now) */
-  discussion?: DiscussionEntry[];
 }
 
 /**
@@ -69,10 +56,6 @@ export interface Result {
   notes: string;
   author: string;
   timestamp: number;
-  /** Blake2b256 hash of off-chain source file */
-  sourceHash?: string;
-  /** Discussion entries (UI-only for now) */
-  discussion?: DiscussionEntry[];
 }
 
 /** Tab options for the main navigation. */
