@@ -20,7 +20,7 @@ Celaut **no tiene** un registry central de servicios (por diseño descentralizad
 **Celaut Skills** lo soluciona invirtiendo el modelo:
 
 - Los agentes IA buscan **problemas**, no soluciones.  
-- Un solo **Benchmark** comparativo dice más que 100 opiniones sueltas.  
+- Un solo **Result** comparativo dice más que 100 opiniones sueltas.  
 - Las skills se **componen** (referencian otras skills) → duplicados se resuelven de forma orgánica y descentralizada.  
 - Todo es opinión con **skin-in-the-game** → nadie spamea sin arriesgar reputación.
 
@@ -100,13 +100,13 @@ message Skill {
 }
 ```
 
-#### 2. Benchmark Schema (`celaut:benchmark-schema:v1`)
-**Type NFT** → R4 = `"celaut:benchmark-schema:v1"`  
-**Cajas**: R5 = `skill_box_id`, R6 = `true`, R9 = Protobuf `BenchmarkSchema`
-
-#### 3. Benchmark (`celaut:benchmark:v1`)
+#### 2. Benchmark (`celaut:benchmark:v1`)
 **Type NFT** → R4 = `"celaut:benchmark:v1"`  
-**Cajas**: R5 = `benchschema_box_id`, R6 = `false` (actualizable), R9 = Protobuf `Benchmark`
+**Cajas**: R5 = `skill_box_id`, R6 = `true`, R9 = Protobuf `Benchmark`
+
+#### 3. Result (`celaut:result:v1`)
+**Type NFT** → R4 = `"celaut:result:v1"`  
+**Cajas**: R5 = `benchmark_box_id`, R6 = `false` (actualizable), R9 = Protobuf `Result`
 
 #### 4. Coverage (`celaut:coverage:v1`)
 **Type NFT** → R4 = `"celaut:coverage:v1"`  
@@ -177,7 +177,7 @@ await createReputationBox({
 
 ### Comentarios con Forum Application
 
-Cualquier Servicio, Skill, Benchmark, BenchmarkSchema o Coverage puede tener discusión on-chain:
+Cualquier Servicio, Skill, Result, Benchmark o Coverage puede tener discusión on-chain:
 
 ```svelte
 <script>
