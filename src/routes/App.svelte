@@ -15,7 +15,11 @@
       }
     }
   }
-  import { web_explorer_uri_addr } from "$lib/common/store";
+  import { web_explorer_uri_addr, reputation_proof, explorer_uri, source_explorer_url } from "$lib/common/store";
+  import { web_explorer_uri_tkn } from "$lib/ergo/envs";
+  import { FileCard, FileSourceCreation, fetchFileSourcesByHash } from "source-application";
+  import type { FileSource } from "source-application";
+  import { writable } from "svelte/store";
   import HeroSection from "$lib/components/HeroSection.svelte";
   import SkillCard from "$lib/components/SkillCard.svelte";
   import SkeletonCard from "$lib/components/SkeletonCard.svelte";
@@ -34,7 +38,7 @@
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId } from "$lib/api";
+  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -70,6 +74,41 @@
   let benchmarkDescription = "";
   let benchmarkMetric = "";
   let benchmarkHigherIsBetter = true;
+
+  // Source-application state
+  let skillSources: FileSource[] = [];
+  let showFileSourceModal = false;
+  let modalFileHash = "";
+
+  function openFileSourceModal(hash: string) {
+    modalFileHash = hash;
+    showFileSourceModal = true;
+  }
+
+  function handleFileSourceAdded(txId: string) {
+    toasts.info(`Source registered! Tx: ${txId.slice(0, 12)}…`);
+    showFileSourceModal = false;
+    // Reload sources for the current skill
+    if (selectedSkill?.sourceHash) {
+      loadSkillSources(selectedSkill.sourceHash);
+    }
+  }
+
+  async function loadSkillSources(hash: string) {
+    try {
+      const fetched = await fetchFileSourcesByHash($explorer_uri, hash);
+      skillSources = fetched ?? [];
+    } catch {
+      skillSources = [];
+    }
+  }
+
+  // Reload sources when selected skill changes
+  $: if (selectedSkill?.sourceHash) {
+    loadSkillSources(selectedSkill.sourceHash);
+  } else {
+    skillSources = [];
+  }
 
   // ── Load skills from chain ─────────────────────────────────────────────────
   async function loadSkills() {
@@ -116,6 +155,18 @@
   $: displayedSkills = sortSkills(filterByCategory(filtered, activeCategory), currentSort);
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
+
+  // Track duplicate skill names to show author disambiguation
+  $: skillNameCounts = skills.reduce((acc, s) => {
+    acc[s.name] = (acc[s.name] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  function truncateAuthor(author: string): string {
+    if (!author) return '';
+    if (author.length <= 12) return author;
+    return `${author.slice(0, 8)}…${author.slice(-4)}`;
+  }
 
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
@@ -279,6 +330,40 @@
               {/if}
             </div>
             <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
+            {#if selectedSkill.sourceHash}
+              <details class="source-details mb-4">
+                <summary class="source-summary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span>Source Document</span>
+                  <code class="source-hash-inline-code">{formatSourceHash(selectedSkill.sourceHash)}</code>
+                </summary>
+                <div class="source-card-container mt-3">
+                  <FileCard
+                    fileHash={selectedSkill.sourceHash}
+                    profile={$reputation_proof}
+                    sources={skillSources}
+                    explorerUri={$explorer_uri}
+                    source_explorer_url={$source_explorer_url}
+                    webExplorerUriTkn={web_explorer_uri_tkn}
+                  />
+                  {#if $reputation_proof}
+                    <button class="add-source-btn mt-2" on:click={() => openFileSourceModal(selectedSkill?.sourceHash || '')}>
+                      + Add Download Source
+                    </button>
+                  {/if}
+                </div>
+              </details>
+            {/if}
+            {#if skillNameCounts[selectedSkill.name] > 1}
+              <div class="duplicate-notice">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+                <span>{skillNameCounts[selectedSkill.name]} authors submitted this skill</span>
+              </div>
+            {/if}
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
                 <span class="detail-tag">{tag}</span>
@@ -287,7 +372,7 @@
           </div>
 
           <!-- Skill Metadata -->
-          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} />
+          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
 
           <!-- Claim Coverage Button -->
           <ClaimCoverageButton />
@@ -321,7 +406,7 @@
 
           <!-- Benchmarks Tab -->
           {#if detailTab === "benchmarks"}
-            <SkillLeaderboard benchmarks={selectedSkill.benchmarks} bind:selectedBenchmarkId />
+            <SkillLeaderboard benchmarks={selectedSkill.benchmarks} bind:selectedBenchmarkId onAddSource={openFileSourceModal} />
           {/if}
 
           <!-- Coverages Tab -->
@@ -512,6 +597,7 @@
                 benchmarkCount={skill.benchmarks.length}
                 resultCount={skill.resultCount}
                 relatedCount={skill.otherSkillBoxIds.length}
+                showAuthor={skillNameCounts[skill.name] > 1}
                 index={i}
                 on:click={() => selectSkill(skill)}
               />
@@ -626,6 +712,27 @@
 
 <!-- ── Toast Notifications ──────────────────────────────────────────────── -->
 <Toast />
+
+<!-- ── File Source Creation Modal ──────────────────────────────────────── -->
+{#if showFileSourceModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" on:click={() => showFileSourceModal = false}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Register Download Source</h3>
+        <button class="file-source-modal-close" on:click={() => showFileSourceModal = false}>✕</button>
+      </div>
+      <FileSourceCreation
+        profile={$reputation_proof}
+        explorerUri={$explorer_uri}
+        source_explorer_url={$source_explorer_url}
+        onSourceAdded={handleFileSourceAdded}
+        hash={writable(modalFileHash)}
+      />
+    </div>
+  </div>
+{/if}
 
 <WalletAddressChangeHandler />
 
@@ -1037,5 +1144,138 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  /* ── Duplicate Skill Notice ────────────────────────────────────────── */
+  .duplicate-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    background: hsl(40 90% 50% / 0.08);
+    border: 1px solid hsl(40 90% 50% / 0.2);
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    width: fit-content;
+  }
+
+  /* ── Source Details (collapsible FileCard wrapper) ──────────────────── */
+  .source-details {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .source-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    list-style: none;
+    background: hsl(var(--muted) / 0.2);
+    transition: background 0.15s;
+  }
+
+  .source-summary:hover {
+    background: hsl(var(--muted) / 0.4);
+  }
+
+  .source-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .source-hash-inline-code {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    font-family: monospace;
+    color: hsl(var(--muted-foreground));
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  .source-card-container {
+    padding: 0.75rem;
+  }
+
+  .add-source-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted) / 0.3);
+    border: 1px solid hsl(var(--border));
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .add-source-btn:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+    border-color: hsl(var(--foreground) / 0.2);
+  }
+
+  /* ── File Source Creation Modal ─────────────────────────────────────── */
+  .file-source-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  .file-source-modal-content {
+    width: 100%;
+    max-width: 40rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    padding: 1.5rem;
+    margin: 1rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+
+  .file-source-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .file-source-modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.375rem;
+    border: none;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.15s;
+  }
+
+  .file-source-modal-close:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
   }
 </style>
