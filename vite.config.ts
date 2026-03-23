@@ -16,7 +16,8 @@ export default defineConfig({
   	},
 	assetsInclude: ['**/*.es'],
 	optimizeDeps: {
-		exclude: ['reputation-system', 'source-application', 'forum-application', 'wallet-svelte-component']
+		exclude: ['reputation-system', 'source-application', 'forum-application', 'wallet-svelte-component'],
+		include: ['sigmastate-js/main', 'sigmajs-crypto-facade', '@noble/hashes/blake2b', '@noble/hashes/sha256']
 	},
 	ssr: {
 		noExternal: ['reputation-system', 'source-application', 'forum-application', 'wallet-svelte-component']
