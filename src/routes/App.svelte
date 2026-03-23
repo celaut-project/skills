@@ -40,6 +40,7 @@
   // ── API & Types ────────────────────────────────────────────────────────────
   import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
+  import { calculateSkillReputation, formatReputation } from "$lib/reputation";
 
   // ── State ──────────────────────────────────────────────────────────────────
   let skills: Skill[] = [];
@@ -109,6 +110,9 @@
   } else {
     skillSources = [];
   }
+
+  // Compute reputation for selected skill
+  $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
 
   // ── Load skills from chain ─────────────────────────────────────────────────
   async function loadSkills() {
@@ -324,7 +328,18 @@
           <!-- Skill header card -->
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
-              <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
+              <div class="flex items-center gap-3">
+                <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
+                {#if selectedSkillReputation}
+                  <span class="detail-reputation-badge" title="Reputation: {selectedSkillReputation.label}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                    {formatReputation(selectedSkillReputation.total)}
+                    <span class="detail-reputation-label">{selectedSkillReputation.label}</span>
+                  </span>
+                {/if}
+              </div>
               {#if selectedSkill.domain}
                 <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
@@ -598,6 +613,7 @@
                 resultCount={skill.resultCount}
                 relatedCount={skill.otherSkillBoxIds.length}
                 showAuthor={skillNameCounts[skill.name] > 1}
+                reputation={calculateSkillReputation(skill).total}
                 index={i}
                 on:click={() => selectSkill(skill)}
               />
@@ -887,6 +903,20 @@
     @apply inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  .detail-reputation-badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold;
+    background: hsl(45 90% 50% / 0.15);
+    color: hsl(45 80% 35%);
+  }
+  :global(.dark) .detail-reputation-badge {
+    background: hsl(45 90% 50% / 0.12);
+    color: hsl(45 80% 70%);
+  }
+
+  .detail-reputation-label {
+    @apply text-xs font-medium opacity-75 ml-0.5;
   }
 
   .detail-tag {

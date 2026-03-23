@@ -12,6 +12,7 @@
   export let relatedCount: number;
   export let showAuthor: boolean = false;
   export let index: number = 0;
+  export let reputation: number = 0;
 
   let visible = false;
   onMount(() => {
@@ -38,9 +39,19 @@
   <div class="card-inner">
     <div class="flex items-start justify-between gap-2 mb-3">
       <h3 class="card-title">{name}</h3>
-      {#if domain}
-        <span class="domain-badge {domainClass}">{domain}</span>
-      {/if}
+      <div class="flex items-center gap-2 flex-shrink-0">
+        {#if reputation > 0}
+          <span class="reputation-badge" title="Reputation score">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            {reputation.toFixed(1)}
+          </span>
+        {/if}
+        {#if domain}
+          <span class="domain-badge {domainClass}">{domain}</span>
+        {/if}
+      </div>
     </div>
 
     <p class="card-prose">
@@ -171,6 +182,16 @@
   .domain-default {
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  .reputation-badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold;
+    background: hsl(45 90% 50% / 0.15);
+    color: hsl(45 80% 35%);
+  }
+  :global(.dark) .reputation-badge {
+    background: hsl(45 90% 50% / 0.12);
+    color: hsl(45 80% 70%);
   }
 
   .card-prose {
