@@ -18,9 +18,16 @@
   export let domain: string = '';
   export let tags: string = '';
   export let errors: Record<string, string> = {};
+  export let prefillRelatedBoxIds: string[] = [];
 
   let selectedRelated: string[] = [];
   let showRelatedList = false;
+
+  // Apply prefill when it changes (e.g. from Fork Skill)
+  $: if (prefillRelatedBoxIds.length > 0) {
+    selectedRelated = [...prefillRelatedBoxIds];
+    showRelatedList = true;
+  }
 
   const dispatch = createEventDispatcher();
 

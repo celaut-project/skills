@@ -225,6 +225,23 @@
     setTimeout(() => { selectedSkill = null; }, 200);
   }
 
+  // ── Fork / Edit skill ──────────────────────────────────────────────────────
+  // Pre-populates the Submit form with the selected skill's data and switches view.
+  // Adds the original skill's boxId to otherSkillBoxIds so the new skill references it.
+  let prefillRelatedBoxIds: string[] = [];
+
+  function forkSkill(skill: Skill) {
+    newSkillName = skill.name;
+    newSkillProse = skill.prose;
+    newSkillDomain = skill.domain;
+    newSkillTags = skill.tags.join(', ');
+    prefillRelatedBoxIds = [skill.boxId];
+    // Switch to submit tab
+    selectedSkill = null;
+    activeTab = "submit";
+    if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   // ── Submit new skill ───────────────────────────────────────────────────────
   async function handleSubmitSkill() {
     if (enhancementsRef) {
@@ -401,6 +418,12 @@
               {#if selectedSkill.domain}
                 <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
+              <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
+                </svg>
+                Fork Skill
+              </button>
             </div>
             <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
             {#if selectedSkill.sourceHash}
@@ -741,6 +764,7 @@
               domain={newSkillDomain}
               tags={newSkillTags}
               errors={validationErrors}
+              {prefillRelatedBoxIds}
             />
 
             <button type="submit" class="submit-btn" disabled={submitting}>
@@ -984,6 +1008,19 @@
     @apply inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  .fork-skill-btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+  }
+  .fork-skill-btn:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--foreground) / 0.2);
   }
 
   .detail-reputation-badge {
