@@ -83,7 +83,7 @@ export async function loadSkills(): Promise<Skill[]> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ergoTreeTemplateHash: null,
+          ergoTreeTemplateHash: "",
           registers: {
             R4: { serializedValue: toHex(SKILL_TYPE_ID) }
           }
@@ -114,7 +114,7 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ergoTreeTemplateHash: null,
+          ergoTreeTemplateHash: "",
           registers: {
             R4: { serializedValue: toHex(COVERAGE_TYPE_ID) },
             R5: { serializedValue: toHex(skillBoxId) }
@@ -156,7 +156,7 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ergoTreeTemplateHash: null,
+          ergoTreeTemplateHash: "",
           registers: {
             R4: { serializedValue: toHex(RESULT_TYPE_ID) },
             R5: { serializedValue: toHex(benchmarkId) }
