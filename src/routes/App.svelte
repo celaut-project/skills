@@ -38,9 +38,11 @@
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { loadSkills as loadSkillsFromApi, getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
+  import { getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
+  import { loadSkills as loadSkillsFromData } from "$lib/data";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
   import { calculateSkillReputation, formatReputation } from "$lib/reputation";
+  import { demoMode } from "$lib/config";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
   // If skill A references skill B via otherSkillBoxIds, and A's reputation >= this
@@ -120,17 +122,27 @@
   // Compute reputation for selected skill
   $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
 
-  // ── Load skills from chain ─────────────────────────────────────────────────
+  // ── Load skills from active provider ────────────────────────────────────────
   async function loadSkills() {
     loading = true;
     error = null;
     try {
-      skills = await loadSkillsFromApi();
+      skills = await loadSkillsFromData();
     } catch (e: any) {
       skills = getDemoSkills();
     } finally {
       loading = false;
     }
+  }
+
+  // Reload when demo mode changes
+  let demoModeInitialized = false;
+  $: {
+    const _dm = $demoMode; // Subscribe to changes
+    if (browser && demoModeInitialized) {
+      loadSkills();
+    }
+    demoModeInitialized = true;
   }
 
   // ── Filtered skills ────────────────────────────────────────────────────────
@@ -302,6 +314,27 @@
     </div>
 
     <div class="flex items-center gap-3">
+      <button
+        class="demo-toggle"
+        class:demo-toggle-on={$demoMode}
+        on:click={() => demoMode.update(v => !v)}
+        title={$demoMode ? 'Demo Mode ON — using mock data' : 'Live Mode — using Ergo blockchain'}
+      >
+        {#if $demoMode}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+          Demo
+        {:else}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Live
+        {/if}
+      </button>
       <WalletButton explorerUrl={$web_explorer_uri_addr} />
       <Theme />
     </div>
@@ -809,6 +842,29 @@
   .logo-text {
     @apply text-base font-bold tracking-tight;
     font-family: var(--font-heading);
+  }
+
+  /* ── Demo toggle ──────────────────────────────────────────────────── */
+  .demo-toggle {
+    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+  }
+  .demo-toggle:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+  .demo-toggle-on {
+    background: hsl(142 50% 42% / 0.12);
+    border-color: hsl(142 50% 42% / 0.3);
+    color: hsl(142 50% 35%);
+  }
+  :global(.dark) .demo-toggle-on {
+    color: hsl(142 50% 65%);
+  }
+  .demo-toggle-on:hover {
+    background: hsl(142 50% 42% / 0.2);
   }
 
   .search-input {
