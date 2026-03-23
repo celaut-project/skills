@@ -117,7 +117,8 @@
   }
 
   function handleSubmitResult() {
-    if (!submitServiceId.trim() || !submitScore.trim()) {
+    const scoreStr = String(submitScore).trim();
+    if (!submitServiceId.trim() || !scoreStr) {
       toasts.error('Service ID and Score are required.');
       return;
     }
