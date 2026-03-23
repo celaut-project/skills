@@ -42,6 +42,12 @@
   import type { Skill, Coverage, Benchmark } from "$lib/types";
   import { calculateSkillReputation, formatReputation } from "$lib/reputation";
 
+  // ── Reputation threshold for hiding related skills ─────────────────────────
+  // If skill A references skill B via otherSkillBoxIds, and A's reputation >= this
+  // threshold, then B is hidden from the main gallery (still accessible from A's detail).
+  // Default 0 = any relationship hides the related skill.
+  const REPUTATION_THRESHOLD = 0;
+
   // ── State ──────────────────────────────────────────────────────────────────
   let skills: Skill[] = [];
   let selectedSkill: Skill | null = null;
@@ -156,7 +162,26 @@
     }
   }
 
-  $: displayedSkills = sortSkills(filterByCategory(filtered, activeCategory), currentSort);
+  // ── Compute which boxIds are subsumed by a higher-reputation skill ───────
+  // A skill B is hidden if another skill A references B in otherSkillBoxIds
+  // AND A's reputation >= REPUTATION_THRESHOLD.
+  $: hiddenBoxIds = (() => {
+    const hidden = new Set<string>();
+    for (const skill of skills) {
+      const rep = calculateSkillReputation(skill);
+      if (rep.total >= REPUTATION_THRESHOLD && skill.otherSkillBoxIds.length > 0) {
+        for (const refId of skill.otherSkillBoxIds) {
+          hidden.add(refId);
+        }
+      }
+    }
+    return hidden;
+  })();
+
+  $: displayedSkills = sortSkills(
+    filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId)),
+    currentSort
+  );
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
