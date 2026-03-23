@@ -41,7 +41,7 @@
   import { getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
-  import { calculateSkillReputation, formatReputation } from "$lib/reputation";
+  import { calculateSkillReputation, calculateBenchmarkReputation, formatReputation } from "$lib/reputation";
   import { demoMode } from "$lib/config";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
@@ -207,6 +207,30 @@
     if (!author) return '';
     if (author.length <= 12) return author;
     return `${author.slice(0, 8)}…${author.slice(-4)}`;
+  }
+
+  /**
+   * Compute a composite score for a coverage/service within a skill.
+   * Score = sum of (result.score × benchmarkReputation) for all results
+   * matching this service across the skill's benchmarks.
+   */
+  function computeServiceCompositeScore(serviceId: string | undefined, skill: Skill): number {
+    if (!serviceId) return 0;
+    let composite = 0;
+    for (const bench of skill.benchmarks) {
+      const benchRep = calculateBenchmarkReputation(bench).total;
+      for (const result of bench.results) {
+        if (result.serviceId === serviceId) {
+          composite += result.score * benchRep;
+        }
+      }
+    }
+    return Math.round(composite * 100) / 100;
+  }
+
+  function formatHash(hash: string | undefined): string {
+    if (!hash || hash.length <= 16) return hash || '-';
+    return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
   }
 
   // ── Select skill with transition ───────────────────────────────────────────
@@ -519,15 +543,19 @@
               {:else}
                 <div class="space-y-2">
                   {#each selectedSkill.coverages as cov}
+                    {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
                     <div class="detail-item">
                       <div class="detail-item-icon">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                         </svg>
                       </div>
-                      <span class="font-medium">{cov.label}</span>
-                      <span class="ml-auto text-xs text-muted-foreground">
-                        <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatServiceId(cov.serviceId, cov.boxId)}</code>
+                      <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
+                      <span class="ml-auto coverage-score" title="Composite score: Σ(result.score × benchmarkReputation)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                        {formatReputation(compositeScore)}
                       </span>
                     </div>
                   {/each}
@@ -1123,6 +1151,19 @@
     @apply flex items-center justify-center w-7 h-7 rounded-md;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  .coverage-score {
+    @apply inline-flex items-center gap-1 text-xs font-bold tabular-nums;
+    color: hsl(45 80% 35%);
+  }
+  :global(.dark) .coverage-score {
+    color: hsl(45 80% 70%);
+  }
+
+  .coverage-score-icon {
+    color: hsl(45 90% 50%);
+    flex-shrink: 0;
   }
 
   .detail-related-btn {
