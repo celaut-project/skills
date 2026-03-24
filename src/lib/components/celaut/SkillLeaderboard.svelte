@@ -146,7 +146,6 @@
               <h3 class="benchmark-name">{benchmark.name}</h3>
               <div class="benchmark-meta">
                 <span class="benchmark-metric">Metric: <code>{benchmark.metric}</code></span>
-                <span class="benchmark-direction">{benchmark.higherIsBetter ? 'Higher is better' : 'Lower is better'}</span>
               </div>
             </div>
             <div class="benchmark-result-count">
@@ -466,10 +465,6 @@
     padding: 0.125rem 0.375rem;
     border-radius: 0.25rem;
     background: hsl(var(--muted));
-  }
-
-  .benchmark-direction {
-    color: hsl(var(--muted-foreground));
   }
 
   .benchmark-result-count {
