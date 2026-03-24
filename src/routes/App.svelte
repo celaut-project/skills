@@ -43,6 +43,7 @@
   import type { Skill, Coverage, Benchmark } from "$lib/types";
   import { calculateSkillReputation, calculateBenchmarkReputation, formatReputation } from "$lib/reputation";
   import { demoMode } from "$lib/config";
+  import { mockDb } from "$lib/mockDb";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
   // If skill A references skill B via otherSkillBoxIds, and A's reputation >= this
@@ -275,22 +276,47 @@
         return;
       }
     }
-    if (!$walletConnected) { submitError = "Connect your wallet first."; toasts.error("Connect your wallet first."); return; }
+    if (!$demoMode && !$walletConnected) { submitError = "Connect your wallet first."; toasts.error("Connect your wallet first."); return; }
     if (!newSkillName.trim()) { submitError = "Name is required."; validationErrors = { name: "Skill name is required." }; return; }
     submitting = true;
     submitError = null;
     submitTx = null;
     try {
-      const payload = JSON.stringify({
-        name: newSkillName.trim(),
-        prose: newSkillProse.trim(),
-        tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
-        domain: newSkillDomain.trim(),
-        other_skill_box_ids: []
-      });
-      submitTx = null;
-      submitError = "On-chain submission is ready -- awaiting Type NFT deployment from Josemi. Your skill data is valid.";
-      toasts.info("Skill data validated. Awaiting Type NFT deployment.");
+      if ($demoMode) {
+        // Demo mode: add skill directly to the mock database
+        const newSkill: Skill = {
+          boxId: `demo-${Date.now()}`,
+          name: newSkillName.trim(),
+          prose: newSkillProse.trim(),
+          tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
+          domain: newSkillDomain.trim(),
+          author: 'demo-user',
+          otherSkillBoxIds: [],
+          coverages: [],
+          benchmarks: [],
+          resultCount: 0,
+        };
+        mockDb.addSkill(newSkill);
+        skills = await loadSkillsFromData();
+        submitTx = `demo-tx-${Date.now()}`;
+        toasts.success("Skill submitted successfully (demo mode).");
+        // Reset form
+        newSkillName = '';
+        newSkillProse = '';
+        newSkillDomain = '';
+        newSkillTags = '';
+      } else {
+        const payload = JSON.stringify({
+          name: newSkillName.trim(),
+          prose: newSkillProse.trim(),
+          tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
+          domain: newSkillDomain.trim(),
+          other_skill_box_ids: []
+        });
+        submitTx = null;
+        submitError = "On-chain submission is ready -- awaiting Type NFT deployment from Josemi. Your skill data is valid.";
+        toasts.info("Skill data validated. Awaiting Type NFT deployment.");
+      }
     } catch (e: any) {
       submitError = e.message || "Submission failed.";
       toasts.error(submitError || "Submission failed.");
@@ -748,7 +774,7 @@
           </p>
         </div>
 
-        {#if !$walletConnected}
+        {#if !$demoMode && !$walletConnected}
           <div class="submit-connect-card">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
               <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>

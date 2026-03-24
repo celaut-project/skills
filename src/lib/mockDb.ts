@@ -37,6 +37,11 @@ class MockDatabase implements DataProvider {
     return [];
   }
 
+  /** Add a new skill to the in-memory database. */
+  addSkill(skill: Skill): void {
+    this.skills.push(skill);
+  }
+
   /** Reset the database to initial demo data. */
   reset(): void {
     this.skills = getDemoSkills();
