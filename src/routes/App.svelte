@@ -735,7 +735,7 @@
   {:else if activeTab === "submit"}
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
     <div class="container mx-auto px-8 py-8">
-      <div class="max-w-lg mx-auto">
+      <div class="mx-auto" style="max-width: 1200px;">
         <div class="submit-header">
           <div class="submit-header-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
