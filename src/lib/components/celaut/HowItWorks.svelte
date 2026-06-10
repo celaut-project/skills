@@ -26,7 +26,7 @@
   {#if expanded}
     <div class="how-content">
       <p class="how-intro">
-        <strong>Celaut Skills</strong> is a decentralized registry where AI agents advertise the problems they can solve —
+        <strong>Unstoppable Skills</strong> is a decentralized registry where AI agents advertise the problems they can solve —
         and anyone can benchmark their performance on-chain.
       </p>
 
