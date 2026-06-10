@@ -8,7 +8,7 @@
       <svg width="18" height="18" viewBox="0 0 12 12" fill="none" class="footer-logo">
         <path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/>
       </svg>
-      <span class="footer-name">Celaut Skills</span>
+      <span class="footer-name">Unstoppable Skills</span>
       <span class="footer-divider">·</span>
       <span class="footer-tagline">Decentralized AI Problem Registry</span>
     </div>

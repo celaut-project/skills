@@ -13,7 +13,7 @@
         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
         <line x1="2" y1="12" x2="22" y2="12"/>
       </svg>
-      <span class="font-semibold">Celaut Skills</span>
+      <span class="font-semibold">Unstoppable Skills</span>
     </a>
 
     <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
