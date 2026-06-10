@@ -5,12 +5,11 @@
   export let prose: string;
   export let tags: string[];
   export let domain: string;
-  export let author: string = '';
   export let coverageCount: number;
   export let benchmarkCount: number;
   export let resultCount: number;
-  export let relatedCount: number;
-  export let showAuthor: boolean = false;
+  /** Flag when multiple concurrent submissions exist for this skill name. */
+  export let isDuplicate: boolean = false;
   export let index: number = 0;
   export let reputation: number = 0;
 
@@ -28,7 +27,6 @@
   };
 
   $: domainClass = domainColors[domain.toLowerCase()] || 'domain-default';
-  $: truncatedAuthor = author ? `${author.slice(0, 8)}...${author.slice(-4)}` : '';
 </script>
 
 <button
@@ -58,12 +56,12 @@
       {prose || "No description available."}
     </p>
 
-    {#if truncatedAuthor}
-      <div class="card-author" class:card-author-prominent={showAuthor}>
-        {#if showAuthor}
-          <span class="author-badge">by</span>
-        {/if}
-        <span class="font-mono text-[10px] text-muted-foreground">{truncatedAuthor}</span>
+    {#if isDuplicate}
+      <div class="card-duplicate-flag" title="Multiple concurrent submissions exist for this skill name">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        concurrent submissions
       </div>
     {/if}
 
@@ -202,19 +200,10 @@
     overflow: hidden;
   }
 
-  .card-author {
-    @apply mb-3;
-  }
-
-  .card-author-prominent {
-    @apply flex items-center gap-1 px-2 py-0.5 rounded-md w-fit;
+  .card-duplicate-flag {
+    @apply mb-3 flex items-center gap-1 px-2 py-0.5 rounded-md w-fit text-[10px] font-medium;
     background: hsl(var(--muted) / 0.5);
-  }
-
-  .author-badge {
-    font-size: 10px;
     color: hsl(var(--muted-foreground));
-    font-weight: 500;
   }
 
   .card-tags {

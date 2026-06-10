@@ -41,8 +41,7 @@
         skillBoxId,
         serviceId,
         label,
-        author: $walletAddress || 'wallet',
-        tokenAmount: $demoMode ? 1 : 1,
+        tokenAmount: 1,
         mainBox: getMainReputationBox($reputation_proof)
       });
 
@@ -85,7 +84,6 @@
   .claim-wrapper {
     position: relative;
     display: inline-flex;
-    margin-bottom: 1.5rem;
   }
 
   .claim-btn {

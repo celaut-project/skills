@@ -62,8 +62,11 @@
   let detailVisible = false;
 
   // Detail view sub-tab
-  let detailTab: "benchmarks" | "coverages" | "create-benchmark" = "benchmarks";
+  let detailTab: "benchmarks" | "coverages" | "compare" = "benchmarks";
   let selectedBenchmarkId: string | null = null;
+
+  // Create Benchmark form is now a collapsible inline panel, not a tab.
+  let showCreateBenchmarkForm = false;
 
   // Feature expansion state
   let activeCategory = "all";
@@ -213,17 +216,11 @@
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
-  // Track duplicate skill names to show author disambiguation
+  // Track duplicate skill names to flag concurrent submissions.
   $: skillNameCounts = skills.reduce((acc, s) => {
     acc[s.name] = (acc[s.name] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-
-  function truncateAuthor(author: string): string {
-    if (!author) return '';
-    if (author.length <= 12) return author;
-    return `${author.slice(0, 8)}…${author.slice(-4)}`;
-  }
 
   /**
    * Compute a composite score for a coverage/service within a skill.
@@ -255,6 +252,7 @@
     selectedSkill = skill;
     detailTab = "benchmarks";
     selectedBenchmarkId = null;
+    showCreateBenchmarkForm = false;
     loadForum();
     setTimeout(() => { detailVisible = true; }, 50);
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -304,7 +302,7 @@
         tags: newSkillTags.split(",").map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
         otherSkillBoxIds: [...relatedSkillBoxIds],
-        sourceHash: "",  // TODO 
+        sourceHash: "",
         tokenAmount: 1,
         mainBox: currentMainBox(),
       });
@@ -372,6 +370,59 @@
   $: if (newSkillName) { delete validationErrors["name"]; validationErrors = validationErrors; }
   $: if (newSkillProse) { delete validationErrors["prose"]; validationErrors = validationErrors; }
   $: if (newSkillDomain) { delete validationErrors["domain"]; validationErrors = validationErrors; }
+
+  // ── Coverage view helpers ──────────────────────────────────────────────────
+  /**
+   * For a given service, return its best-result row per benchmark (only benchmarks
+   * the service has at least one result for). Used by the Coverages sub-tab.
+   */
+  function collectServiceResults(serviceId: string | undefined, skill: Skill) {
+    if (!serviceId) return [] as Array<{ benchmark: Benchmark; bestResult: number | null; count: number }>;
+    return skill.benchmarks
+      .map((bench) => {
+        const matches = bench.results.filter((r) => r.serviceId === serviceId);
+        const bestResult = matches.length === 0
+          ? null
+          : bench.higherIsBetter
+            ? Math.max(...matches.map((r) => r.score))
+            : Math.min(...matches.map((r) => r.score));
+        return { benchmark: bench, bestResult, count: matches.length };
+      })
+      .filter((row) => row.count > 0);
+  }
+
+  /**
+   * Build a (coverage × benchmark) matrix where each cell holds the service's
+   * best result for that benchmark and a flag indicating column-winning score.
+   * Used by the Comparative sub-tab.
+   */
+  function buildComparisonMatrix(skill: Skill) {
+    const bestPerService = (bench: Benchmark, sid: string | undefined): number | null => {
+      if (!sid) return null;
+      const matches = bench.results.filter((r) => r.serviceId === sid);
+      if (matches.length === 0) return null;
+      return bench.higherIsBetter
+        ? Math.max(...matches.map((r) => r.score))
+        : Math.min(...matches.map((r) => r.score));
+    };
+    const columnWinners = skill.benchmarks.map((bench) => {
+      const allBests = skill.coverages
+        .map((cov) => bestPerService(bench, cov.serviceId))
+        .filter((v): v is number => v !== null);
+      if (allBests.length === 0) return null;
+      return bench.higherIsBetter ? Math.max(...allBests) : Math.min(...allBests);
+    });
+    const rows = skill.coverages.map((cov) => {
+      const cells = skill.benchmarks.map((bench, i) => {
+        const score = bestPerService(bench, cov.serviceId);
+        const winner = columnWinners[i];
+        const isBest = score !== null && winner !== null && score === winner;
+        return { score, isBest };
+      });
+      return { serviceId: cov.serviceId || cov.boxId, cells };
+    });
+    return { rows };
+  }
 
   onMount(() => {
     if (browser) loadSkills();
@@ -531,7 +582,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
                 </svg>
-                <span>{skillNameCounts[selectedSkill.name]} authors submitted this skill</span>
+                <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
               </div>
             {/if}
             <div class="flex flex-wrap gap-2 mb-5">
@@ -542,93 +593,30 @@
           </div>
 
           <!-- Skill Metadata -->
-          <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
+          <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
 
-          <!-- Claim Coverage Button -->
-          <ClaimCoverageButton
-            skillBoxId={selectedSkill.boxId}
-            on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
-          />
-
-          <!-- Detail sub-tabs -->
-          <div class="detail-tabs">
+          <!-- Action buttons: Claim Coverage + Create Benchmark -->
+          <div class="action-row">
+            <ClaimCoverageButton
+              skillBoxId={selectedSkill.boxId}
+              on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
+            />
             <button
-              class="detail-tab-btn"
-              class:detail-tab-active={detailTab === "benchmarks"}
-              on:click={() => { detailTab = "benchmarks"; selectedBenchmarkId = null; }}
+              class="create-benchmark-btn"
+              class:create-benchmark-btn-active={showCreateBenchmarkForm}
+              on:click={() => { showCreateBenchmarkForm = !showCreateBenchmarkForm; }}
             >
-              Benchmarks
-              <span class="detail-tab-count">{selectedSkill.benchmarks.length}</span>
-            </button>
-            <button
-              class="detail-tab-btn"
-              class:detail-tab-active={detailTab === "coverages"}
-              on:click={() => detailTab = "coverages"}
-            >
-              Coverages
-              <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
-            </button>
-            <button
-              class="detail-tab-btn"
-              class:detail-tab-active={detailTab === "create-benchmark"}
-              on:click={() => detailTab = "create-benchmark"}
-            >
-              Create Benchmark
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+              {showCreateBenchmarkForm ? 'Cancel' : 'Create Benchmark'}
             </button>
           </div>
 
-          <!-- Benchmarks Tab -->
-          {#if detailTab === "benchmarks"}
-            <SkillLeaderboard
-              benchmarks={selectedSkill.benchmarks}
-              bind:selectedBenchmarkId
-              onAddSource={openFileSourceModal}
-              on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
-            />
-          {/if}
-
-          <!-- Coverages Tab -->
-          {#if detailTab === "coverages"}
+          <!-- Create Benchmark inline form (toggled by button above) -->
+          {#if showCreateBenchmarkForm}
             <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Services Covering This Skill</h2>
-                <span class="detail-count">{selectedSkill.coverages.length}</span>
-              </div>
-              {#if selectedSkill.coverages.length === 0}
-                <div class="detail-empty">
-                  <p>No services registered yet. Be the first to cover this skill.</p>
-                </div>
-              {:else}
-                <div class="space-y-2">
-                  {#each selectedSkill.coverages as cov}
-                    {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
-                    <div class="detail-item">
-                      <div class="detail-item-icon">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
-                      </div>
-                      <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
-                      <span class="ml-auto coverage-score" title="Composite score: Σ(result.score × benchmarkReputation)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                        </svg>
-                        {formatReputation(compositeScore)}
-                      </span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-            </section>
-          {/if}
-
-          <!-- Create Benchmark Tab -->
-          {#if detailTab === "create-benchmark"}
-            <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Create Benchmark</h2>
-              </div>
-              <form class="create-benchmark-form" on:submit|preventDefault={handleCreateBenchmark}>
+              <form class="create-benchmark-form" on:submit|preventDefault={async () => { await handleCreateBenchmark(); showCreateBenchmarkForm = false; }}>
                 <div class="form-group">
                   <label class="form-label" for="bench-name">Name <span class="text-red-500">*</span></label>
                   <input id="bench-name" class="form-input" bind:value={benchmarkName} placeholder="e.g. Sharpe Ratio (30d rolling)" required />
@@ -670,6 +658,141 @@
             </section>
           {/if}
 
+          <!-- Detail sub-tabs -->
+          <div class="detail-tabs">
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "benchmarks"}
+              on:click={() => { detailTab = "benchmarks"; selectedBenchmarkId = null; }}
+            >
+              Benchmarks
+              <span class="detail-tab-count">{selectedSkill.benchmarks.length}</span>
+            </button>
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "coverages"}
+              on:click={() => detailTab = "coverages"}
+            >
+              Coverages
+              <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
+            </button>
+            <button
+              class="detail-tab-btn"
+              class:detail-tab-active={detailTab === "compare"}
+              on:click={() => detailTab = "compare"}
+            >
+              Comparative
+            </button>
+          </div>
+
+          <!-- Benchmarks Tab -->
+          {#if detailTab === "benchmarks"}
+            <SkillLeaderboard
+              benchmarks={selectedSkill.benchmarks}
+              bind:selectedBenchmarkId
+              onAddSource={openFileSourceModal}
+              on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
+            />
+          {/if}
+
+          <!-- Coverages Tab — per-coverage per-benchmark performance -->
+          {#if detailTab === "coverages"}
+            <section class="detail-section">
+              <div class="detail-section-header">
+                <h2 class="detail-section-title">Services Covering This Skill</h2>
+                <span class="detail-count">{selectedSkill.coverages.length}</span>
+              </div>
+              {#if selectedSkill.coverages.length === 0}
+                <div class="detail-empty">
+                  <p>No services registered yet. Be the first to cover this skill.</p>
+                </div>
+              {:else}
+                <div class="space-y-3">
+                  {#each selectedSkill.coverages as cov}
+                    {@const serviceResults = collectServiceResults(cov.serviceId, selectedSkill)}
+                    {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
+                    <div class="coverage-card">
+                      <div class="coverage-card-header">
+                        <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
+                        <span class="ml-auto coverage-score" title="Composite score: Σ(result.score × benchmarkReputation)">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                          </svg>
+                          {formatReputation(compositeScore)}
+                        </span>
+                      </div>
+                      {#if serviceResults.length === 0}
+                        <p class="coverage-empty">No results submitted yet for this service.</p>
+                      {:else}
+                        <table class="coverage-benchmark-table">
+                          <thead>
+                            <tr>
+                              <th>Benchmark</th>
+                              <th class="num">Best result</th>
+                              <th class="num">Runs</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each serviceResults as row}
+                              <tr>
+                                <td>{row.benchmark.name}</td>
+                                <td class="num">{row.bestResult !== null ? formatReputation(row.bestResult) : '—'}</td>
+                                <td class="num">{row.count}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          {/if}
+
+          <!-- Comparative Tab — services × benchmarks matrix (best-reputation result per cell) -->
+          {#if detailTab === "compare"}
+            <section class="detail-section">
+              <div class="detail-section-header">
+                <h2 class="detail-section-title">Service × Benchmark Comparison</h2>
+              </div>
+              {#if selectedSkill.coverages.length === 0 || selectedSkill.benchmarks.length === 0}
+                <div class="detail-empty">
+                  <p>Comparison requires at least one coverage and one benchmark.</p>
+                </div>
+              {:else}
+                {@const matrix = buildComparisonMatrix(selectedSkill)}
+                <div class="comparative-wrapper">
+                  <table class="comparative-table">
+                    <thead>
+                      <tr>
+                        <th class="comp-service-col">Service</th>
+                        {#each selectedSkill.benchmarks as bench}
+                          <th class="num" title={bench.description}>{bench.name}</th>
+                        {/each}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each matrix.rows as row}
+                        <tr>
+                          <td>
+                            <code class="font-mono text-xs">{formatHash(row.serviceId)}</code>
+                          </td>
+                          {#each row.cells as cell}
+                            <td class="num" class:comp-cell-best={cell.isBest}>
+                              {cell.score !== null ? formatReputation(cell.score) : '—'}
+                            </td>
+                          {/each}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                  <p class="comparative-note">Highlighted cell = best-reputation result for that service/benchmark when multiple submissions exist.</p>
+                </div>
+              {/if}
+            </section>
+          {/if}
+
           <!-- Related skills -->
           {#if selectedSkill.otherSkillBoxIds.length > 0}
             <section class="detail-section">
@@ -703,7 +826,7 @@
               <h2 class="detail-section-title">Discussion</h2>
             </div>
             {#if ForumComponent}
-              <svelte:component this={ForumComponent} topicIdentifier={selectedSkill.boxId} reputationTokenId="" />
+              <svelte:component this={ForumComponent} topic_id={selectedSkill.boxId} />
             {:else}
               <div class="detail-empty">
                 <p>Loading forum...</p>
@@ -779,12 +902,10 @@
                 prose={skill.prose}
                 tags={skill.tags}
                 domain={skill.domain}
-                author={skill.author}
                 coverageCount={skill.coverages.length}
                 benchmarkCount={skill.benchmarks.length}
                 resultCount={skill.resultCount}
-                relatedCount={skill.otherSkillBoxIds.length}
-                showAuthor={skillNameCounts[skill.name] > 1}
+                isDuplicate={skillNameCounts[skill.name] > 1}
                 reputation={calculateSkillReputation(skill).total}
                 index={i}
                 on:click={() => selectSkill(skill)}
@@ -1530,5 +1651,135 @@
   .file-source-modal-close:hover {
     color: hsl(var(--foreground));
     background: hsl(var(--muted) / 0.5);
+  }
+
+  /* ── Action row: Claim Coverage + Create Benchmark ─────────────────── */
+  .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .create-benchmark-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .create-benchmark-btn:hover {
+    background: hsl(var(--muted) / 0.5);
+    border-color: hsl(var(--foreground) / 0.2);
+  }
+  .create-benchmark-btn-active {
+    background: hsl(var(--muted));
+    border-color: hsl(var(--foreground) / 0.3);
+  }
+
+  /* ── Coverages: per-service per-benchmark card ─────────────────────── */
+  .coverage-card {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--card));
+    padding: 0.875rem 1rem;
+  }
+  .coverage-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .coverage-score {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: hsl(45 80% 35%);
+  }
+  :global(.dark) .coverage-score {
+    color: hsl(45 80% 70%);
+  }
+  .coverage-score-icon {
+    opacity: 0.8;
+  }
+  .coverage-empty {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0;
+    padding: 0.5rem 0;
+  }
+  .coverage-benchmark-table {
+    width: 100%;
+    font-size: 0.8125rem;
+    border-collapse: collapse;
+  }
+  .coverage-benchmark-table th,
+  .coverage-benchmark-table td {
+    padding: 0.375rem 0.5rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    text-align: left;
+  }
+  .coverage-benchmark-table th {
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+  }
+  .coverage-benchmark-table .num,
+  .comparative-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Comparative (services × benchmarks) matrix ────────────────────── */
+  .comparative-wrapper {
+    overflow-x: auto;
+  }
+  .comparative-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .comparative-table th,
+  .comparative-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .comparative-table th {
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--muted) / 0.3);
+  }
+  .comp-service-col {
+    text-align: left;
+  }
+  .comp-cell-best {
+    background: hsl(45 90% 50% / 0.18);
+    font-weight: 700;
+    color: hsl(45 80% 35%);
+  }
+  :global(.dark) .comp-cell-best {
+    background: hsl(45 90% 50% / 0.18);
+    color: hsl(45 80% 75%);
+  }
+  .comparative-note {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
   }
 </style>

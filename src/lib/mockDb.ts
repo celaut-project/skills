@@ -95,7 +95,6 @@ class MockDatabase implements DataProvider {
       prose: input.prose,
       tags: [...input.tags],
       domain: input.domain,
-      author: input.author,
       otherSkillBoxIds: [...input.otherSkillBoxIds],
       coverages: [],
       benchmarks: [],
@@ -135,10 +134,8 @@ class MockDatabase implements DataProvider {
       description: input.description,
       metric: input.metric,
       higherIsBetter: input.higherIsBetter,
-      author: input.author,
       results: [],
-      sourceHash: input.sourceHash,
-      discussion: input.discussion ? this.clone(input.discussion) : []
+      sourceHash: input.sourceHash
     });
 
     this.syncSkillCounters(skill);
@@ -157,10 +154,8 @@ class MockDatabase implements DataProvider {
       serviceId: input.serviceId,
       score: input.score,
       notes: input.notes,
-      author: input.author,
       timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
-      sourceHash: input.sourceHash,
-      discussion: input.discussion ? this.clone(input.discussion) : []
+      sourceHash: input.sourceHash
     });
 
     this.syncSkillCounters(match.skill);

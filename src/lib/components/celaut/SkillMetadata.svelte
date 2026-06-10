@@ -2,7 +2,6 @@
   import { formatSourceHash } from '$lib/api';
   import { toasts } from './toastStore';
 
-  export let author: string = '';
   export let boxId: string = '';
   export let sourceHash: string = '';
 
@@ -18,10 +17,6 @@
 </script>
 
 <div class="skill-meta">
-  <div class="meta-row">
-    <span class="meta-label">Author</span>
-    <span class="meta-value meta-mono">{author || 'Unknown'}</span>
-  </div>
   <div class="meta-row">
     <span class="meta-label">Box ID</span>
     <span class="meta-value meta-mono">{boxId}</span>
