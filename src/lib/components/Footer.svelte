@@ -26,6 +26,7 @@
         </svg>
         Ergo
       </a>
+      <a href="/docs" class="footer-link">Docs</a>
     </div>
   </div>
 </footer>
