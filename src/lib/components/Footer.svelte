@@ -10,7 +10,7 @@
       </svg>
       <span class="footer-name">Unstoppable Skills</span>
       <span class="footer-divider">·</span>
-      <span class="footer-tagline">Decentralized AI Problem Registry</span>
+      <span class="footer-tagline">Decentralized Problem-Solution Registry</span>
     </div>
     
     <div class="footer-links">

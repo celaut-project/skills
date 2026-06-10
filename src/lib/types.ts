@@ -1,5 +1,5 @@
 /**
- * Core domain types for Celaut Skills — decentralized AI problem registry on Ergo.
+ * Core domain types for Celaut Skills — Decentralized Problem-Solution Registry on Ergo.
  *
  * Hierarchy:
  *   Skill → Benchmark (defines HOW to measure) → Result (actual measurement)
