@@ -146,11 +146,7 @@
       selectedSkill = skills.find((skill) => skill.boxId === selectedBoxId) ?? selectedSkill;
     }
   }
-
-  function currentAuthor(): string {
-    return $walletAddress || 'demo-user';
-  }
-
+  
   function currentMainBox() {
     return getMainReputationBox($reputation_proof);
   }
@@ -307,9 +303,10 @@
         prose: newSkillProse.trim(),
         tags: newSkillTags.split(",").map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
-        author: currentAuthor(),
         otherSkillBoxIds: [...relatedSkillBoxIds],
-        reputationSupply: $demoMode ? undefined : 99_999_999
+        sourceHash: "",  // TODO 
+        tokenAmount: 1,
+        mainBox: currentMainBox(),
       });
       submitTx = txId;
       await refreshSkills();
@@ -355,7 +352,6 @@
         description: benchmarkDescription.trim(),
         metric: benchmarkMetric.trim(),
         higherIsBetter: benchmarkHigherIsBetter,
-        author: currentAuthor(),
         mainBox: currentMainBox()
       });
       await refreshSkills(selectedSkill.boxId);

@@ -35,7 +35,6 @@ export interface SkillCreationInput {
   prose: string;
   tags: string[];
   domain: string;
-  author: string;
   otherSkillBoxIds: string[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
@@ -56,7 +55,6 @@ export interface CoverageCreationInput {
   skillBoxId: string;
   serviceId?: string;
   label: string;
-  author: string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
   /** Optional main box used for live on-chain writes. */
@@ -75,7 +73,6 @@ export interface Benchmark {
   description: string;
   metric: string;
   higherIsBetter: boolean;
-  author: string;
   results: Result[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
@@ -90,7 +87,6 @@ export interface BenchmarkCreationInput {
   description: string;
   metric: string;
   higherIsBetter: boolean;
-  author: string;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
   discussion?: DiscussionEntry[];
@@ -111,7 +107,6 @@ export interface Result {
   serviceId: string;
   score: number;
   notes: string;
-  author: string;
   timestamp: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
@@ -125,7 +120,6 @@ export interface ResultCreationInput {
   serviceId: string;
   score: number;
   notes: string;
-  author: string;
   timestamp?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
