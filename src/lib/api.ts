@@ -61,7 +61,7 @@ export function parseSkillBox(box: any): Skill | null {
       prose: parsed.prose || '',
       tags: parsed.tags || [],
       domain: parsed.domain || '',
-      author: parsed.author || box.address || '',
+      author: '',  // TODO skill reputation proof profile
       otherSkillBoxIds: parsed.other_skill_box_ids || [],
       coverages: [],
       benchmarks: [],
@@ -146,6 +146,55 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
 }
 
 /**
+ * Load benchmarks for a given skill box ID.
+ */
+export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
+  try {
+    const response = await fetch(
+      `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ergoTreeTemplateHash: "",
+          registers: {
+            R4: { serializedValue: toHex(BENCHMARK_TYPE_ID) },
+            R5: { serializedValue: toHex(skillBoxId) }
+          }
+        })
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      return (data.items || []).map((box: any) => {
+        try {
+          const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+          const parsed = JSON.parse(r9);
+          return {
+            id: box.boxId,
+            skillBoxId,
+            name: parsed.name || 'Unnamed Benchmark',
+            description: parsed.description || '',
+            metric: parsed.metric || '',
+            higherIsBetter: parsed.higher_is_better ?? true,
+            author: '',
+            results: [],
+            sourceHash: parsed.source_hash,
+            discussion: parsed.discussion || []
+          } as Benchmark;
+        } catch {
+          return null;
+        }
+      }).filter(Boolean) as Benchmark[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Load results for a given benchmark ID.
  */
 export async function loadResults(benchmarkId: string): Promise<Result[]> {
@@ -173,11 +222,11 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
           const parsed = JSON.parse(r9);
           return {
             id: box.boxId,
-            benchmarkId: parsed.benchmark_id || benchmarkId,
+            benchmarkId: benchmarkId,
             serviceId: parsed.service_id || '',
             score: parsed.score || 0,
             notes: parsed.notes || '',
-            author: parsed.author || '',
+            author: '',  // TODO result reputation proof profile
             timestamp: parsed.timestamp || 0
           } as Result;
         } catch {

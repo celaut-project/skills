@@ -5,7 +5,7 @@
  */
 
 import type { DataProvider } from './dataProvider';
-import type { Skill, Coverage, Result } from './types';
+import type { Skill, Coverage, Benchmark, Result } from './types';
 import { getDemoSkills } from './api';
 
 class MockDatabase implements DataProvider {
@@ -24,6 +24,12 @@ class MockDatabase implements DataProvider {
     const skill = this.skills.find(s => s.boxId === skillBoxId);
     if (!skill) return [];
     return JSON.parse(JSON.stringify(skill.coverages));
+  }
+
+  async loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
+    const skill = this.skills.find(s => s.boxId === skillBoxId);
+    if (!skill) return [];
+    return JSON.parse(JSON.stringify(skill.benchmarks));
   }
 
   async loadResults(benchmarkId: string): Promise<Result[]> {

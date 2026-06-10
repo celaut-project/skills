@@ -4,7 +4,7 @@
  * allowing seamless swapping between demo and live modes.
  */
 
-import type { Skill, Coverage, Result } from './types';
+import type { Skill, Coverage, Benchmark, Result } from './types';
 
 export interface DataProvider {
   /** Load all skills. */
@@ -12,6 +12,9 @@ export interface DataProvider {
 
   /** Load coverages for a given skill box ID. */
   loadCoverages(skillBoxId: string): Promise<Coverage[]>;
+
+  /** Load benchmarks for a given skill box ID. */
+  loadBenchmarks(skillBoxId: string): Promise<Benchmark[]>;
 
   /** Load results for a given benchmark ID. */
   loadResults(benchmarkId: string): Promise<Result[]>;

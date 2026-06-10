@@ -4,8 +4,8 @@
  */
 
 import type { DataProvider } from './dataProvider';
-import type { Skill, Coverage, Result } from './types';
-import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadResults as apiLoadResults } from './api';
+import type { Skill, Coverage, Benchmark, Result } from './types';
+import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults } from './api';
 
 class ErgoDataProvider implements DataProvider {
   async loadSkills(): Promise<Skill[]> {
@@ -14,6 +14,10 @@ class ErgoDataProvider implements DataProvider {
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     return apiLoadCoverages(skillBoxId);
+  }
+
+  async loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
+    return apiLoadBenchmarks(skillBoxId);
   }
 
   async loadResults(benchmarkId: string): Promise<Result[]> {

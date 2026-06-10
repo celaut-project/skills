@@ -8,7 +8,7 @@ import { demoMode } from './config';
 import { mockDb } from './mockDb';
 import { ergoProvider } from './ergoProvider';
 import type { DataProvider } from './dataProvider';
-import type { Skill, Coverage, Result } from './types';
+import type { Skill, Coverage, Benchmark, Result } from './types';
 
 /** Get the currently active data provider based on demo mode. */
 function getProvider(): DataProvider {
@@ -23,6 +23,11 @@ export async function loadSkills(): Promise<Skill[]> {
 /** Load coverages for a given skill box ID. */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   return getProvider().loadCoverages(skillBoxId);
+}
+
+/** Load benchmarks for a given skill box ID. */
+export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
+  return getProvider().loadBenchmarks(skillBoxId);
 }
 
 /** Load results for a given benchmark ID. */

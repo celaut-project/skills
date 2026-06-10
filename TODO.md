@@ -1,3 +1,12 @@
+# Esquema mental de todo
+
+- Una skill es la entidad central del sistema. Posee name, prose, tags, domain, author y otherSkillBoxIds que indican otras skills que considera "de mismo proposito".
+- Un coverage es una entidad asociada a una skill que manifiesta que un servicio cubre esa skill.
+- Un benchmark es una entidad asociada a una skill que manifiesta una prueba que realizar a una skill.
+- Un resutlado es una entidad asociada a un benchmark que manifiesta que servicio y a que score resulta el benchmark.
+
+
+
 # TODO
 
 1. - Agregar github.com/reputation-systems/source-application en Skill, Benchmark y Result (nuevo campo con hash id del source - para descripciones muy grandes).
