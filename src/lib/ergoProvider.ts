@@ -67,7 +67,6 @@ class ErgoDataProvider implements DataProvider {
         prose: input.prose,
         tags: input.tags,
         domain: input.domain,
-        author: input.author,
         other_skill_box_ids: input.otherSkillBoxIds,
         source_hash: input.sourceHash ?? null
       },
@@ -93,8 +92,7 @@ class ErgoDataProvider implements DataProvider {
       {
         skill_box_id: input.skillBoxId,
         service_id: input.serviceId ?? null,
-        label: input.label,
-        author: input.author
+        label: input.label
       },
       false,
       getMainBox(input.mainBox, 'coverage')
@@ -120,9 +118,7 @@ class ErgoDataProvider implements DataProvider {
         description: input.description,
         metric: input.metric,
         higher_is_better: input.higherIsBetter,
-        author: input.author,
-        source_hash: input.sourceHash ?? null,
-        discussion: input.discussion ?? []
+        source_hash: input.sourceHash ?? null
       },
       true,
       getMainBox(input.mainBox, 'benchmark')
@@ -147,10 +143,8 @@ class ErgoDataProvider implements DataProvider {
         service_id: input.serviceId,
         score: input.score,
         notes: input.notes,
-        author: input.author,
         timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
-        source_hash: input.sourceHash ?? null,
-        discussion: input.discussion ?? []
+        source_hash: input.sourceHash ?? null
       },
       false,
       getMainBox(input.mainBox, 'result')

@@ -4,14 +4,15 @@
  * Hierarchy:
  *   Skill → Benchmark (defines HOW to measure) → Result (actual measurement)
  *          → Coverage (which services claim to solve this skill)
+ *
+ * Note (per Josemi 2026-06-10):
+ *  - Entities do NOT carry an `author` property. The author of every element
+ *    is its `profile_id` — the token_id of the reputation proof that signed it,
+ *    derivable from the on-chain box. UI should resolve it via the reputation
+ *    library when display is needed.
+ *  - Entities do NOT carry an inline `discussion` array. Comments are rendered
+ *    by the `<Forum topic_id={...}>` component using the entity's own id.
  */
-
-/** A discussion entry on a benchmark or result. */
-export interface DiscussionEntry {
-  author: string;
-  text: string;
-  timestamp: number;
-}
 
 /** A Skill represents a registered AI problem/capability on-chain. */
 export interface Skill {
@@ -20,7 +21,6 @@ export interface Skill {
   prose: string;
   tags: string[];
   domain: string;
-  author: string;
   otherSkillBoxIds: string[];
   coverages: Coverage[];
   benchmarks: Benchmark[];
@@ -64,7 +64,6 @@ export interface CoverageCreationInput {
 /**
  * A Benchmark defines the structure/criteria for how results
  * are evaluated for a given skill — metrics, units, pass thresholds.
- * (Previously called BenchmarkSchema)
  */
 export interface Benchmark {
   id: string;
@@ -76,8 +75,6 @@ export interface Benchmark {
   results: Result[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
-  /** Discussion entries (UI-only for now) */
-  discussion?: DiscussionEntry[];
 }
 
 /** Payload used to create a new Benchmark opinion. */
@@ -89,7 +86,6 @@ export interface BenchmarkCreationInput {
   higherIsBetter: boolean;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
-  discussion?: DiscussionEntry[];
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
   /** Optional main box used for live on-chain writes. */
@@ -99,7 +95,6 @@ export interface BenchmarkCreationInput {
 /**
  * A Result is an individual benchmark result submitted on-chain,
  * evaluating a service's performance against a Skill's Benchmark.
- * (Previously called Benchmark)
  */
 export interface Result {
   id: string;
@@ -110,8 +105,6 @@ export interface Result {
   timestamp: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
-  /** Discussion entries (UI-only for now) */
-  discussion?: DiscussionEntry[];
 }
 
 /** Payload used to create a new Result opinion. */
@@ -123,7 +116,6 @@ export interface ResultCreationInput {
   timestamp?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
-  discussion?: DiscussionEntry[];
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
   /** Optional main box used for live on-chain writes. */

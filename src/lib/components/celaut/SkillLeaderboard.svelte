@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Benchmark, Result, DiscussionEntry } from '$lib/types';
+  import type { Benchmark, Result } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
@@ -10,6 +10,19 @@
   export let benchmarks: Benchmark[] = [];
   export let selectedBenchmarkId: string | null = null;
   export let onAddSource: ((hash: string) => void) | undefined = undefined;
+
+  // Forum component is loaded lazily — sigmastate-js ESM crash on page load if imported eagerly.
+  let ForumComponent: any = null;
+  async function loadForum() {
+    if (!ForumComponent) {
+      try {
+        const mod = await import('forum-application');
+        ForumComponent = mod.Forum;
+      } catch (e) {
+        console.warn('Forum not available:', e);
+      }
+    }
+  }
 
   // Source cache per hash
   let sourceCache: Record<string, FileSource[]> = {};
@@ -41,24 +54,18 @@
   let submitScore = '';
   let submitNotes = '';
 
-  // Discussion state per benchmark
-  let expandedDiscussions: Record<string, boolean> = {};
-  // Discussion state per result
-  let expandedResultDiscussions: Record<string, boolean> = {};
-
-  function toggleDiscussion(id: string) {
-    expandedDiscussions[id] = !expandedDiscussions[id];
-    expandedDiscussions = expandedDiscussions;
-  }
-
-  function toggleResultDiscussion(id: string) {
-    expandedResultDiscussions[id] = !expandedResultDiscussions[id];
-    expandedResultDiscussions = expandedResultDiscussions;
+  // Per-entity forum expansion state (benchmarks and results).
+  let expandedForums: Record<string, boolean> = {};
+  function toggleForum(id: string) {
+    expandedForums[id] = !expandedForums[id];
+    expandedForums = expandedForums;
+    if (expandedForums[id]) loadForum();
   }
 
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
     showSubmitForm = false;
+    if (selectedBenchmarkId) loadForum();
   }
 
   function sortResults(results: Result[], higherIsBetter: boolean): Result[] {
@@ -78,12 +85,6 @@
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
     return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
-
-  function formatAuthor(author: string): string {
-    if (!author) return '-';
-    if (author.length <= 12) return author;
-    return `${author.slice(0, 6)}...${author.slice(-4)}`;
   }
 
   function formatScore(score: number): string {
@@ -164,7 +165,6 @@
           {#if selectedBenchmarkId === benchmark.id}
             <div class="benchmark-detail">
               <p class="benchmark-description">{benchmark.description}</p>
-              <p class="benchmark-author">Created by <span class="font-mono text-xs">{formatAuthor(benchmark.author)}</span></p>
 
               <!-- Source Hash (FileCard) -->
               {#if benchmark.sourceHash}
@@ -210,8 +210,8 @@
                         <th class="th-service">Service ID</th>
                         <th class="th-score">Score</th>
                         <th class="th-notes">Notes</th>
-                        <th class="th-author">Author</th>
                         <th class="th-date">Date</th>
+                        <th class="th-actions"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -225,13 +225,17 @@
                           </td>
                           <td class="td-score">{formatScore(result.score)}</td>
                           <td class="td-notes" title={result.notes || ''}>{truncateNotes(result.notes)}</td>
-                          <td class="td-author">
-                            <span class="font-mono text-xs">{formatAuthor(result.author)}</span>
-                          </td>
                           <td class="td-date">{relativeTime(result.timestamp)}</td>
+                          <td class="td-actions">
+                            <button class="forum-toggle-sm" on:click={() => toggleForum(result.id)} title="Discussion for this result">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                              </svg>
+                            </button>
+                          </td>
                         </tr>
-                        <!-- Result Source Hash & Discussion -->
-                        {#if result.sourceHash || (result.discussion && result.discussion.length > 0)}
+                        <!-- Result Source Hash & per-Result Forum -->
+                        {#if result.sourceHash || expandedForums[result.id]}
                           <tr class="result-extras-row">
                             <td colspan="6" class="result-extras-cell">
                               {#if result.sourceHash}
@@ -257,33 +261,14 @@
                                   </div>
                                 </details>
                               {/if}
-                              {#if result.discussion && result.discussion.length > 0}
-                                <button class="discussion-toggle discussion-toggle-inline" on:click={() => toggleResultDiscussion(result.id)}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                                  </svg>
-                                  {result.discussion.length} {result.discussion.length === 1 ? 'comment' : 'comments'}
-                                  <svg
-                                    class="discussion-chevron"
-                                    class:discussion-chevron-open={expandedResultDiscussions[result.id]}
-                                    width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                  >
-                                    <polyline points="6 9 12 15 18 9"/>
-                                  </svg>
-                                </button>
-                                {#if expandedResultDiscussions[result.id]}
-                                  <div class="discussion-entries">
-                                    {#each result.discussion as entry}
-                                      <div class="discussion-entry">
-                                        <div class="discussion-meta">
-                                          <span class="font-mono text-[10px]">{formatAuthor(entry.author)}</span>
-                                          <span class="discussion-time">{relativeTime(entry.timestamp)}</span>
-                                        </div>
-                                        <p class="discussion-text">{entry.text}</p>
-                                      </div>
-                                    {/each}
-                                  </div>
-                                {/if}
+                              {#if expandedForums[result.id]}
+                                <div class="forum-inline">
+                                  {#if ForumComponent}
+                                    <svelte:component this={ForumComponent} topic_id={result.id} />
+                                  {:else}
+                                    <p class="forum-loading">Loading discussion…</p>
+                                  {/if}
+                                </div>
                               {/if}
                             </td>
                           </tr>
@@ -297,36 +282,31 @@
               {/if}
 
               <!-- Benchmark Discussion -->
-              {#if benchmark.discussion && benchmark.discussion.length > 0}
-                <div class="discussion-section">
-                  <button class="discussion-toggle" on:click={() => toggleDiscussion(benchmark.id)}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                    </svg>
-                    Discussion ({benchmark.discussion.length})
-                    <svg
-                      class="discussion-chevron"
-                      class:discussion-chevron-open={expandedDiscussions[benchmark.id]}
-                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    >
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                  {#if expandedDiscussions[benchmark.id]}
-                    <div class="discussion-entries">
-                      {#each benchmark.discussion as entry}
-                        <div class="discussion-entry">
-                          <div class="discussion-meta">
-                            <span class="font-mono text-[10px]">{formatAuthor(entry.author)}</span>
-                            <span class="discussion-time">{relativeTime(entry.timestamp)}</span>
-                          </div>
-                          <p class="discussion-text">{entry.text}</p>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
+              <!-- Per-Benchmark Forum (rendered via shared topic_id = benchmark.id) -->
+              <div class="discussion-section">
+                <button class="discussion-toggle" on:click={() => toggleForum(benchmark.id)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                  </svg>
+                  Discussion
+                  <svg
+                    class="discussion-chevron"
+                    class:discussion-chevron-open={expandedForums[benchmark.id]}
+                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  >
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {#if expandedForums[benchmark.id]}
+                  <div class="forum-inline">
+                    {#if ForumComponent}
+                      <svelte:component this={ForumComponent} topic_id={benchmark.id} />
+                    {:else}
+                      <p class="forum-loading">Loading discussion…</p>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
 
               <!-- Submit Result Button/Form -->
               {#if !showSubmitForm}
@@ -495,12 +475,6 @@
     line-height: 1.5;
   }
 
-  .benchmark-author {
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    margin-bottom: 0.75rem;
-  }
-
   /* ── Source Hash ────────────────────────────────────────────────────── */
   /* ── Source Details (FileCard wrappers) ───────────────────────────── */
   .source-details-inline,
@@ -650,8 +624,8 @@
   .th-rank { width: 3.5rem; text-align: center; }
   .th-score { width: 5rem; text-align: right; }
   .th-notes { width: 10rem; }
-  .th-author { width: 7rem; }
   .th-date { width: 5.5rem; text-align: right; }
+  .th-actions { width: 2.5rem; }
 
   .leaderboard-row {
     border-top: 1px solid hsl(var(--border));
@@ -707,14 +681,33 @@
     white-space: nowrap;
   }
 
-  .td-author {
-    color: hsl(var(--muted-foreground));
-  }
-
   .td-date {
     text-align: right;
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
+  }
+
+  .td-actions {
+    text-align: center;
+  }
+
+  .forum-toggle-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .forum-toggle-sm:hover {
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
   }
 
   .result-extras-row {
@@ -759,13 +752,6 @@
     color: hsl(var(--foreground));
   }
 
-  .discussion-toggle-inline {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
-    border: none;
-    background: none;
-  }
-
   .discussion-chevron {
     transition: transform 0.2s;
   }
@@ -774,36 +760,16 @@
     transform: rotate(180deg);
   }
 
-  .discussion-entries {
+  .forum-inline {
     margin-top: 0.5rem;
     padding-left: 0.75rem;
     border-left: 2px solid hsl(var(--border));
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
   }
 
-  .discussion-entry {
-    padding: 0.375rem 0;
-  }
-
-  .discussion-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.125rem;
-  }
-
-  .discussion-time {
-    font-size: 0.625rem;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .discussion-text {
+  .forum-loading {
     font-size: 0.75rem;
-    color: hsl(var(--foreground));
-    line-height: 1.4;
-    margin: 0;
+    color: hsl(var(--muted-foreground));
+    margin: 0.5rem 0;
   }
 
   /* ── Submit Form ───────────────────────────────────────────────────── */
