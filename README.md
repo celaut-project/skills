@@ -10,7 +10,7 @@ En vez de buscar servicios Celaut directamente, buscas una **skill** (“Optimal
 - Comentarios y discusiones de la comunidad  
 - Ordenamiento inteligente por reputación y métricas verificables  
 
-Todo construido sobre **Ergo + Celaut**, usando **Protobuf** (máximo ahorro de bytes) y **skin-in-the-game** nativo del sistema de reputación.
+Todo construido sobre **Ergo + Celaut**, **skin-in-the-game** nativo del sistema de reputación.
 
 ---
 
@@ -24,35 +24,6 @@ Celaut **no tiene** un registry central de servicios (por diseño descentralizad
 - Las skills se **componen** (referencian otras skills) → duplicados se resuelven de forma orgánica y descentralizada.  
 - Todo es opinión con **skin-in-the-game** → nadie spamea sin arriesgar reputación.
 
----
-
-### Cómo empezar – Plantilla base oficial + Wallet específico
-
-Este proyecto **parte 100 % del template oficial** de la comunidad Ergo:
-
-**Repositorio base (template):**  
-https://github.com/ergo-basics/template
-
-**Wallet dedicado (obligatorio):**  
-https://github.com/ergo-basics/wallet-svelte-component
-
-**Pasos exactos para arrancar el proyecto:**
-
-```bash
-git clone https://github.com/ergo-basics/template.git celaut-skills
-cd celaut-skills
-npm install
-
-# Añadimos el wallet component
-npm install github:ergo-basics/wallet-svelte-component
-
-# Añadimos las dos librerías de reputación
-npm install github:reputation-systems/reputation-system
-npm install github:reputation-systems/forum-application
-```
-
-Renombra el proyecto en `package.json` y `svelte.config.js`.  
-Limpia la demo de `/src/routes/+page.svelte` y sigue las secciones siguientes.
 
 ---
 
@@ -84,33 +55,23 @@ Las cajas reales son **Reputation Boxes** con estructura fija:
 - **R6** = `locked` (true/false)  
 - **R7** = `blake2b256(ownerScript)`  
 - **R8** = `polarizacion = true`  
-- **R9** = **Protobuf serializado** (¡nunca JSON!)
+- **R9** = JSON
 
 #### 1. Skill (`celaut:skill:v1`)
 **Type NFT** → R4 = `"celaut:skill:v1"`  
-**Cajas**: R5 = `skill-tag`, R6 = `true`, R9 = Protobuf `Skill`
-
-```protobuf
-message Skill {
-  string name = 1;
-  string prose = 2;
-  repeated string other_skill_box_ids = 3;
-  repeated string tags = 4;
-  string domain = 5;
-}
-```
+**Cajas**: R5 = `skill-tag`, R6 = `true`, R9 =  `Skill`
 
 #### 2. Benchmark (`celaut:benchmark:v1`)
 **Type NFT** → R4 = `"celaut:benchmark:v1"`  
-**Cajas**: R5 = `skill_box_id`, R6 = `true`, R9 = Protobuf `Benchmark`
+**Cajas**: R5 = `skill_box_id`, R6 = `true`, R9 =  `Benchmark`
 
 #### 3. Result (`celaut:result:v1`)
 **Type NFT** → R4 = `"celaut:result:v1"`  
-**Cajas**: R5 = `benchmark_box_id`, R6 = `false` (actualizable), R9 = Protobuf `Result`
+**Cajas**: R5 = `benchmark_box_id`, R6 = `false` (actualizable), R9 =  `Result`
 
 #### 4. Coverage (`celaut:coverage:v1`)
 **Type NFT** → R4 = `"celaut:coverage:v1"`  
-**Cajas**: R5 = `skill_box_id`, R6 = `false`, R9 = Protobuf `Coverage`
+**Cajas**: R5 = `skill_box_id`, R6 = `false`, R9 =  `Coverage`
 
 ---
 
