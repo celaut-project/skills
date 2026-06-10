@@ -40,10 +40,11 @@
   // ── API & Types ────────────────────────────────────────────────────────────
   import { getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
+  import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark } from "$lib/types";
   import { calculateSkillReputation, calculateBenchmarkReputation, formatReputation } from "$lib/reputation";
+  import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
-  import { mockDb } from "$lib/mockDb";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
   // If skill A references skill B via otherSkillBoxIds, and A's reputation >= this
@@ -84,6 +85,8 @@
   let benchmarkDescription = "";
   let benchmarkMetric = "";
   let benchmarkHigherIsBetter = true;
+  let benchmarkSubmitting = false;
+  let relatedSkillBoxIds: string[] = [];
 
   // Source-application state
   let skillSources: FileSource[] = [];
@@ -134,6 +137,22 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function refreshSkills(preserveSelectedBoxId: string | null = selectedSkill?.boxId ?? null) {
+    const selectedBoxId = preserveSelectedBoxId;
+    await loadSkills();
+    if (selectedBoxId) {
+      selectedSkill = skills.find((skill) => skill.boxId === selectedBoxId) ?? selectedSkill;
+    }
+  }
+
+  function currentAuthor(): string {
+    return $walletAddress || 'demo-user';
+  }
+
+  function currentMainBox() {
+    return getMainReputationBox($reputation_proof);
   }
 
   // Reload when demo mode changes
@@ -261,6 +280,7 @@
     newSkillDomain = skill.domain;
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
+    relatedSkillBoxIds = [skill.boxId];
     // Switch to submit tab
     selectedSkill = null;
     activeTab = "submit";
@@ -282,41 +302,24 @@
     submitError = null;
     submitTx = null;
     try {
-      if ($demoMode) {
-        // Demo mode: add skill directly to the mock database
-        const newSkill: Skill = {
-          boxId: `demo-${Date.now()}`,
-          name: newSkillName.trim(),
-          prose: newSkillProse.trim(),
-          tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
-          domain: newSkillDomain.trim(),
-          author: 'demo-user',
-          otherSkillBoxIds: [],
-          coverages: [],
-          benchmarks: [],
-          resultCount: 0,
-        };
-        mockDb.addSkill(newSkill);
-        skills = await loadSkillsFromData();
-        submitTx = `demo-tx-${Date.now()}`;
-        toasts.success("Skill submitted successfully (demo mode).");
-        // Reset form
-        newSkillName = '';
-        newSkillProse = '';
-        newSkillDomain = '';
-        newSkillTags = '';
-      } else {
-        const payload = JSON.stringify({
-          name: newSkillName.trim(),
-          prose: newSkillProse.trim(),
-          tags: newSkillTags.split(",").map(t => t.trim()).filter(Boolean),
-          domain: newSkillDomain.trim(),
-          other_skill_box_ids: []
-        });
-        submitTx = null;
-        submitError = "On-chain submission is ready -- awaiting Type NFT deployment from Josemi. Your skill data is valid.";
-        toasts.info("Skill data validated. Awaiting Type NFT deployment.");
-      }
+      const txId = await createSkill({
+        name: newSkillName.trim(),
+        prose: newSkillProse.trim(),
+        tags: newSkillTags.split(",").map((t) => t.trim()).filter(Boolean),
+        domain: newSkillDomain.trim(),
+        author: currentAuthor(),
+        otherSkillBoxIds: [...relatedSkillBoxIds],
+        reputationSupply: $demoMode ? undefined : 99_999_999
+      });
+      submitTx = txId;
+      await refreshSkills();
+      toasts.success($demoMode ? "Skill submitted successfully (demo mode)." : "Skill published on-chain.");
+      newSkillName = '';
+      newSkillProse = '';
+      newSkillDomain = '';
+      newSkillTags = '';
+      prefillRelatedBoxIds = [];
+      relatedSkillBoxIds = [];
     } catch (e: any) {
       submitError = e.message || "Submission failed.";
       toasts.error(submitError || "Submission failed.");
@@ -326,7 +329,11 @@
   }
 
   // ── Create Benchmark ───────────────────────────────────────────────────────
-  function handleCreateBenchmark() {
+  async function handleCreateBenchmark() {
+    if (!selectedSkill) {
+      toasts.error("Select a skill first.");
+      return;
+    }
     if (!benchmarkName.trim()) {
       toasts.error("Benchmark name is required.");
       return;
@@ -335,13 +342,34 @@
       toasts.error("Metric is required.");
       return;
     }
-    console.log('Create benchmark:', { name: benchmarkName, description: benchmarkDescription, metric: benchmarkMetric, higherIsBetter: benchmarkHigherIsBetter });
-    toasts.info("Benchmark created (pending Type NFT deployment)");
-    benchmarkName = "";
-    benchmarkDescription = "";
-    benchmarkMetric = "";
-    benchmarkHigherIsBetter = true;
-    detailTab = "benchmarks";
+    if (!$demoMode && !$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return;
+    }
+
+    benchmarkSubmitting = true;
+    try {
+      await createBenchmarkEntity({
+        skillBoxId: selectedSkill.boxId,
+        name: benchmarkName.trim(),
+        description: benchmarkDescription.trim(),
+        metric: benchmarkMetric.trim(),
+        higherIsBetter: benchmarkHigherIsBetter,
+        author: currentAuthor(),
+        mainBox: currentMainBox()
+      });
+      await refreshSkills(selectedSkill.boxId);
+      toasts.success($demoMode ? "Benchmark created (demo mode)." : "Benchmark published on-chain.");
+      benchmarkName = "";
+      benchmarkDescription = "";
+      benchmarkMetric = "";
+      benchmarkHigherIsBetter = true;
+      detailTab = "benchmarks";
+    } catch (e: any) {
+      toasts.error(e?.message || "Benchmark creation failed.");
+    } finally {
+      benchmarkSubmitting = false;
+    }
   }
 
   // Clear validation errors when fields change
@@ -521,7 +549,10 @@
           <SkillMetadata author={selectedSkill.author} boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
 
           <!-- Claim Coverage Button -->
-          <ClaimCoverageButton />
+          <ClaimCoverageButton
+            skillBoxId={selectedSkill.boxId}
+            on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
+          />
 
           <!-- Detail sub-tabs -->
           <div class="detail-tabs">
@@ -552,7 +583,12 @@
 
           <!-- Benchmarks Tab -->
           {#if detailTab === "benchmarks"}
-            <SkillLeaderboard benchmarks={selectedSkill.benchmarks} bind:selectedBenchmarkId onAddSource={openFileSourceModal} />
+            <SkillLeaderboard
+              benchmarks={selectedSkill.benchmarks}
+              bind:selectedBenchmarkId
+              onAddSource={openFileSourceModal}
+              on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
+            />
           {/if}
 
           <!-- Coverages Tab -->
@@ -623,11 +659,16 @@
                     <span class="toggle-label">{benchmarkHigherIsBetter ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
-                <button type="submit" class="submit-btn">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-                  </svg>
-                  Create Benchmark
+                <button type="submit" class="submit-btn" disabled={benchmarkSubmitting}>
+                  {#if benchmarkSubmitting}
+                    <div class="submit-spinner"></div>
+                    Creating Benchmark...
+                  {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    Create Benchmark
+                  {/if}
                 </button>
               </form>
             </section>
@@ -819,6 +860,7 @@
               tags={newSkillTags}
               errors={validationErrors}
               {prefillRelatedBoxIds}
+              on:relatedChange={(event) => relatedSkillBoxIds = event.detail}
             />
 
             <button type="submit" class="submit-btn" disabled={submitting}>

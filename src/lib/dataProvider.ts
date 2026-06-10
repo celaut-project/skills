@@ -4,7 +4,16 @@
  * allowing seamless swapping between demo and live modes.
  */
 
-import type { Skill, Coverage, Benchmark, Result } from './types';
+import type {
+  Skill,
+  Coverage,
+  Benchmark,
+  Result,
+  SkillCreationInput,
+  CoverageCreationInput,
+  BenchmarkCreationInput,
+  ResultCreationInput
+} from './types';
 
 export interface DataProvider {
   /** Load all skills. */
@@ -18,4 +27,16 @@ export interface DataProvider {
 
   /** Load results for a given benchmark ID. */
   loadResults(benchmarkId: string): Promise<Result[]>;
+
+  /** Create a new skill profile. */
+  createSkill(input: SkillCreationInput): Promise<string>;
+
+  /** Create a new coverage opinion. */
+  createCoverage(input: CoverageCreationInput): Promise<string>;
+
+  /** Create a new benchmark opinion. */
+  createBenchmark(input: BenchmarkCreationInput): Promise<string>;
+
+  /** Create a new result opinion. */
+  createResult(input: ResultCreationInput): Promise<string>;
 }

@@ -1,13 +1,57 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import { walletConnected, walletAddress } from 'wallet-svelte-component';
   import { toasts } from './toastStore';
+  import { createCoverage } from '$lib/data';
+  import { demoMode } from '$lib/config';
+  import { reputation_proof } from '$lib/common/store';
+  import { getMainReputationBox } from '$lib/reputationContext';
 
+  export let skillBoxId: string = '';
+  export let skillName: string = '';
+
+  const dispatch = createEventDispatcher<{ created: { txId: string } }>();
   let showTooltip = false;
+  let submitting = false;
 
-  function handleClaim() {
-    if ($walletConnected) {
-      console.log('Claim coverage clicked. Wallet:', $walletAddress);
-      toasts.info('Coverage submission coming soon. Wallet connected.');
+  function truncateAddress(value: string): string {
+    if (!value) return '';
+    if (value.length <= 12) return value;
+    return `${value.slice(0, 8)}…${value.slice(-4)}`;
+  }
+
+  async function handleClaim() {
+    if (!$walletConnected) {
+      toasts.error('Connect wallet to claim coverage.');
+      return;
+    }
+    if (!skillBoxId) {
+      toasts.error('Select a skill first.');
+      return;
+    }
+
+    submitting = true;
+    try {
+      const serviceId = $walletAddress || undefined;
+      const label = skillName
+        ? `${skillName} by ${truncateAddress($walletAddress || 'wallet')}`
+        : `Coverage by ${truncateAddress($walletAddress || 'wallet')}`;
+
+      const txId = await createCoverage({
+        skillBoxId,
+        serviceId,
+        label,
+        author: $walletAddress || 'wallet',
+        tokenAmount: $demoMode ? 1 : 1,
+        mainBox: getMainReputationBox($reputation_proof)
+      });
+
+      toasts.success($demoMode ? 'Coverage claimed (demo mode).' : 'Coverage published on-chain.');
+      dispatch('created', { txId });
+    } catch (error: any) {
+      toasts.error(error?.message || 'Coverage submission failed.');
+    } finally {
+      submitting = false;
     }
   }
 </script>
@@ -16,7 +60,7 @@
   <button
     class="claim-btn"
     class:claim-btn-active={$walletConnected}
-    disabled={!$walletConnected}
+    disabled={!$walletConnected || submitting}
     on:click={handleClaim}
     on:mouseenter={() => showTooltip = true}
     on:mouseleave={() => showTooltip = false}
@@ -26,7 +70,11 @@
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
-    Claim Coverage
+    {#if submitting}
+      Claiming...
+    {:else}
+      Claim Coverage
+    {/if}
   </button>
   {#if showTooltip && !$walletConnected}
     <div class="claim-tooltip">Connect wallet to claim coverage</div>
