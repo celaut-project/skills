@@ -13,9 +13,9 @@
   let hasError = false;
   let errorMessage = '';
 
-  function handleError(event: ErrorEvent) {
+  function handleError(event: Event) {
     hasError = true;
-    errorMessage = event.message || message;
+    errorMessage = (event as ErrorEvent).message || message;
   }
 </script>
 

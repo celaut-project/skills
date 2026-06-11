@@ -29,6 +29,10 @@
       toasts.error('Select a skill first.');
       return;
     }
+    if (!$reputation_proof || !getMainReputationBox($reputation_proof)) {
+      toasts.error('Create a reputation profile first.');
+      return;
+    }
 
     submitting = true;
     try {

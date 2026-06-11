@@ -41,8 +41,9 @@
   import { getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
-  import type { Skill, Coverage, Benchmark } from "$lib/types";
-  import { calculateSkillReputation, calculateBenchmarkReputation, formatReputation } from "$lib/reputation";
+  import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
+  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
+  import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
 
@@ -90,6 +91,16 @@
   let benchmarkHigherIsBetter = true;
   let benchmarkSubmitting = false;
   let relatedSkillBoxIds: string[] = [];
+
+  // Wallet/profile bootstrap state
+  let userProfiles: Awaited<ReturnType<typeof getUserProfiles>> = [];
+  let profileLoading = false;
+  let profileError: string | null = null;
+  let profileCreateTx: string | null = null;
+  let createProfileSubmitting = false;
+  let profileSacrificeErg = "0";
+  let lastProfileLookupKey = "";
+  let expandedCoverageForums: Record<string, boolean> = {};
 
   // Source-application state
   let skillSources: FileSource[] = [];
@@ -149,19 +160,106 @@
       selectedSkill = skills.find((skill) => skill.boxId === selectedBoxId) ?? selectedSkill;
     }
   }
-  
+
+  async function loadUserProfileState() {
+    if ($demoMode || !$walletConnected) {
+      userProfiles = [];
+      profileError = null;
+      profileCreateTx = null;
+      reputation_proof.set(null);
+      return;
+    }
+
+    profileLoading = true;
+    profileError = null;
+    try {
+      const profiles = await getUserProfiles($explorer_uri);
+      userProfiles = profiles;
+      reputation_proof.set(profiles[0] ?? null);
+    } catch (e: any) {
+      userProfiles = [];
+      reputation_proof.set(null);
+      profileError = e?.message || "Failed to load reputation profiles.";
+    } finally {
+      profileLoading = false;
+    }
+  }
+
+  async function handleCreateProfile() {
+    if ($demoMode) {
+      toasts.info("Profile creation is only needed in live mode.");
+      return;
+    }
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return;
+    }
+
+    createProfileSubmitting = true;
+    profileError = null;
+    profileCreateTx = null;
+
+    try {
+      const parsedErg = Number(profileSacrificeErg || "0");
+      if (!Number.isFinite(parsedErg) || parsedErg < 0) {
+        throw new Error("Sacrifice must be a valid non-negative ERG amount.");
+      }
+
+      const sacrificeErg = parsedErg > 0 ? BigInt(Math.round(parsedErg * 1e9)) : 0n;
+      const result = await ensureUserProfile($explorer_uri, {
+        totalSupply: 1,
+        sacrificeErg
+      });
+
+      if (result.status === "created") {
+        profileCreateTx = result.txId;
+        toasts.success("Reputation profile created.");
+      } else {
+        toasts.info("A reputation profile already exists for this wallet.");
+      }
+
+      await loadUserProfileState();
+    } catch (e: any) {
+      profileError = e?.message || "Profile creation failed.";
+      toasts.error(profileError || "Profile creation failed.");
+    } finally {
+      createProfileSubmitting = false;
+    }
+  }
+
   function currentMainBox() {
     return getMainReputationBox($reputation_proof);
   }
 
-  // Reload when demo mode changes
+  function requireProfileForWrite(): boolean {
+    if ($demoMode) return true;
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return false;
+    }
+    if (!currentMainBox()) {
+      toasts.error("Create a reputation profile first.");
+      return false;
+    }
+    return true;
+  }
+
+  // Reload when demo mode or wallet state changes
   let demoModeInitialized = false;
   $: {
-    const _dm = $demoMode; // Subscribe to changes
+    const _dm = $demoMode;
     if (browser && demoModeInitialized) {
       loadSkills();
     }
     demoModeInitialized = true;
+  }
+
+  $: {
+    const profileLookupKey = `${$demoMode}:${$walletConnected}:${$walletAddress || ""}`;
+    if (browser && profileLookupKey !== lastProfileLookupKey) {
+      lastProfileLookupKey = profileLookupKey;
+      loadUserProfileState();
+    }
   }
 
   // ── Filtered skills ────────────────────────────────────────────────────────
@@ -227,15 +325,28 @@
    * Score = sum of (result.score × benchmarkReputation) for all results
    * matching this service across the skill's benchmarks.
    */
+  function pickRepresentativeResult(matches: Result[], higherIsBetter: boolean): Result | null {
+    if (matches.length === 0) return null;
+    return [...matches].sort((a, b) => {
+      const repDelta = calculateResultReputation(b).total - calculateResultReputation(a).total;
+      if (repDelta !== 0) return repDelta;
+      return higherIsBetter ? b.score - a.score : a.score - b.score;
+    })[0] ?? null;
+  }
+
+  function toggleCoverageForum(id: string) {
+    expandedCoverageForums[id] = !expandedCoverageForums[id];
+    expandedCoverageForums = expandedCoverageForums;
+    if (expandedCoverageForums[id]) loadForum();
+  }
+
   function computeServiceCompositeScore(serviceId: string | undefined, skill: Skill): number {
     if (!serviceId) return 0;
     let composite = 0;
     for (const bench of skill.benchmarks) {
-      const benchRep = calculateBenchmarkReputation(bench).total;
-      for (const result of bench.results) {
-        if (result.serviceId === serviceId) {
-          composite += result.score * benchRep;
-        }
+      const chosen = pickRepresentativeResult(bench.results.filter((result) => result.serviceId === serviceId), bench.higherIsBetter);
+      if (chosen) {
+        composite += chosen.score * Math.max(calculateBenchmarkReputation(bench).total, 1);
       }
     }
     return Math.round(composite * 100) / 100;
@@ -290,7 +401,7 @@
         return;
       }
     }
-    if (!$demoMode && !$walletConnected) { submitError = "Connect your wallet first."; toasts.error("Connect your wallet first."); return; }
+    if (!requireProfileForWrite()) { submitError = !$walletConnected ? "Connect your wallet first." : "Create a reputation profile first."; return; }
     if (!newSkillName.trim()) { submitError = "Name is required."; validationErrors = { name: "Skill name is required." }; return; }
     submitting = true;
     submitError = null;
@@ -337,8 +448,7 @@
       toasts.error("Metric is required.");
       return;
     }
-    if (!$demoMode && !$walletConnected) {
-      toasts.error("Connect your wallet first.");
+    if (!requireProfileForWrite()) {
       return;
     }
 
@@ -377,47 +487,39 @@
    * the service has at least one result for). Used by the Coverages sub-tab.
    */
   function collectServiceResults(serviceId: string | undefined, skill: Skill) {
-    if (!serviceId) return [] as Array<{ benchmark: Benchmark; bestResult: number | null; count: number }>;
+    if (!serviceId) return [] as Array<{ benchmark: Benchmark; result: Result | null; count: number }>;
     return skill.benchmarks
       .map((bench) => {
         const matches = bench.results.filter((r) => r.serviceId === serviceId);
-        const bestResult = matches.length === 0
-          ? null
-          : bench.higherIsBetter
-            ? Math.max(...matches.map((r) => r.score))
-            : Math.min(...matches.map((r) => r.score));
-        return { benchmark: bench, bestResult, count: matches.length };
+        const result = pickRepresentativeResult(matches, bench.higherIsBetter);
+        return { benchmark: bench, result, count: matches.length };
       })
       .filter((row) => row.count > 0);
   }
 
   /**
-   * Build a (coverage × benchmark) matrix where each cell holds the service's
-   * best result for that benchmark and a flag indicating column-winning score.
-   * Used by the Comparative sub-tab.
+   * Build a (coverage × benchmark) matrix where each cell uses the highest-
+   * reputation result when multiple submissions exist for the same pairing.
    */
   function buildComparisonMatrix(skill: Skill) {
-    const bestPerService = (bench: Benchmark, sid: string | undefined): number | null => {
+    const bestPerService = (bench: Benchmark, sid: string | undefined): Result | null => {
       if (!sid) return null;
-      const matches = bench.results.filter((r) => r.serviceId === sid);
-      if (matches.length === 0) return null;
-      return bench.higherIsBetter
-        ? Math.max(...matches.map((r) => r.score))
-        : Math.min(...matches.map((r) => r.score));
+      return pickRepresentativeResult(bench.results.filter((r) => r.serviceId === sid), bench.higherIsBetter);
     };
     const columnWinners = skill.benchmarks.map((bench) => {
       const allBests = skill.coverages
-        .map((cov) => bestPerService(bench, cov.serviceId))
+        .map((cov) => bestPerService(bench, cov.serviceId)?.score ?? null)
         .filter((v): v is number => v !== null);
       if (allBests.length === 0) return null;
       return bench.higherIsBetter ? Math.max(...allBests) : Math.min(...allBests);
     });
     const rows = skill.coverages.map((cov) => {
       const cells = skill.benchmarks.map((bench, i) => {
-        const score = bestPerService(bench, cov.serviceId);
+        const chosen = bestPerService(bench, cov.serviceId);
+        const score = chosen?.score ?? null;
         const winner = columnWinners[i];
         const isBest = score !== null && winner !== null && score === winner;
-        return { score, isBest };
+        return { score, isBest, reputation: chosen ? calculateResultReputation(chosen).total : null };
       });
       return { serviceId: cov.serviceId || cov.boxId, cells };
     });
@@ -595,6 +697,30 @@
           <!-- Skill Metadata -->
           <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
 
+          {#if !$demoMode && $walletConnected && !$reputation_proof}
+            <section class="detail-section">
+              <div class="submit-connect-card">
+                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one before claiming coverage or publishing benchmarks.</p>
+                <div class="w-full grid gap-3" style="max-width: 28rem;">
+                  <div class="form-group">
+                    <label class="form-label" for="detail-profile-sacrifice">Optional ERG sacrifice</label>
+                    <input id="detail-profile-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+                  </div>
+                  <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
+                    {#if createProfileSubmitting}
+                      <div class="submit-spinner"></div>
+                      Creating profile...
+                    {:else}
+                      Create Reputation Profile
+                    {/if}
+                  </button>
+                </div>
+                {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
+                {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+              </div>
+            </section>
+          {/if}
+
           <!-- Action buttons: Claim Coverage + Create Benchmark -->
           <div class="action-row">
             <ClaimCoverageButton
@@ -714,7 +840,7 @@
                     <div class="coverage-card">
                       <div class="coverage-card-header">
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
-                        <span class="ml-auto coverage-score" title="Composite score: Σ(result.score × benchmarkReputation)">
+                        <span class="ml-auto coverage-score" title="Composite score using the highest-reputation submission per benchmark">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                           </svg>
@@ -728,7 +854,8 @@
                           <thead>
                             <tr>
                               <th>Benchmark</th>
-                              <th class="num">Best result</th>
+                              <th class="num">Chosen result</th>
+                              <th class="num">Reputation</th>
                               <th class="num">Runs</th>
                             </tr>
                           </thead>
@@ -736,13 +863,31 @@
                             {#each serviceResults as row}
                               <tr>
                                 <td>{row.benchmark.name}</td>
-                                <td class="num">{row.bestResult !== null ? formatReputation(row.bestResult) : '—'}</td>
+                                <td class="num">{row.result ? formatReputation(row.result.score) : '—'}</td>
+                                <td class="num">{row.result ? formatReputation(calculateResultReputation(row.result).total) : '—'}</td>
                                 <td class="num">{row.count}</td>
                               </tr>
                             {/each}
                           </tbody>
                         </table>
                       {/if}
+                      <div class="discussion-section mt-3">
+                        <button class="discussion-toggle" on:click={() => toggleCoverageForum(cov.boxId)}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                          </svg>
+                          Discussion
+                        </button>
+                        {#if expandedCoverageForums[cov.boxId]}
+                          <div class="forum-inline">
+                            {#if ForumComponent}
+                              <svelte:component this={ForumComponent} topic_id={cov.boxId} />
+                            {:else}
+                              <p class="forum-loading">Loading discussion...</p>
+                            {/if}
+                          </div>
+                        {/if}
+                      </div>
                     </div>
                   {/each}
                 </div>
@@ -787,7 +932,7 @@
                       {/each}
                     </tbody>
                   </table>
-                  <p class="comparative-note">Highlighted cell = best-reputation result for that service/benchmark when multiple submissions exist.</p>
+                  <p class="comparative-note">Each cell uses the highest-reputation submission for that service and benchmark. Highlighted cells are the best scores within each benchmark column.</p>
                 </div>
               {/if}
             </section>
@@ -940,6 +1085,26 @@
             <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
             <WalletButton explorerUrl={$web_explorer_uri_addr} />
           </div>
+        {:else if !$reputation_proof}
+          <div class="submit-connect-card">
+            <p class="text-muted-foreground mb-4">This wallet is connected, but it still needs a reputation profile before it can publish on-chain.</p>
+            <div class="w-full grid gap-3" style="max-width: 28rem;">
+              <div class="form-group">
+                <label class="form-label" for="submit-profile-sacrifice">Optional ERG sacrifice</label>
+                <input id="submit-profile-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+              </div>
+              <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
+                {#if createProfileSubmitting}
+                  <div class="submit-spinner"></div>
+                  Creating profile...
+                {:else}
+                  Create Reputation Profile
+                {/if}
+              </button>
+            </div>
+            {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
+            {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+          </div>
         {:else}
           <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
             <div class="form-group">
@@ -1042,6 +1207,12 @@
         hash={writable(modalFileHash)}
       />
     </div>
+  </div>
+{/if}
+
+{#if !$demoMode && $walletConnected && profileLoading}
+  <div class="container mx-auto px-8 pb-4">
+    <p class="text-sm text-muted-foreground">Loading reputation profile...</p>
   </div>
 {/if}
 
@@ -1332,11 +1503,6 @@
     border-color: hsl(var(--border));
   }
 
-  .detail-item-icon {
-    @apply flex items-center justify-center w-7 h-7 rounded-md;
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
 
   .coverage-score {
     @apply inline-flex items-center gap-1 text-xs font-bold tabular-nums;

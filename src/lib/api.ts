@@ -43,6 +43,59 @@ export function formatSourceHash(hash: string): string {
   return `${hash.slice(0, 8)}…${hash.slice(-8)}`;
 }
 
+function deriveProfileId(box: any, parsed: any, fallback: string): string {
+  return parsed?.profile_id || box?.assets?.[0]?.tokenId || fallback;
+}
+
+function deriveReputation(parsed: any): number {
+  return typeof parsed?.reputation === 'number' ? parsed.reputation : 0;
+}
+
+function demoProfileId(seed: string): string {
+  return `demo-profile-${seed.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
+function demoReputationFor(profileId: string): number {
+  let total = 0;
+  for (const char of profileId) total = (total + char.charCodeAt(0)) % 29;
+  return total + 1;
+}
+
+function enrichDemoSkills(rawSkills: any[]): Skill[] {
+  return rawSkills.map((skill: any, skillIndex: number) => {
+    const skillProfileId = demoProfileId(`skill-${skillIndex + 1}-${skill.boxId}`);
+
+    return {
+      ...skill,
+      profileId: skillProfileId,
+      reputation: demoReputationFor(skillProfileId),
+      coverages: skill.coverages.map((coverage: any) => {
+        const profileId = demoProfileId(`coverage-${coverage.serviceId || coverage.boxId}`);
+        return {
+          ...coverage,
+          profileId,
+          reputation: demoReputationFor(profileId)
+        };
+      }),
+      benchmarks: skill.benchmarks.map((benchmark: any, benchmarkIndex: number) => {
+        const benchmarkProfileId = demoProfileId(`benchmark-${skill.boxId}-${benchmark.id}-${benchmarkIndex + 1}`);
+        return {
+          ...benchmark,
+          profileId: benchmarkProfileId,
+          reputation: demoReputationFor(benchmarkProfileId),
+          results: benchmark.results.map((result: any) => {
+            const resultProfileId = demoProfileId(`result-${result.serviceId}-${result.id}`);
+            return {
+              ...result,
+              profileId: resultProfileId,
+              reputation: demoReputationFor(resultProfileId)
+            };
+          })
+        };
+      })
+    };
+  });
+}
 // ── Box Parsing ──────────────────────────────────────────────────────────────
 
 /** Parse a raw Explorer box into a Skill, or null if unparseable. */
@@ -55,8 +108,10 @@ export function parseSkillBox(box: any): Skill | null {
     } catch {
       parsed = { name: r9 || box.boxId.slice(0, 8) };
     }
+    const profileId = deriveProfileId(box, parsed, box.boxId);
     return {
       boxId: box.boxId,
+      profileId,
       name: parsed.name || 'Unnamed Skill',
       prose: parsed.prose || '',
       tags: parsed.tags || [],
@@ -64,7 +119,8 @@ export function parseSkillBox(box: any): Skill | null {
       otherSkillBoxIds: parsed.other_skill_box_ids || [],
       coverages: [],
       benchmarks: [],
-      resultCount: 0
+      resultCount: 0,
+      reputation: deriveReputation(parsed)
     };
   } catch {
     return null;
@@ -128,10 +184,13 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
         try {
           const r9 = box.additionalRegisters?.R9?.renderedValue || '';
           const parsed = JSON.parse(r9);
+          const profileId = deriveProfileId(box, parsed, box.boxId);
           return {
             boxId: box.boxId,
+            profileId,
             serviceId: parsed.service_id || undefined,
-            label: parsed.label || 'Unknown Service'
+            label: parsed.label || 'Unknown Service',
+            reputation: deriveReputation(parsed)
           } as Coverage;
         } catch {
           return null;
@@ -170,15 +229,18 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
         try {
           const r9 = box.additionalRegisters?.R9?.renderedValue || '';
           const parsed = JSON.parse(r9);
+          const profileId = deriveProfileId(box, parsed, box.boxId);
           return {
             id: box.boxId,
+            profileId,
             skillBoxId,
             name: parsed.name || 'Unnamed Benchmark',
             description: parsed.description || '',
             metric: parsed.metric || '',
             higherIsBetter: parsed.higher_is_better ?? true,
             results: [],
-            sourceHash: parsed.source_hash
+            sourceHash: parsed.source_hash,
+            reputation: deriveReputation(parsed)
           } as Benchmark;
         } catch {
           return null;
@@ -217,13 +279,17 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
         try {
           const r9 = box.additionalRegisters?.R9?.renderedValue || '';
           const parsed = JSON.parse(r9);
+          const profileId = deriveProfileId(box, parsed, box.boxId);
           return {
             id: box.boxId,
+            profileId,
             benchmarkId: benchmarkId,
             serviceId: parsed.service_id || '',
             score: parsed.score || 0,
             notes: parsed.notes || '',
-            timestamp: parsed.timestamp || 0
+            timestamp: parsed.timestamp || 0,
+            sourceHash: parsed.source_hash,
+            reputation: deriveReputation(parsed)
           } as Result;
         } catch {
           return null;
@@ -240,7 +306,7 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
 
 /** Demo skills for local development and fallback when chain is unavailable. */
 export function getDemoSkills(): Skill[] {
-  return [
+  const rawSkills = [
     // ── Skill 1a: XAU/BTC by Author A ──
     {
       boxId: 'demo-001',
@@ -611,4 +677,6 @@ export function getDemoSkills(): Skill[] {
       resultCount: 7
     }
   ];
+
+  return enrichDemoSkills(rawSkills);
 }

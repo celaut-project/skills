@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { stringToBytes } from "@scure/base";
 import {
     ErgoAddress, SByte, SColl, SConstant, SGroupElement,

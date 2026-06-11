@@ -1,16 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-
-  interface Skill {
-    boxId: string;
-    name: string;
-    prose: string;
-    tags: string[];
-    domain: string;
-    otherSkillBoxIds: string[];
-    coverages: any[];
-    benchmarkCount: number;
-  }
+  import type { Skill } from '$lib/types';
 
   export let skills: Skill[] = [];
   export let name: string = '';

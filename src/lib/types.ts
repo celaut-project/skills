@@ -17,6 +17,7 @@
 /** A Skill represents a registered AI problem/capability on-chain. */
 export interface Skill {
   boxId: string;
+  profileId: string;
   name: string;
   prose: string;
   tags: string[];
@@ -25,6 +26,7 @@ export interface Skill {
   coverages: Coverage[];
   benchmarks: Benchmark[];
   resultCount: number;
+  reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
 }
@@ -46,8 +48,10 @@ export interface SkillCreationInput {
 /** A Coverage links a service (AI agent) to a Skill it can address. */
 export interface Coverage {
   boxId: string;
+  profileId: string;
   serviceId?: string;
   label: string;
+  reputation?: number;
 }
 
 /** Payload used to create a new Coverage opinion. */
@@ -67,12 +71,14 @@ export interface CoverageCreationInput {
  */
 export interface Benchmark {
   id: string;
+  profileId: string;
   skillBoxId: string;
   name: string;
   description: string;
   metric: string;
   higherIsBetter: boolean;
   results: Result[];
+  reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
 }
@@ -98,11 +104,13 @@ export interface BenchmarkCreationInput {
  */
 export interface Result {
   id: string;
+  profileId: string;
   benchmarkId: string;
   serviceId: string;
   score: number;
   notes: string;
   timestamp: number;
+  reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
 }
