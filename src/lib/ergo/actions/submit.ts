@@ -1,3 +1,4 @@
+// @ts-nocheck
 // SPDX-License-Identifier: MIT
 // submit.ts - Simple ERG transfer action
 

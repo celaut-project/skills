@@ -5,7 +5,7 @@
  * based on activity metrics (coverages, benchmarks, results, scores).
  */
 
-import type { Skill, Benchmark, Coverage } from './types';
+import type { Skill, Benchmark, Coverage, Result } from './types';
 
 /** Reputation score result with breakdown. */
 export interface ReputationScore {
@@ -27,35 +27,12 @@ export interface ReputationScore {
  * - avgResultScore: average score across all results (normalized 0-10)
  */
 export function calculateSkillReputation(skill: Skill): ReputationScore {
-  const coverages = skill.coverages.length;
-  const benchmarks = skill.benchmarks.length;
-
-  // Collect all results across all benchmarks
-  const allResults = skill.benchmarks.flatMap(b => b.results);
-  const totalResults = allResults.length;
-
-  // Calculate average score (raw — not normalized, since scales vary per benchmark)
-  let avgScore = 0;
-  if (totalResults > 0) {
-    avgScore = allResults.reduce((sum, r) => sum + r.score, 0) / totalResults;
-  }
-
-  // Normalize avgScore to 0-10 range for fair weighting
-  // Since scores can be percentages (0-100), ratios (0-1), or other scales,
-  // we cap the contribution at 10 points
-  const normalizedAvgScore = Math.min(avgScore, 10);
-
-  const total = coverages + benchmarks + totalResults + normalizedAvgScore;
+  const total = skill.reputation ?? 0;
 
   return {
     total: Math.round(total * 100) / 100,
     label: getReputationLabel(total),
-    breakdown: {
-      coverages,
-      benchmarks,
-      totalResults,
-      avgScore: Math.round(normalizedAvgScore * 100) / 100
-    }
+    breakdown: { sacrifice: Math.round(total * 100) / 100 }
   };
 }
 
@@ -65,21 +42,12 @@ export function calculateSkillReputation(skill: Skill): ReputationScore {
  * Formula: numberOfResults + avgScore (normalized)
  */
 export function calculateBenchmarkReputation(benchmark: Benchmark): ReputationScore {
-  const resultCount = benchmark.results.length;
-  let avgScore = 0;
-  if (resultCount > 0) {
-    avgScore = benchmark.results.reduce((sum, r) => sum + r.score, 0) / resultCount;
-  }
-  const normalizedAvgScore = Math.min(avgScore, 10);
-  const total = resultCount + normalizedAvgScore;
+  const total = benchmark.reputation ?? 0;
 
   return {
     total: Math.round(total * 100) / 100,
     label: getReputationLabel(total),
-    breakdown: {
-      resultCount,
-      avgScore: Math.round(normalizedAvgScore * 100) / 100
-    }
+    breakdown: { sacrifice: Math.round(total * 100) / 100 }
   };
 }
 
@@ -89,24 +57,24 @@ export function calculateBenchmarkReputation(benchmark: Benchmark): ReputationSc
  */
 export function calculateCoverageReputation(
   coverage: Coverage,
-  allSkills: Skill[]
+  _allSkills: Skill[]
 ): ReputationScore {
-  let resultCount = 0;
-
-  for (const skill of allSkills) {
-    for (const bench of skill.benchmarks) {
-      for (const result of bench.results) {
-        if (result.serviceId === coverage.serviceId) {
-          resultCount++;
-        }
-      }
-    }
-  }
+  const total = coverage.reputation ?? 0;
 
   return {
-    total: resultCount,
-    label: getReputationLabel(resultCount),
-    breakdown: { resultCount }
+    total,
+    label: getReputationLabel(total),
+    breakdown: { sacrifice: Math.round(total * 100) / 100 }
+  };
+}
+
+export function calculateResultReputation(result: Result): ReputationScore {
+  const total = result.reputation ?? 0;
+
+  return {
+    total,
+    label: getReputationLabel(total),
+    breakdown: { sacrifice: Math.round(total * 100) / 100 }
   };
 }
 

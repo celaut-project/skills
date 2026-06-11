@@ -49,6 +49,12 @@ class MockDatabase implements DataProvider {
     return this.skills.find((skill) => skill.boxId === boxId);
   }
 
+
+  private getProfileId(mainBox: unknown): string {
+    const profileId = (mainBox as { token_id?: string } | undefined)?.token_id;
+    return profileId || this.createId('profile');
+  }
+
   private findBenchmark(benchmarkId: string): { skill: Skill; benchmark: Benchmark } | undefined {
     for (const skill of this.skills) {
       const benchmark = skill.benchmarks.find((item) => item.id === benchmarkId);
@@ -89,8 +95,10 @@ class MockDatabase implements DataProvider {
 
   async createSkill(input: SkillCreationInput): Promise<string> {
     const boxId = this.createId('skill');
+    const profileId = this.getProfileId(input.mainBox);
     const skill: Skill = {
       boxId,
+      profileId,
       name: input.name,
       prose: input.prose,
       tags: [...input.tags],
@@ -99,6 +107,7 @@ class MockDatabase implements DataProvider {
       coverages: [],
       benchmarks: [],
       resultCount: 0,
+      reputation: 0,
       sourceHash: input.sourceHash
     };
 
@@ -112,10 +121,13 @@ class MockDatabase implements DataProvider {
       throw new Error(`Skill ${input.skillBoxId} not found.`);
     }
 
+    const profileId = this.getProfileId(input.mainBox);
     skill.coverages.push({
       boxId: this.createId('cov'),
+      profileId,
       serviceId: input.serviceId,
-      label: input.label
+      label: input.label,
+      reputation: 0
     });
 
     return this.createTxId('coverage');
@@ -127,14 +139,17 @@ class MockDatabase implements DataProvider {
       throw new Error(`Skill ${input.skillBoxId} not found.`);
     }
 
+    const profileId = this.getProfileId(input.mainBox);
     skill.benchmarks.push({
       id: this.createId('bench'),
+      profileId,
       skillBoxId: input.skillBoxId,
       name: input.name,
       description: input.description,
       metric: input.metric,
       higherIsBetter: input.higherIsBetter,
       results: [],
+      reputation: 0,
       sourceHash: input.sourceHash
     });
 
@@ -148,14 +163,17 @@ class MockDatabase implements DataProvider {
       throw new Error(`Benchmark ${input.benchmarkId} not found.`);
     }
 
+    const profileId = this.getProfileId(input.mainBox);
     match.benchmark.results.push({
       id: this.createId('res'),
+      profileId,
       benchmarkId: input.benchmarkId,
       serviceId: input.serviceId,
       score: input.score,
       notes: input.notes,
       timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
-      sourceHash: input.sourceHash
+      sourceHash: input.sourceHash,
+      reputation: 0
     });
 
     this.syncSkillCounters(match.skill);
