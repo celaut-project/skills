@@ -8,9 +8,9 @@
 	
 	let className: $$Props["class"] = undefined;
 	export let max: $$Props["max"] = 100;
-	export let value: $$Props["value"];
+	export let value: $$Props["value"] = undefined;
 	// Nuevo parámetro color para definir el color de la barra de progreso
-	export let color: string = "";
+	export let color: string | null = "";
 	export { className as class };
 	
 	// Calcula el porcentaje completado

@@ -1332,12 +1332,6 @@
     border-color: hsl(var(--border));
   }
 
-  .detail-item-icon {
-    @apply flex items-center justify-center w-7 h-7 rounded-md;
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
   .coverage-score {
     @apply inline-flex items-center gap-1 text-xs font-bold tabular-nums;
     color: hsl(45 80% 35%);

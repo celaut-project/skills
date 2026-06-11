@@ -1,12 +1,14 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, type UserConfig } from 'vite';
 import path from "path";
 
-export default defineConfig({
+type UserConfigWithTest = UserConfig & { test?: Record<string, unknown> };
+
+export default defineConfig(<UserConfigWithTest>{
 	plugins: [sveltekit()],
 	test: {
-		globals: true, 
-		environment: 'node', 
+		globals: true,
+		environment: 'node',
 	},
   	resolve: {
     		alias: {

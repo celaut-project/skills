@@ -7,7 +7,7 @@
 
 <header class="navbar-container">
   <div class="navbar-content">
-    <a href="#" class="logo-container">
+    <a href="/" class="logo-container">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="mr-2 text-primary" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>

@@ -6,7 +6,6 @@ import {
     SAFE_MIN_BOX_VALUE,
     RECOMMENDED_MIN_FEE_VALUE,
     TransactionBuilder,
-    type InputBox,
 } from '@fleet-sdk/core';
 
 // Ensure the global 'ergo' variable (from the wallet connector) is available.
@@ -36,7 +35,7 @@ export async function submit(
         const creationHeight = await ergo.get_current_height();
         console.log(`Current blockchain height: ${creationHeight}`);
 
-        const inputs: InputBox[] = await ergo.get_utxos();
+        const inputs: any[] = await ergo.get_utxos();
         if (!inputs || inputs.length === 0) {
             throw new Error('No UTXOs found in the wallet for the transaction.');
         }

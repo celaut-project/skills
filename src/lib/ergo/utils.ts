@@ -1,12 +1,7 @@
 import { stringToBytes } from "@scure/base";
 import {
     ErgoAddress, SByte, SColl, SConstant, SGroupElement,
-    type Box,
-    type InputBox,
-    type Amount,
-    type TokenEIP4 // <-- Importar TokenEIP4
 } from '@fleet-sdk/core';
-import type { GameContent } from "../common/game"; // <-- Importar GameContent
 
 export function hexToUtf8(hexString: string): string | null {
     try {
@@ -140,69 +135,6 @@ export function bigintToLongByteArray(value: bigint): Uint8Array {
     view.setBigInt64(0, value, false);
 
     return new Uint8Array(buffer);
-}
-
-export function parseBox(e: Box<Amount>): InputBox {
-    return {
-        boxId: e.boxId,
-        value: e.value,
-        assets: e.assets,
-        ergoTree: e.ergoTree,
-        creationHeight: e.creationHeight,
-        additionalRegisters: Object.entries(e.additionalRegisters).reduce((acc, [key, value]) => {
-            acc[key] = value.serializedValue;
-            return acc;
-        }, {} as { [key: string]: string; }),
-        index: e.index,
-        transactionId: e.transactionId
-    };
-}
-
-/**
- * Parsea los detalles del contenido de un juego a partir de un string JSON.
- * @param rawJsonDetails String JSON con los detalles del juego (de R9).
- * @param gameBoxId El ID de la caja, usado como identificador de respaldo.
- * @param nft Datos opcionales del token EIP-4 del NFT del juego.
- * @returns El objeto GameContent parseado.
- */
-export function parseGameContent(
-    rawJsonDetails: string | undefined | null,
-    gameBoxId: string, 
-    nft?: TokenEIP4
-): GameContent {
-    const defaultImageUrl = [
-        "https://images5.alphacoders.com/136/thumb-1920-1364878.png",
-        "https://backiee.com/static/wallpapers/560x315/302851.jpg",
-        "https://wallpaperaccess.com/full/5027932.png",
-        "https://wallpaperaccess.com/full/6273500.jpg"
-    ][rawJsonDetails?.length % 4];
-    const defaultTitle = nft?.name || `Game ${gameBoxId.slice(0, 8)}`;
-    const defaultDescription = nft?.description || "No description provided.";
-    let content: GameContent = {
-        rawJsonString: rawJsonDetails || "{}",
-        title: defaultTitle,
-        description: defaultDescription,
-        serviceId: ""
-    };
-
-    if (rawJsonDetails) {
-        try {
-            const parsed = JSON.parse(rawJsonDetails);
-            content = {
-                ...content,
-                title: parsed.title || defaultTitle,
-                description: parsed.description || defaultDescription,
-                serviceId: parsed.serviceId || "",
-                imageURL: parsed.imageURL || parsed.image || defaultImageUrl,
-                webLink: parsed.webLink || parsed.link || undefined,
-                mirrorUrls: parsed.mirrorUrls || undefined,
-            };
-        } catch (error) {
-            console.warn(`Error al parsear rawJsonDetails para el juego ${gameBoxId}. Usando valores por defecto. Error: ${error}`);
-        }
-    }
-    
-    return content;
 }
 
 export function pkHexToBase58Address(pkHex?: string): string {

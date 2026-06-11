@@ -35,7 +35,7 @@
       case 'services':
         return sorted.sort((a, b) => b.coverages.length - a.coverages.length);
       case 'benchmarks':
-        return sorted.sort((a, b) => b.benchmarkCount - a.benchmarkCount);
+        return sorted.sort((a, b) => b.benchmarks.length - a.benchmarks.length);
       case 'newest':
         // demo data doesn't have timestamps, reverse order as proxy
         return sorted.reverse();
@@ -46,7 +46,7 @@
 
   // Compute stats from all skills
   $: totalServices = $skills.reduce((sum, s) => sum + s.coverages.length, 0);
-  $: totalBenchmarks = $skills.reduce((sum, s) => sum + s.benchmarkCount, 0);
+  $: totalResults = $skills.reduce((sum, s) => sum + s.resultCount, 0);
 
   // Pipeline: search filter → category filter → sort
   $: displayedSkills = sortSkills(filterByCategory($filteredSkills, activeCategory), currentSort);
@@ -70,7 +70,7 @@
   <HowItWorks />
 
   <!-- Stats Bar -->
-  <StatsBar totalSkills={$skills.length} {totalServices} {totalBenchmarks} />
+  <StatsBar totalSkills={$skills.length} {totalServices} {totalResults} />
 
   <!-- Category Filter -->
   <CategoryFilter {activeCategory} on:filter={handleFilter} />

@@ -40,7 +40,7 @@
   </div>
 
   <!-- Skill Metadata -->
-  <SkillMetadata skillBoxId={skill.boxId} />
+  <SkillMetadata boxId={skill.boxId} sourceHash={skill.sourceHash ?? ''} />
 
   <!-- Claim Coverage -->
   <ClaimCoverageButton />
@@ -56,24 +56,24 @@
       {#each skill.coverages as cov}
         <div class="card mb-2 flex items-center justify-between">
           <span class="font-medium">{cov.label}</span>
-          <span class="text-xs text-muted-foreground font-mono">{cov.serviceId.slice(0,12)}…</span>
+          <span class="text-xs text-muted-foreground font-mono">{(cov.serviceId ?? '').slice(0,12)}…</span>
         </div>
       {/each}
     {/if}
   </section>
 
   <!-- Leaderboard -->
-  <SkillLeaderboard skillBoxId={skill.boxId} benchmarkCount={skill.benchmarkCount} />
+  <SkillLeaderboard benchmarks={skill.benchmarks} />
 
   <!-- Benchmarks count -->
   <section class="mb-6">
     <h2 class="text-lg font-semibold mb-3">Benchmarks
-      <span class="text-sm font-normal text-muted-foreground">({skill.benchmarkCount})</span>
+      <span class="text-sm font-normal text-muted-foreground">({skill.benchmarks.length})</span>
     </h2>
-    {#if skill.benchmarkCount === 0}
+    {#if skill.benchmarks.length === 0}
       <p class="text-muted-foreground text-sm">No benchmarks submitted yet.</p>
     {:else}
-      <p class="text-sm text-muted-foreground">{skill.benchmarkCount} comparative benchmark(s) on-chain.</p>
+      <p class="text-sm text-muted-foreground">{skill.benchmarks.length} comparative benchmark(s) on-chain.</p>
     {/if}
   </section>
 
