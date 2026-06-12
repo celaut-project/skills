@@ -528,10 +528,11 @@
 
   onMount(() => {
     if (browser) {
-      // Honor `?env=demo` / `?env=live` to toggle demo mode (persists to localStorage).
+      // Demo mode is URL-only and session-scoped: `?env=demo` flips it on for
+      // this page load. No persistence — reloading without the param goes
+      // back to live data (default false in config.ts).
       const env = new URL(window.location.href).searchParams.get("env");
       if (env === "demo") demoMode.set(true);
-      else if (env === "live") demoMode.set(false);
       loadSkills();
     }
   });
