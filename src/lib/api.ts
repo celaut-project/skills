@@ -129,33 +129,33 @@ export function parseSkillBox(box: any): Skill | null {
 
 // ── Chain Queries ────────────────────────────────────────────────────────────
 
-/** Load skills from the Ergo blockchain via Explorer API. Falls back to demo data on error. */
+/**
+ * Load skills from the Ergo blockchain via Explorer API.
+ * Throws on network/HTTP error so callers can show an error state instead of
+ * silently contaminating live mode with mock data. Returning an empty array
+ * here is a legitimate result — it means the chain has no skills yet.
+ */
 export async function loadSkills(): Promise<Skill[]> {
-  try {
-    const response = await fetch(
-      `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ergoTreeTemplateHash: "",
-          registers: {
-            R4: { serializedValue: toHex(SKILL_TYPE_ID) }
-          }
-        })
-      }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      const skills = (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
-      return skills;
-    } else {
-      return getDemoSkills();
+  const response = await fetch(
+    `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ergoTreeTemplateHash: "",
+        registers: {
+          R4: { serializedValue: toHex(SKILL_TYPE_ID) }
+        }
+      })
     }
-  } catch (e: any) {
-    return getDemoSkills();
+  );
+
+  if (!response.ok) {
+    throw new NetworkError(`Explorer returned ${response.status} while loading skills.`);
   }
+
+  const data = await response.json();
+  return (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
 }
 
 /**
