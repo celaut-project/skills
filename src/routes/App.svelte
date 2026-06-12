@@ -34,6 +34,7 @@
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
   import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
+  import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import { toasts } from "$lib/components/celaut/toastStore";
 
@@ -715,6 +716,10 @@
                 {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
               </div>
             </section>
+          {:else if !$demoMode && $walletConnected && $reputation_proof}
+            <section class="detail-section">
+              <ProfileDetailsCard proof={$reputation_proof} />
+            </section>
           {/if}
 
           <!-- Action buttons: Claim Coverage + Create Benchmark -->
@@ -1116,6 +1121,9 @@
             {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
           </div>
         {:else}
+          {#if $reputation_proof}
+            <ProfileDetailsCard proof={$reputation_proof} />
+          {/if}
           <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
             <div class="form-group">
               <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>

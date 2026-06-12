@@ -5,7 +5,13 @@
 
 import type { Skill, Coverage, Benchmark, Result } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
-import { searchBoxes } from 'reputation-system';
+import {
+  searchBoxes,
+  fetchAllProfiles,
+  fetchTypeNfts,
+  calculate_reputation,
+  type ReputationProof,
+} from 'reputation-system';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -85,8 +91,54 @@ function deriveProfileId(box: any, parsed: any, fallback: string): string {
   return parsed?.profile_id || box?.assets?.[0]?.tokenId || fallback;
 }
 
-function deriveReputation(parsed: any): number {
-  return typeof parsed?.reputation === 'number' ? parsed.reputation : 0;
+// ── Reputation Hydration ─────────────────────────────────────────────────────
+//
+// Reputation is *not* stored in R9 (the old `deriveReputation` was wrong).
+// It is computed from the profile's reputation proof via `calculate_reputation`
+// from `reputation-system` — i.e. the burned value sacrificed against the
+// profile_id (token_id of the reputation proof). We fetch every profile once
+// (bulk via `fetchAllProfiles`) and cache the resulting Map<token_id, proof>
+// for fast lookup during hydration. The library doesn't re-export
+// `fetchProfileById` from its package entry, so a bulk-then-cache approach
+// is what's available to us.
+
+let profileMapPromise: Promise<Map<string, ReputationProof>> | null = null;
+
+async function loadProfileMap(): Promise<Map<string, ReputationProof>> {
+  if (!profileMapPromise) {
+    profileMapPromise = (async () => {
+      try {
+        const availableTypes = await fetchTypeNfts(EXPLORER_API);
+        const profiles = await fetchAllProfiles(EXPLORER_API, null, undefined, availableTypes);
+        return new Map(profiles.map((p) => [p.token_id, p]));
+      } catch {
+        return new Map();
+      }
+    })();
+  }
+  return profileMapPromise;
+}
+
+/**
+ * Hydrate `.reputation` on a list of entities that have a `profileId`.
+ * Mutates entities in-place and returns the same array. Safe to call with
+ * an empty array.
+ */
+export async function hydrateReputations<T extends { profileId: string; reputation: number }>(
+  entities: T[],
+): Promise<T[]> {
+  if (entities.length === 0) return entities;
+  const profileMap = await loadProfileMap();
+  for (const e of entities) {
+    const proof = profileMap.get(e.profileId);
+    e.reputation = proof ? calculate_reputation(proof) : 0;
+  }
+  return entities;
+}
+
+/** Clear the cached profile map. Useful for forcing fresh reputation lookups. */
+export function clearProfileCache(): void {
+  profileMapPromise = null;
 }
 
 function demoProfileId(seed: string): string {
@@ -158,7 +210,7 @@ export function parseSkillBox(box: any): Skill | null {
       coverages: [],
       benchmarks: [],
       resultCount: 0,
-      reputation: deriveReputation(parsed)
+      reputation: 0
     };
   } catch {
     return null;
@@ -179,14 +231,16 @@ export function parseSkillBox(box: any): Skill | null {
 export async function loadSkills(): Promise<Skill[]> {
   if (!isHexId(SKILL_TYPE_ID)) return [];
   const boxes = await collectBoxes(SKILL_TYPE_ID, undefined);
-  return boxes.map(parseSkillBox).filter(Boolean) as Skill[];
+  const skills = boxes.map(parseSkillBox).filter(Boolean) as Skill[];
+  await hydrateReputations(skills);
+  return skills;
 }
 
 /** Load coverages for a given skill box ID. */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(COVERAGE_TYPE_ID, skillBoxId);
-  return boxes
+  const coverages = boxes
     .map((box: any) => {
       try {
         const r9 = box.additionalRegisters?.R9?.renderedValue || '';
@@ -197,20 +251,22 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
           profileId,
           serviceId: parsed.service_id || undefined,
           label: parsed.label || 'Unknown Service',
-          reputation: deriveReputation(parsed)
+          reputation: 0
         } as Coverage;
       } catch {
         return null;
       }
     })
     .filter(Boolean) as Coverage[];
+  await hydrateReputations(coverages);
+  return coverages;
 }
 
 /** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(BENCHMARK_TYPE_ID, skillBoxId);
-  return boxes
+  const benchmarks = boxes
     .map((box: any) => {
       try {
         const r9 = box.additionalRegisters?.R9?.renderedValue || '';
@@ -226,20 +282,22 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
           higherIsBetter: parsed.higher_is_better ?? true,
           results: [],
           sourceHash: parsed.source_hash,
-          reputation: deriveReputation(parsed)
+          reputation: 0
         } as Benchmark;
       } catch {
         return null;
       }
     })
     .filter(Boolean) as Benchmark[];
+  await hydrateReputations(benchmarks);
+  return benchmarks;
 }
 
 /** Load results for a given benchmark ID. */
 export async function loadResults(benchmarkId: string): Promise<Result[]> {
   if (!isHexId(RESULT_TYPE_ID) || !isHexId(benchmarkId)) return [];
   const boxes = await collectBoxes(RESULT_TYPE_ID, benchmarkId);
-  return boxes
+  const results = boxes
     .map((box: any) => {
       try {
         const r9 = box.additionalRegisters?.R9?.renderedValue || '';
@@ -254,13 +312,15 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
           notes: parsed.notes || '',
           timestamp: parsed.timestamp || 0,
           sourceHash: parsed.source_hash,
-          reputation: deriveReputation(parsed)
+          reputation: 0
         } as Result;
       } catch {
         return null;
       }
     })
     .filter(Boolean) as Result[];
+  await hydrateReputations(results);
+  return results;
 }
 
 // ── Demo Data ────────────────────────────────────────────────────────────────
