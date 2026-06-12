@@ -527,12 +527,25 @@
   }
 
   onMount(() => {
-    if (browser) loadSkills();
+    if (browser) {
+      // Honor `?env=demo` / `?env=live` to toggle demo mode (persists to localStorage).
+      const env = new URL(window.location.href).searchParams.get("env");
+      if (env === "demo") demoMode.set(true);
+      else if (env === "live") demoMode.set(false);
+      loadSkills();
+    }
   });
 </script>
 
+<!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
+{#if $demoMode}
+  <div class="demo-bar">
+    DEMO MODE — using mock data, no on-chain calls
+  </div>
+{/if}
+
 <!-- ── Header ─────────────────────────────────────────────────────────────── -->
-<header class="navbar-container">
+<header class="navbar-container" class:navbar-with-demo-bar={$demoMode}>
   <div class="navbar-content">
     <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; }}>
       <div class="logo-icon">
@@ -558,27 +571,6 @@
     </div>
 
     <div class="flex items-center gap-3">
-      <button
-        class="demo-toggle"
-        class:demo-toggle-on={$demoMode}
-        on:click={() => demoMode.update(v => !v)}
-        title={$demoMode ? 'Demo Mode ON — using mock data' : 'Live Mode — using Ergo blockchain'}
-      >
-        {#if $demoMode}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
-          </svg>
-          Demo
-        {:else}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-          </svg>
-          Live
-        {/if}
-      </button>
       <WalletButton explorerUrl={$web_explorer_uri_addr} />
       <Theme />
     </div>
@@ -1252,27 +1244,15 @@
     font-family: var(--font-heading);
   }
 
-  /* ── Demo toggle ──────────────────────────────────────────────────── */
-  .demo-toggle {
-    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
-    background: hsl(var(--muted) / 0.5);
-    border: 1px solid hsl(var(--border));
-    color: hsl(var(--muted-foreground));
+  /* ── Demo mode topbar ─────────────────────────────────────────────── */
+  .demo-bar {
+    @apply fixed top-0 left-0 right-0 z-50 text-center text-xs font-bold py-1 px-4 shadow-sm;
+    background: hsl(45 95% 55% / 0.95);
+    color: hsl(0 0% 10%);
+    backdrop-filter: blur(4px);
   }
-  .demo-toggle:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-  .demo-toggle-on {
-    background: hsl(142 50% 42% / 0.12);
-    border-color: hsl(142 50% 42% / 0.3);
-    color: hsl(142 50% 35%);
-  }
-  :global(.dark) .demo-toggle-on {
-    color: hsl(142 50% 65%);
-  }
-  .demo-toggle-on:hover {
-    background: hsl(142 50% 42% / 0.2);
+  .navbar-with-demo-bar {
+    margin-top: 1.5rem;
   }
 
   .search-input {
