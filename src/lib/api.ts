@@ -5,14 +5,20 @@
 
 import type { Skill, Coverage, Benchmark, Result } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
+import { searchBoxes } from 'reputation-system';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 export const EXPLORER_API = 'https://api.ergoplatform.com';
 
 /**
- * Type NFT IDs (Josemi will confirm these; using known pattern).
- * These are placeholder IDs — the actual Type NFT boxes need to be created on-chain first.
+ * Type NFT IDs.
+ *
+ * These are *placeholder* identifiers — real on-chain Type NFTs have not been
+ * minted yet, so the chain query functions below short-circuit to `[]` until
+ * each constant is replaced with a real 64-char hex token ID. This avoids the
+ * 400 Bad Request that the previous hand-rolled box-search payload was
+ * producing against the Ergo Explorer API.
  */
 export const SKILL_TYPE_ID = 'celaut:skill:v1';
 export const BENCHMARK_TYPE_ID = 'celaut:benchmark-schema:v1'; // Defines HOW to measure (was: benchmark schema)
@@ -26,6 +32,38 @@ export function toHex(str: string): string {
   return Array.from(new TextEncoder().encode(str))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/**
+ * True if a value looks like a real on-chain hex identifier (token id, box id,
+ * type NFT id). Used to gate chain queries so placeholder strings like
+ * "celaut:skill:v1" don't generate malformed Explorer requests.
+ */
+function isHexId(value: string): boolean {
+  return /^[0-9a-fA-F]{4,}$/.test(value);
+}
+
+/** Drain the searchBoxes async-generator into a flat array of raw boxes. */
+async function collectBoxes(
+  typeNftId: string | undefined,
+  objectPointer: string | undefined,
+  limit = 100
+): Promise<any[]> {
+  const all: any[] = [];
+  for await (const batch of searchBoxes(
+    EXPLORER_API,
+    undefined,
+    typeNftId,
+    objectPointer,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    limit
+  )) {
+    all.push(...batch);
+  }
+  return all;
 }
 
 /** Format a service ID for display — show truncated hash in monospace style. */
@@ -130,176 +168,99 @@ export function parseSkillBox(box: any): Skill | null {
 // ── Chain Queries ────────────────────────────────────────────────────────────
 
 /**
- * Load skills from the Ergo blockchain via Explorer API.
- * Throws on network/HTTP error so callers can show an error state instead of
- * silently contaminating live mode with mock data. Returning an empty array
- * here is a legitimate result — it means the chain has no skills yet.
+ * Load skills from the Ergo blockchain.
+ *
+ * Delegates to `searchBoxes` from reputation-system (which hits the correct
+ * `/api/v1/boxes/unspent/search` endpoint with properly Sigma-serialized
+ * registers — the old hand-rolled payload here was returning HTTP 400). If
+ * `SKILL_TYPE_ID` is still a placeholder string (not real hex), we skip the
+ * query and return [] so live mode shows the empty state instead of erroring.
  */
 export async function loadSkills(): Promise<Skill[]> {
-  const response = await fetch(
-    `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ergoTreeTemplateHash: "",
-        registers: {
-          R4: { serializedValue: toHex(SKILL_TYPE_ID) }
-        }
-      })
-    }
-  );
-
-  if (!response.ok) {
-    throw new NetworkError(`Explorer returned ${response.status} while loading skills.`);
-  }
-
-  const data = await response.json();
-  return (data.items || []).map(parseSkillBox).filter(Boolean) as Skill[];
+  if (!isHexId(SKILL_TYPE_ID)) return [];
+  const boxes = await collectBoxes(SKILL_TYPE_ID, undefined);
+  return boxes.map(parseSkillBox).filter(Boolean) as Skill[];
 }
 
-/**
- * Load coverages for a given skill box ID.
- */
+/** Load coverages for a given skill box ID. */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
-  try {
-    const response = await fetch(
-      `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ergoTreeTemplateHash: "",
-          registers: {
-            R4: { serializedValue: toHex(COVERAGE_TYPE_ID) },
-            R5: { serializedValue: toHex(skillBoxId) }
-          }
-        })
+  if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
+  const boxes = await collectBoxes(COVERAGE_TYPE_ID, skillBoxId);
+  return boxes
+    .map((box: any) => {
+      try {
+        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+        const parsed = JSON.parse(r9);
+        const profileId = deriveProfileId(box, parsed, box.boxId);
+        return {
+          boxId: box.boxId,
+          profileId,
+          serviceId: parsed.service_id || undefined,
+          label: parsed.label || 'Unknown Service',
+          reputation: deriveReputation(parsed)
+        } as Coverage;
+      } catch {
+        return null;
       }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      return (data.items || []).map((box: any) => {
-        try {
-          const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-          const parsed = JSON.parse(r9);
-          const profileId = deriveProfileId(box, parsed, box.boxId);
-          return {
-            boxId: box.boxId,
-            profileId,
-            serviceId: parsed.service_id || undefined,
-            label: parsed.label || 'Unknown Service',
-            reputation: deriveReputation(parsed)
-          } as Coverage;
-        } catch {
-          return null;
-        }
-      }).filter(Boolean) as Coverage[];
-    }
-    return [];
-  } catch {
-    return [];
-  }
+    })
+    .filter(Boolean) as Coverage[];
 }
 
-/**
- * Load benchmarks for a given skill box ID.
- */
+/** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
-  try {
-    const response = await fetch(
-      `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ergoTreeTemplateHash: "",
-          registers: {
-            R4: { serializedValue: toHex(BENCHMARK_TYPE_ID) },
-            R5: { serializedValue: toHex(skillBoxId) }
-          }
-        })
+  if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
+  const boxes = await collectBoxes(BENCHMARK_TYPE_ID, skillBoxId);
+  return boxes
+    .map((box: any) => {
+      try {
+        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+        const parsed = JSON.parse(r9);
+        const profileId = deriveProfileId(box, parsed, box.boxId);
+        return {
+          id: box.boxId,
+          profileId,
+          skillBoxId,
+          name: parsed.name || 'Unnamed Benchmark',
+          description: parsed.description || '',
+          metric: parsed.metric || '',
+          higherIsBetter: parsed.higher_is_better ?? true,
+          results: [],
+          sourceHash: parsed.source_hash,
+          reputation: deriveReputation(parsed)
+        } as Benchmark;
+      } catch {
+        return null;
       }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      return (data.items || []).map((box: any) => {
-        try {
-          const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-          const parsed = JSON.parse(r9);
-          const profileId = deriveProfileId(box, parsed, box.boxId);
-          return {
-            id: box.boxId,
-            profileId,
-            skillBoxId,
-            name: parsed.name || 'Unnamed Benchmark',
-            description: parsed.description || '',
-            metric: parsed.metric || '',
-            higherIsBetter: parsed.higher_is_better ?? true,
-            results: [],
-            sourceHash: parsed.source_hash,
-            reputation: deriveReputation(parsed)
-          } as Benchmark;
-        } catch {
-          return null;
-        }
-      }).filter(Boolean) as Benchmark[];
-    }
-    return [];
-  } catch {
-    return [];
-  }
+    })
+    .filter(Boolean) as Benchmark[];
 }
 
-/**
- * Load results for a given benchmark ID.
- */
+/** Load results for a given benchmark ID. */
 export async function loadResults(benchmarkId: string): Promise<Result[]> {
-  try {
-    const response = await fetch(
-      `${EXPLORER_API}/api/v1/boxes/search?limit=50&offset=0`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ergoTreeTemplateHash: "",
-          registers: {
-            R4: { serializedValue: toHex(RESULT_TYPE_ID) },
-            R5: { serializedValue: toHex(benchmarkId) }
-          }
-        })
+  if (!isHexId(RESULT_TYPE_ID) || !isHexId(benchmarkId)) return [];
+  const boxes = await collectBoxes(RESULT_TYPE_ID, benchmarkId);
+  return boxes
+    .map((box: any) => {
+      try {
+        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+        const parsed = JSON.parse(r9);
+        const profileId = deriveProfileId(box, parsed, box.boxId);
+        return {
+          id: box.boxId,
+          profileId,
+          benchmarkId: benchmarkId,
+          serviceId: parsed.service_id || '',
+          score: parsed.score || 0,
+          notes: parsed.notes || '',
+          timestamp: parsed.timestamp || 0,
+          sourceHash: parsed.source_hash,
+          reputation: deriveReputation(parsed)
+        } as Result;
+      } catch {
+        return null;
       }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      return (data.items || []).map((box: any) => {
-        try {
-          const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-          const parsed = JSON.parse(r9);
-          const profileId = deriveProfileId(box, parsed, box.boxId);
-          return {
-            id: box.boxId,
-            profileId,
-            benchmarkId: benchmarkId,
-            serviceId: parsed.service_id || '',
-            score: parsed.score || 0,
-            notes: parsed.notes || '',
-            timestamp: parsed.timestamp || 0,
-            sourceHash: parsed.source_hash,
-            reputation: deriveReputation(parsed)
-          } as Result;
-        } catch {
-          return null;
-        }
-      }).filter(Boolean) as Result[];
-    }
-    return [];
-  } catch {
-    return [];
-  }
+    })
+    .filter(Boolean) as Result[];
 }
 
 // ── Demo Data ────────────────────────────────────────────────────────────────

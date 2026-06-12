@@ -531,11 +531,11 @@
 
   onMount(() => {
     if (browser) {
-      // Demo mode is URL-only and session-scoped: `?env=demo` flips it on for
-      // this page load. No persistence — reloading without the param goes
-      // back to live data (default false in config.ts).
+      // Demo mode is URL-only and session-scoped: `?env=demo` (or `?env=dev`)
+      // flips it on for this page load. No persistence — reloading without
+      // the param goes back to live data (default false in config.ts).
       const env = new URL(window.location.href).searchParams.get("env");
-      if (env === "demo") demoMode.set(true);
+      if (env === "demo" || env === "dev") demoMode.set(true);
       loadSkills();
     }
   });
@@ -1191,6 +1191,12 @@
       </div>
     </div>
   {/if}
+
+  {#if !$demoMode && $walletConnected && profileLoading}
+    <div class="container mx-auto px-8 pb-4">
+      <p class="text-sm text-muted-foreground">Loading reputation profile...</p>
+    </div>
+  {/if}
 </main>
 
 <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
@@ -1217,12 +1223,6 @@
         hash={writable(modalFileHash)}
       />
     </div>
-  </div>
-{/if}
-
-{#if !$demoMode && $walletConnected && profileLoading}
-  <div class="container mx-auto px-8 pb-4">
-    <p class="text-sm text-muted-foreground">Loading reputation profile...</p>
   </div>
 {/if}
 
