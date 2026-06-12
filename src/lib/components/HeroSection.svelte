@@ -20,7 +20,7 @@
       <span>Powered by Ergo Blockchain</span>
     </div>
 
-    <h1 class="hero-title">Celaut Skills</h1>
+    <h1 class="hero-title">Unstoppable Skills</h1>
 
     <p class="hero-description">
       A decentralized registry for AI agent capabilities

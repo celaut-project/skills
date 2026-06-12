@@ -4,38 +4,17 @@
  */
 
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
-
-function createPersistentBooleanStore(key: string, defaultValue: boolean) {
-  let initial = defaultValue;
-
-  if (browser) {
-    const stored = localStorage.getItem(key);
-    if (stored !== null) {
-      initial = stored === 'true';
-    }
-  }
-
-  const store = writable<boolean>(initial);
-
-  if (browser) {
-    store.subscribe(value => {
-      localStorage.setItem(key, String(value));
-    });
-  }
-
-  return store;
-}
 
 /**
  * Demo mode toggle.
  * When true: all reads/writes go to the in-memory mock DB.
  * When false: use real Ergo Explorer API calls.
  *
- * Default: false (live users should not see demo skills).
- * Activation: append `?env=demo` to the URL — App.svelte reads this on mount
- * and flips the store on. The choice is persisted to localStorage so the
- * URL param only has to be set once per browser. Removing the param does
- * not auto-disable demo mode; set `?env=live` to turn it back off.
+ * Default: false. Activation is URL-only and session-scoped — append
+ * `?env=demo` to the URL and App.svelte will flip this on for the
+ * current page load. We deliberately do NOT persist this to localStorage:
+ * persistence would mean a one-time visit to `?env=demo` would silently
+ * keep mock data showing for that browser forever, which is exactly the
+ * "demo mode enters by default" bug we're fixing.
  */
-export const demoMode = createPersistentBooleanStore('celaut_demo_mode', false);
+export const demoMode = writable<boolean>(false);

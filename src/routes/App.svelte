@@ -38,7 +38,7 @@
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { getDemoSkills, formatServiceId, formatSourceHash } from "$lib/api";
+  import { formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
@@ -147,7 +147,10 @@
     try {
       skills = await loadSkillsFromData();
     } catch (e: any) {
-      skills = getDemoSkills();
+      // Live mode: surface the error instead of silently swapping in mock data.
+      // Demo mode: errors here would mean the mockDb itself failed — also worth surfacing.
+      skills = [];
+      error = e?.message || "Failed to load skills.";
     } finally {
       loading = false;
     }
@@ -528,10 +531,11 @@
 
   onMount(() => {
     if (browser) {
-      // Honor `?env=demo` / `?env=live` to toggle demo mode (persists to localStorage).
+      // Demo mode is URL-only and session-scoped: `?env=demo` flips it on for
+      // this page load. No persistence — reloading without the param goes
+      // back to live data (default false in config.ts).
       const env = new URL(window.location.href).searchParams.get("env");
       if (env === "demo") demoMode.set(true);
-      else if (env === "live") demoMode.set(false);
       loadSkills();
     }
   });
@@ -553,7 +557,7 @@
           <path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/>
         </svg>
       </div>
-      <span class="logo-text">Celaut Skills</span>
+      <span class="logo-text">Unstoppable Skills</span>
     </a>
 
     <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
@@ -1016,6 +1020,20 @@
             {#each [0, 1, 2, 3, 4, 5] as i}
               <SkeletonCard index={i} />
             {/each}
+          </div>
+        {:else if error}
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <p class="text-lg font-semibold">Couldn't load skills</p>
+            <p class="text-sm text-muted-foreground mt-1">{error}</p>
+            <button class="refresh-btn mt-3" on:click={loadSkills}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+              Retry
+            </button>
           </div>
         {:else if displayedSkills.length === 0}
           <div class="empty-state">
