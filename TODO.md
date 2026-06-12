@@ -15,3 +15,9 @@
 - Dentro de la pestaña de coveranges debemos poder visualizar el rendimiento de cada coverage (cada servicio) en cada benchmark para el cual tenga resultados. Tambien debemos agregar una tabla comparativa en otra pestaña que ponga en un eje los servicios(coverages), en otro los benchmarks, y en otro los resultados. Teniendo en cuenta que puede haber multiples resultados de un servicio para un mismo benchmark, cogeremos solo el que mejor reputación tenga.
 - La reputación de un objeto se mide en función del sacrificio de su profile_id (se podrá mejorar en el futuro, pero de momento lo mantenemos asi).
 - Create benchmark no debe estar en una pestaña propia, si no al lado de Claim Coverage (en otro boton).
+
+
+
+- Explorer returned 400 while loading skills.
+- Comentario de cargando profile se ve bajo el footer.
+- accessing with ?env=dev don't change to dev mode (and don't see anything in the code base)
