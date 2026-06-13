@@ -60,7 +60,7 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
-  let activeTab: "gallery" | "submit" = "gallery";
+  let activeTab: "gallery" | "submit" | "profile" = "gallery";
   let detailVisible = false;
 
   // Detail view sub-tab
@@ -605,6 +605,16 @@
       </svg>
       Submit Skill
     </button>
+    <button
+      class="tab-btn"
+      class:active={activeTab === "profile"}
+      on:click={() => activeTab = "profile"}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+      </svg>
+      Profile
+    </button>
   </div>
 </div>
 
@@ -697,28 +707,8 @@
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
               <div class="submit-connect-card">
-                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one before claiming coverage or publishing benchmarks.</p>
-                <div class="w-full grid gap-3" style="max-width: 28rem;">
-                  <div class="form-group">
-                    <label class="form-label" for="detail-profile-sacrifice">Optional ERG sacrifice</label>
-                    <input id="detail-profile-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
-                  </div>
-                  <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
-                    {#if createProfileSubmitting}
-                      <div class="submit-spinner"></div>
-                      Creating profile...
-                    {:else}
-                      Create Reputation Profile
-                    {/if}
-                  </button>
-                </div>
-                {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
-                {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button> before claiming coverage or publishing benchmarks.</p>
               </div>
-            </section>
-          {:else if !$demoMode && $walletConnected && $reputation_proof}
-            <section class="detail-section">
-              <ProfileDetailsCard proof={$reputation_proof} />
             </section>
           {/if}
 
@@ -1100,30 +1090,11 @@
             <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
             <WalletButton explorerUrl={$web_explorer_uri_addr} />
           </div>
-        {:else if !$reputation_proof}
+        {:else if !$demoMode && !$reputation_proof}
           <div class="submit-connect-card">
-            <p class="text-muted-foreground mb-4">This wallet is connected, but it still needs a reputation profile before it can publish on-chain.</p>
-            <div class="w-full grid gap-3" style="max-width: 28rem;">
-              <div class="form-group">
-                <label class="form-label" for="submit-profile-sacrifice">Optional ERG sacrifice</label>
-                <input id="submit-profile-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
-              </div>
-              <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
-                {#if createProfileSubmitting}
-                  <div class="submit-spinner"></div>
-                  Creating profile...
-                {:else}
-                  Create Reputation Profile
-                {/if}
-              </button>
-            </div>
-            {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
-            {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+            <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button>.</p>
           </div>
         {:else}
-          {#if $reputation_proof}
-            <ProfileDetailsCard proof={$reputation_proof} />
-          {/if}
           <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
             <div class="form-group">
               <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
@@ -1198,9 +1169,71 @@
         {/if}
       </div>
     </div>
+
+  {:else if activeTab === "profile"}
+    <!-- ── Profile ──────────────────────────────────────────────────────── -->
+    <div class="container mx-auto px-8 py-8">
+      <div class="mx-auto" style="max-width: 720px;">
+        <div class="submit-header">
+          <div class="submit-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
+          <p class="text-muted-foreground text-sm">
+            Your on-chain reputation profile. Required before publishing skills, claiming coverage, or submitting benchmarks.
+          </p>
+        </div>
+
+        {#if $demoMode}
+          <div class="submit-connect-card">
+            <p class="text-muted-foreground">Profile management is only available in live mode. Switch off demo mode to connect a wallet and create a reputation profile.</p>
+          </div>
+        {:else if !$walletConnected}
+          <div class="submit-connect-card">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
+            </svg>
+            <p class="text-muted-foreground mb-4">Connect your wallet to view or create a reputation profile.</p>
+            <WalletButton explorerUrl={$web_explorer_uri_addr} />
+          </div>
+        {:else if profileLoading}
+          <div class="submit-connect-card">
+            <p class="text-muted-foreground">Loading reputation profile…</p>
+          </div>
+        {:else if !$reputation_proof}
+          <div class="submit-connect-card">
+            <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one to start publishing on-chain (optionally sacrifice ERG to seed reputation).</p>
+            <div class="w-full grid gap-3" style="max-width: 28rem;">
+              <div class="form-group">
+                <label class="form-label" for="profile-tab-sacrifice">Optional ERG sacrifice</label>
+                <input id="profile-tab-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+              </div>
+              <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
+                {#if createProfileSubmitting}
+                  <div class="submit-spinner"></div>
+                  Creating profile...
+                {:else}
+                  Create Reputation Profile
+                {/if}
+              </button>
+            </div>
+            {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
+            {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+          </div>
+        {:else}
+          <ProfileDetailsCard proof={$reputation_proof} />
+          {#if userProfiles.length > 1}
+            <p class="text-xs text-muted-foreground mb-2">This wallet holds {userProfiles.length} profiles; showing the primary one.</p>
+          {/if}
+        {/if}
+      </div>
+    </div>
+
   {/if}
 
-  {#if !$demoMode && $walletConnected && profileLoading}
+  {#if !$demoMode && $walletConnected && profileLoading && activeTab !== "profile"}
     <div class="container mx-auto px-8 pb-4">
       <p class="text-sm text-muted-foreground">Loading reputation profile...</p>
     </div>
@@ -1656,6 +1689,18 @@
   }
   .submit-btn:disabled {
     @apply opacity-50 cursor-not-allowed;
+  }
+
+  .link-btn {
+    @apply inline underline font-semibold;
+    color: hsl(142 50% 42%);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .link-btn:hover {
+    color: hsl(142 50% 32%);
   }
 
   .submit-spinner {
