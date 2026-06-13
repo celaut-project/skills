@@ -93,8 +93,7 @@ function deriveProfileId(box: any, parsed: any, fallback: string): string {
 
 // ── Reputation Hydration ─────────────────────────────────────────────────────
 //
-// Reputation is *not* stored in R9 (the old `deriveReputation` was wrong).
-// It is computed from the profile's reputation proof via `calculate_reputation`
+// Reputation is computed from the profile's reputation proof via `calculate_reputation`
 // from `reputation-system` — i.e. the burned value sacrificed against the
 // profile_id (token_id of the reputation proof). We fetch every profile once
 // (bulk via `fetchAllProfiles`) and cache the resulting Map<token_id, proof>

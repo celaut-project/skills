@@ -10,8 +10,7 @@
 # TODO
 
 - Add profile creation, where profile is the Reputation Library Profile. Check fetchAllUserProfiles, in case there is no one, create one with create_profile (optionally user can sacrifice assets).
-- Add "Profile" details: R9 data and tokens sacrified.
-
-- La reputación de un objeto se mide en función del sacrificio de su profile_id (se podrá mejorar en el futuro, pero de momento lo mantenemos asi).
-- deriveReputation(parsed) en api.ts es erroneo. La reputación no viene dada en R9, si no que se obtiene de import { calculate_reputation } from "reputation-system";
-
+- Add "Profile" details with "gallery" and "submit skill" (una nueva pestaña): R9 data and tokens sacrified.
+- El aviso "This wallet is connected, but it still needs a reputation profile before it can publish on-chain." indica que la wallet está conectada cuando no es cierto.
+- El perfil se debe de manejar (crear y visualizar) en la pestaña previamente mencionada.
+- En el navegador Brave no conseguimos cargar la web ¿? (esto es extraño)
