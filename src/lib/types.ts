@@ -14,6 +14,27 @@
  *    by the `<Forum topic_id={...}>` component using the entity's own id.
  */
 
+/**
+ * Mirrors the `Protocol` message defined in celaut.proto
+ * (https://github.com/celaut-project/nodo/blob/stable/protos/celaut.proto#L70).
+ *
+ * Stored as JSON inside the skill payload for now (per Josemi 2026-06-16,
+ * "aun en formato JSON") so a skill can advertise a set of protocols it
+ * speaks without yet committing to an on-chain binary representation.
+ */
+export interface Protocol {
+  /** Repeated string tags identifying the protocol — proto field 1. */
+  tags: string[];
+  /** Human-readable description — proto field 2. */
+  prose: string;
+  /**
+   * Optional formal specification — proto field 3.
+   * Bytes in the proto; carried as a base64 string here so it round-trips
+   * through JSON without loss.
+   */
+  formal?: string;
+}
+
 /** A Skill represents a registered AI problem/capability on-chain. */
 export interface Skill {
   boxId: string;
@@ -29,6 +50,8 @@ export interface Skill {
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
+  /** Set of protocols this skill speaks (celaut.proto Protocol set, JSON form). */
+  protocols?: Protocol[];
 }
 
 /** Payload used to create a new Skill. */
@@ -40,6 +63,8 @@ export interface SkillCreationInput {
   otherSkillBoxIds: string[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
+  /** Set of protocols this skill speaks (celaut.proto Protocol set, JSON form). */
+  protocols?: Protocol[];
   /** Reputation token supply to mint when creating the skill profile. */
   tokenAmount?: number;
   mainBox?: unknown;

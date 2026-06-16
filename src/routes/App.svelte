@@ -42,7 +42,7 @@
   import { formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
-  import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
+  import type { Skill, Coverage, Benchmark, Result, Protocol } from "$lib/types";
   import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
   import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
@@ -81,6 +81,8 @@
   let newSkillProse = "";
   let newSkillTags = "";
   let newSkillDomain = "";
+  let newSkillProtocolsJson = "";
+  let newSkillProtocolsError: string | null = null;
   let submitting = false;
   let submitTx: string | null = null;
   let submitError: string | null = null;
@@ -406,6 +408,34 @@
     return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
   }
 
+  /**
+   * Parse the protocols JSON field into Protocol[].
+   * Accepts either a JSON array of Protocol objects or a single object.
+   * Per celaut.proto: each entry has `tags: string[]`, `prose: string`,
+   * and optionally `formal: string` (base64 of the proto `bytes formal`).
+   */
+  function parseProtocolsJson(raw: string): Protocol[] {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      throw new Error("Protocols field must be valid JSON.");
+    }
+    const list = Array.isArray(value) ? value : [value];
+    return list.map((entry, idx) => {
+      if (!entry || typeof entry !== "object") {
+        throw new Error(`Protocol #${idx + 1} must be an object.`);
+      }
+      const e = entry as Record<string, unknown>;
+      const tags = Array.isArray(e.tags) ? e.tags.map(String) : [];
+      const prose = typeof e.prose === "string" ? e.prose : "";
+      const formal = typeof e.formal === "string" ? e.formal : undefined;
+      const out: Protocol = { tags, prose };
+      if (formal) out.formal = formal;
+      return out;
+    });
+  }
+
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
     detailVisible = false;
@@ -452,6 +482,23 @@
     }
     if (!requireProfileForWrite()) { submitError = !$walletConnected ? "Connect your wallet first." : "Create a reputation profile first."; return; }
     if (!newSkillName.trim()) { submitError = "Name is required."; validationErrors = { name: "Skill name is required." }; return; }
+
+    // Parse the optional protocols JSON; reject early if malformed so we don't
+    // burn a tx on garbage that will never round-trip through the parser.
+    let parsedProtocols: Protocol[] = [];
+    newSkillProtocolsError = null;
+    const protocolsRaw = newSkillProtocolsJson.trim();
+    if (protocolsRaw) {
+      try {
+        parsedProtocols = parseProtocolsJson(protocolsRaw);
+      } catch (err: any) {
+        newSkillProtocolsError = err.message || "Invalid protocols JSON.";
+        submitError = newSkillProtocolsError;
+        toasts.error(newSkillProtocolsError);
+        return;
+      }
+    }
+
     submitting = true;
     submitError = null;
     submitTx = null;
@@ -463,6 +510,7 @@
         domain: newSkillDomain.trim(),
         otherSkillBoxIds: [...relatedSkillBoxIds],
         sourceHash: "",
+        protocols: parsedProtocols,
         tokenAmount: 1,
         mainBox: currentMainBox(),
       });
@@ -473,6 +521,8 @@
       newSkillProse = '';
       newSkillDomain = '';
       newSkillTags = '';
+      newSkillProtocolsJson = '';
+      newSkillProtocolsError = null;
       prefillRelatedBoxIds = [];
       relatedSkillBoxIds = [];
     } catch (e: any) {
@@ -732,12 +782,31 @@
               </details>
             {/if}
             {#if skillNameCounts[selectedSkill.name] > 1}
-              <div class="duplicate-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                </svg>
-                <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
-              </div>
+              {@const siblings = skills.filter((s) => s.name === selectedSkill?.name && s.boxId !== selectedSkill?.boxId)}
+              <details class="duplicate-notice">
+                <summary class="duplicate-notice-summary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                  </svg>
+                  <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
+                  <svg class="duplicate-notice-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </summary>
+                <ul class="duplicate-notice-list">
+                  {#each siblings as sibling (sibling.boxId)}
+                    <li>
+                      <button type="button" class="duplicate-notice-item" on:click={() => selectSkill(sibling)}>
+                        <span class="duplicate-notice-item-name">{sibling.name}</span>
+                        {#if sibling.domain}
+                          <span class="duplicate-notice-item-domain">{sibling.domain}</span>
+                        {/if}
+                        <span class="duplicate-notice-item-box">{formatSourceHash(sibling.boxId)}</span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </details>
             {/if}
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
@@ -791,6 +860,40 @@
 
           <!-- Skill Metadata -->
           <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
+
+          {#if selectedSkill.protocols && selectedSkill.protocols.length > 0}
+            <section class="protocols-section">
+              <h3 class="protocols-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 17l6-6-6-6"/><path d="M12 19h8"/>
+                </svg>
+                Protocols
+                <span class="protocols-count">{selectedSkill.protocols.length}</span>
+              </h3>
+              <ul class="protocols-list">
+                {#each selectedSkill.protocols as protocol, i (i)}
+                  <li class="protocol-card">
+                    {#if protocol.tags && protocol.tags.length > 0}
+                      <div class="protocol-tags">
+                        {#each protocol.tags as tag}
+                          <span class="protocol-tag">{tag}</span>
+                        {/each}
+                      </div>
+                    {/if}
+                    {#if protocol.prose}
+                      <p class="protocol-prose">{protocol.prose}</p>
+                    {/if}
+                    {#if protocol.formal}
+                      <details class="protocol-formal">
+                        <summary>formal spec (base64)</summary>
+                        <code class="protocol-formal-code">{protocol.formal}</code>
+                      </details>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
 
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
@@ -1208,6 +1311,24 @@
             <div class="form-group">
               <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
               <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="skill-protocols">
+                Protocols
+                <span class="text-muted-foreground font-normal text-xs">(JSON, optional — mirrors celaut.proto <code>Protocol</code>)</span>
+              </label>
+              <textarea
+                id="skill-protocols"
+                class="form-input form-textarea"
+                class:form-input-error={newSkillProtocolsError}
+                bind:value={newSkillProtocolsJson}
+                placeholder={`[\n  { "tags": ["http", "grpc"], "prose": "JSON-RPC over HTTP/2" }\n]`}
+                rows="4"
+              ></textarea>
+              {#if newSkillProtocolsError}
+                <p class="field-error mt-1 text-xs" style="color: hsl(var(--destructive));">{newSkillProtocolsError}</p>
+              {/if}
             </div>
 
             <SubmitFormEnhancements
@@ -1881,19 +2002,130 @@
     font-weight: 400;
   }
 
+  /* ── Skill Protocols ───────────────────────────────────────────────── */
+  .protocols-section {
+    @apply mb-6;
+  }
+  .protocols-title {
+    @apply flex items-center gap-2 text-sm font-semibold mb-3;
+    color: hsl(var(--foreground));
+  }
+  .protocols-count {
+    @apply inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+  .protocols-list {
+    @apply flex flex-col gap-2 list-none p-0 m-0;
+  }
+  .protocol-card {
+    @apply p-3 rounded-md border;
+    background: hsl(var(--muted) / 0.3);
+    border-color: hsl(var(--border) / 0.6);
+  }
+  .protocol-tags {
+    @apply flex flex-wrap gap-1.5 mb-1.5;
+  }
+  .protocol-tag {
+    @apply text-xs px-1.5 py-0.5 rounded;
+    background: hsl(var(--primary) / 0.12);
+    color: hsl(var(--primary));
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .protocol-prose {
+    @apply text-sm leading-snug m-0;
+    color: hsl(var(--foreground));
+  }
+  .protocol-formal {
+    @apply mt-2 text-xs;
+    color: hsl(var(--muted-foreground));
+  }
+  .protocol-formal summary {
+    cursor: pointer;
+  }
+  .protocol-formal-code {
+    @apply block mt-1 p-2 rounded text-xs break-all;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    font-family: var(--font-mono, ui-monospace, monospace);
+    max-height: 10rem;
+    overflow-y: auto;
+  }
+
   /* ── Duplicate Skill Notice ────────────────────────────────────────── */
   .duplicate-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     margin-bottom: 0.75rem;
-    padding: 0.375rem 0.75rem;
     border-radius: 0.375rem;
     background: hsl(40 90% 50% / 0.08);
     border: 1px solid hsl(40 90% 50% / 0.2);
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
     width: fit-content;
+    max-width: 100%;
+  }
+  .duplicate-notice-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .duplicate-notice-summary::-webkit-details-marker {
+    display: none;
+  }
+  .duplicate-notice-caret {
+    transition: transform 0.15s ease;
+    opacity: 0.6;
+  }
+  .duplicate-notice[open] .duplicate-notice-caret {
+    transform: rotate(180deg);
+  }
+  .duplicate-notice-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0.25rem 0.375rem;
+    border-top: 1px solid hsl(40 90% 50% / 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .duplicate-notice-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0.25rem;
+    color: hsl(var(--foreground));
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: background-color 0.12s ease;
+  }
+  .duplicate-notice-item:hover,
+  .duplicate-notice-item:focus-visible {
+    background: hsl(40 90% 50% / 0.12);
+    outline: none;
+  }
+  .duplicate-notice-item-name {
+    font-weight: 500;
+  }
+  .duplicate-notice-item-domain {
+    padding: 0.05rem 0.375rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    font-size: 0.6875rem;
+  }
+  .duplicate-notice-item-box {
+    margin-left: auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
   }
 
   /* ── Source Details (collapsible FileCard wrapper) ──────────────────── */

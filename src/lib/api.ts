@@ -206,6 +206,7 @@ export function parseSkillBox(box: any): Skill | null {
       tags: parsed.tags || [],
       domain: parsed.domain || '',
       otherSkillBoxIds: parsed.other_skill_box_ids || [],
+      protocols: Array.isArray(parsed.protocols) ? parsed.protocols : [],
       coverages: [],
       benchmarks: [],
       resultCount: 0,

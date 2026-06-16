@@ -33,13 +33,14 @@
 
 <style lang="postcss">
   .page-footer {
-    @apply w-full border-t py-6 px-6 mt-12;
+    @apply w-full border-t px-6 mt-12 flex items-center;
+    height: 4rem; /* fixed 64px so the footer height doesn't shift with content/wrapping */
     background-color: hsl(var(--background));
     border-top-color: hsl(var(--border));
   }
 
   .footer-inner {
-    @apply container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4;
+    @apply container mx-auto flex items-center justify-between gap-4;
   }
 
   .footer-brand {
