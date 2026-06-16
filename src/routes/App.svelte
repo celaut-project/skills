@@ -687,12 +687,31 @@
               </details>
             {/if}
             {#if skillNameCounts[selectedSkill.name] > 1}
-              <div class="duplicate-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                </svg>
-                <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
-              </div>
+              {@const siblings = skills.filter((s) => s.name === selectedSkill?.name && s.boxId !== selectedSkill?.boxId)}
+              <details class="duplicate-notice">
+                <summary class="duplicate-notice-summary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                  </svg>
+                  <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
+                  <svg class="duplicate-notice-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </summary>
+                <ul class="duplicate-notice-list">
+                  {#each siblings as sibling (sibling.boxId)}
+                    <li>
+                      <button type="button" class="duplicate-notice-item" on:click={() => selectSkill(sibling)}>
+                        <span class="duplicate-notice-item-name">{sibling.name}</span>
+                        {#if sibling.domain}
+                          <span class="duplicate-notice-item-domain">{sibling.domain}</span>
+                        {/if}
+                        <span class="duplicate-notice-item-box">{formatSourceHash(sibling.boxId)}</span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </details>
             {/if}
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
@@ -1739,17 +1758,78 @@
 
   /* ── Duplicate Skill Notice ────────────────────────────────────────── */
   .duplicate-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     margin-bottom: 0.75rem;
-    padding: 0.375rem 0.75rem;
     border-radius: 0.375rem;
     background: hsl(40 90% 50% / 0.08);
     border: 1px solid hsl(40 90% 50% / 0.2);
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
     width: fit-content;
+    max-width: 100%;
+  }
+  .duplicate-notice-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .duplicate-notice-summary::-webkit-details-marker {
+    display: none;
+  }
+  .duplicate-notice-caret {
+    transition: transform 0.15s ease;
+    opacity: 0.6;
+  }
+  .duplicate-notice[open] .duplicate-notice-caret {
+    transform: rotate(180deg);
+  }
+  .duplicate-notice-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0.25rem 0.375rem;
+    border-top: 1px solid hsl(40 90% 50% / 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .duplicate-notice-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0.25rem;
+    color: hsl(var(--foreground));
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: background-color 0.12s ease;
+  }
+  .duplicate-notice-item:hover,
+  .duplicate-notice-item:focus-visible {
+    background: hsl(40 90% 50% / 0.12);
+    outline: none;
+  }
+  .duplicate-notice-item-name {
+    font-weight: 500;
+  }
+  .duplicate-notice-item-domain {
+    padding: 0.05rem 0.375rem;
+    border-radius: 0.25rem;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    font-size: 0.6875rem;
+  }
+  .duplicate-notice-item-box {
+    margin-left: auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
   }
 
   /* ── Source Details (collapsible FileCard wrapper) ──────────────────── */
