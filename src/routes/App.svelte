@@ -143,6 +143,51 @@
   // Compute reputation for selected skill
   $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
 
+  // ── Best service highlight ────────────────────────────────────────────────
+  /** Pick the Coverage with the highest reputation-weighted composite score. */
+  function pickBestCoverage(skill: Skill): { coverage: Coverage; score: number } | null {
+    let best: { coverage: Coverage; score: number } | null = null;
+    for (const cov of skill.coverages) {
+      if (!cov.serviceId) continue;
+      const score = computeServiceCompositeScore(cov.serviceId, skill);
+      if (score <= 0) continue;
+      if (!best || score > best.score) best = { coverage: cov, score };
+    }
+    return best;
+  }
+
+  /** Blake2b256 hashes are exactly 64 hex chars; only those can resolve in source-application. */
+  function looksLikeFileHash(value: string | undefined): boolean {
+    return !!value && /^[0-9a-f]{64}$/i.test(value);
+  }
+
+  $: bestCoverage = selectedSkill ? pickBestCoverage(selectedSkill) : null;
+  let bestServiceSources: any[] = [];
+  let bestServiceLoading = false;
+
+  async function loadBestServiceSources(hash: string) {
+    bestServiceLoading = true;
+    try {
+      const fetched = await fetchFileSourcesByHash($explorer_uri, hash);
+      bestServiceSources = fetched ?? [];
+    } catch {
+      bestServiceSources = [];
+    } finally {
+      bestServiceLoading = false;
+    }
+  }
+
+  $: if (bestCoverage && looksLikeFileHash(bestCoverage.coverage.serviceId)) {
+    loadBestServiceSources(bestCoverage.coverage.serviceId!);
+  } else {
+    bestServiceSources = [];
+  }
+
+  /** Pick the source with the highest reputationAmount (or first if tied). */
+  $: bestServiceDownload = bestServiceSources.length
+    ? [...bestServiceSources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
+    : null;
+
   // ── Load skills from active provider ────────────────────────────────────────
   async function loadSkills() {
     loading = true;
@@ -769,6 +814,49 @@
               {/each}
             </div>
           </div>
+
+          <!-- Best service highlight (top-reputation Coverage by results) -->
+          {#if bestCoverage}
+            <section class="best-service-card">
+              <div class="best-service-eyebrow">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+                Best service for this skill
+              </div>
+              <div class="best-service-body">
+                <div class="best-service-text">
+                  <div class="best-service-name">{bestCoverage.coverage.label || 'Unnamed service'}</div>
+                  {#if bestCoverage.coverage.serviceId}
+                    <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
+                  {/if}
+                </div>
+                <div class="best-service-score" title="Composite score: per-benchmark winning result weighted by benchmark reputation">
+                  <span class="best-service-score-value">{bestCoverage.score}</span>
+                  <span class="best-service-score-label">composite score</span>
+                </div>
+              </div>
+              {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
+                {#if bestServiceLoading}
+                  <div class="best-service-download best-service-download-muted">Looking up source-application…</div>
+                {:else if bestServiceDownload?.sourceUrl}
+                  <a
+                    class="best-service-download"
+                    href={bestServiceDownload.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download from source-application
+                  </a>
+                {:else if bestServiceSources.length === 0}
+                  <div class="best-service-download best-service-download-muted">No source registered for this service yet.</div>
+                {/if}
+              {/if}
+            </section>
+          {/if}
 
           <!-- Skill Metadata -->
           <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
@@ -1856,6 +1944,62 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  /* ── Best Service Highlight ────────────────────────────────────────── */
+  .best-service-card {
+    @apply mb-6 p-4 rounded-lg border;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.06),
+      hsl(var(--primary) / 0.02) 60%
+    );
+    border-color: hsl(var(--primary) / 0.25);
+  }
+  .best-service-eyebrow {
+    @apply flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-2;
+    color: hsl(var(--primary));
+  }
+  .best-service-body {
+    @apply flex items-center justify-between gap-4 flex-wrap;
+  }
+  .best-service-text {
+    @apply flex flex-col gap-1 min-w-0;
+  }
+  .best-service-name {
+    @apply text-xl font-bold leading-tight;
+    color: hsl(var(--foreground));
+  }
+  .best-service-id {
+    @apply text-xs;
+    color: hsl(var(--muted-foreground));
+    font-family: var(--font-mono, ui-monospace, monospace);
+  }
+  .best-service-score {
+    @apply flex flex-col items-end shrink-0;
+  }
+  .best-service-score-value {
+    @apply text-2xl font-extrabold leading-none;
+    color: hsl(var(--primary));
+  }
+  .best-service-score-label {
+    @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
+    color: hsl(var(--muted-foreground));
+  }
+  .best-service-download {
+    @apply inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-md text-sm font-medium no-underline transition-colors;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .best-service-download:hover {
+    opacity: 0.9;
+  }
+  .best-service-download-muted {
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 400;
   }
 
   /* ── Skill Protocols ───────────────────────────────────────────────── */
