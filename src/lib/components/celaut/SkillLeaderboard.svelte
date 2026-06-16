@@ -6,23 +6,14 @@
   import type { FileSource } from 'source-application';
   import { reputation_proof, explorer_uri, source_explorer_url } from '$lib/common/store';
   import { web_explorer_uri_tkn } from '$lib/ergo/envs';
+  import { openForum } from './forumSidebar';
 
   export let benchmarks: Benchmark[] = [];
   export let selectedBenchmarkId: string | null = null;
   export let onAddSource: ((hash: string) => void) | undefined = undefined;
-
-  // Forum component is loaded lazily — sigmastate-js ESM crash on page load if imported eagerly.
-  let ForumComponent: any = null;
-  async function loadForum() {
-    if (!ForumComponent) {
-      try {
-        const mod = await import('forum-application');
-        ForumComponent = mod.Forum;
-      } catch (e) {
-        console.warn('Forum not available:', e);
-      }
-    }
-  }
+  // Forwarded so dialogue buttons can produce friendly side-rail titles
+  // ("Benchmark: …" / "Result for …") for whichever skill is in view.
+  export let skillName: string = '';
 
   // Source cache per hash
   let sourceCache: Record<string, FileSource[]> = {};
@@ -54,18 +45,9 @@
   let submitScore = '';
   let submitNotes = '';
 
-  // Per-entity forum expansion state (benchmarks and results).
-  let expandedForums: Record<string, boolean> = {};
-  function toggleForum(id: string) {
-    expandedForums[id] = !expandedForums[id];
-    expandedForums = expandedForums;
-    if (expandedForums[id]) loadForum();
-  }
-
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
     showSubmitForm = false;
-    if (selectedBenchmarkId) loadForum();
   }
 
   function sortResults(results: Result[], higherIsBetter: boolean): Result[] {
@@ -227,49 +209,43 @@
                           <td class="td-notes" title={result.notes || ''}>{truncateNotes(result.notes)}</td>
                           <td class="td-date">{relativeTime(result.timestamp)}</td>
                           <td class="td-actions">
-                            <button class="forum-toggle-sm" on:click={() => toggleForum(result.id)} title="Discussion for this result">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <button
+                              class="forum-toggle-sm"
+                              type="button"
+                              on:click={() => openForum(result.id, `Result for ${formatServiceId(result.serviceId)} — ${benchmark.name}`)}
+                              title="Open discussion for this result"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                               </svg>
                             </button>
                           </td>
                         </tr>
-                        <!-- Result Source Hash & per-Result Forum -->
-                        {#if result.sourceHash || expandedForums[result.id]}
+                        <!-- Result Source Hash (the per-result Forum embed is now in the side-rail) -->
+                        {#if result.sourceHash}
                           <tr class="result-extras-row">
                             <td colspan="6" class="result-extras-cell">
-                              {#if result.sourceHash}
-                                <details class="source-details-result">
-                                  <summary class="source-summary-result">
-                                    <span>📄</span>
-                                    <code class="source-hash-code-sm">{formatSourceHash(result.sourceHash)}</code>
-                                  </summary>
-                                  <div class="source-card-result">
-                                    <FileCard
-                                      fileHash={result.sourceHash}
-                                      profile={$reputation_proof}
-                                      sources={sourceCache[result.sourceHash] || []}
-                                      explorerUri={$explorer_uri}
-                                      source_explorer_url={$source_explorer_url}
-                                      webExplorerUriTkn={web_explorer_uri_tkn}
-                                    />
-                                    {#if $reputation_proof && onAddSource}
-                                      <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>
-                                        + Add Source
-                                      </button>
-                                    {/if}
-                                  </div>
-                                </details>
-                              {/if}
-                              {#if expandedForums[result.id]}
-                                <div class="forum-inline">
-                                  {#if ForumComponent}
-                                    <svelte:component this={ForumComponent} topic_id={result.id} />
-                                  {:else}
-                                    <p class="forum-loading">Loading discussion…</p>
+                              <details class="source-details-result">
+                                <summary class="source-summary-result">
+                                  <span>📄</span>
+                                  <code class="source-hash-code-sm">{formatSourceHash(result.sourceHash)}</code>
+                                </summary>
+                                <div class="source-card-result">
+                                  <FileCard
+                                    fileHash={result.sourceHash}
+                                    profile={$reputation_proof}
+                                    sources={sourceCache[result.sourceHash] || []}
+                                    explorerUri={$explorer_uri}
+                                    source_explorer_url={$source_explorer_url}
+                                    webExplorerUriTkn={web_explorer_uri_tkn}
+                                  />
+                                  {#if $reputation_proof && onAddSource}
+                                    <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>
+                                      + Add Source
+                                    </button>
                                   {/if}
                                 </div>
-                              {/if}
+                              </details>
                             </td>
                           </tr>
                         {/if}
@@ -281,31 +257,18 @@
                 <p class="no-results">No results submitted yet.</p>
               {/if}
 
-              <!-- Benchmark Discussion -->
-              <!-- Per-Benchmark Forum (rendered via shared topic_id = benchmark.id) -->
+              <!-- Benchmark discussion — opens side-rail with topic = benchmark.id. -->
               <div class="discussion-section">
-                <button class="discussion-toggle" on:click={() => toggleForum(benchmark.id)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button
+                  class="discussion-toggle"
+                  type="button"
+                  on:click={() => openForum(benchmark.id, `Benchmark: ${benchmark.name}${skillName ? ` — ${skillName}` : ''}`)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                   </svg>
-                  Discussion
-                  <svg
-                    class="discussion-chevron"
-                    class:discussion-chevron-open={expandedForums[benchmark.id]}
-                    width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                  >
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
+                  Dialogue
                 </button>
-                {#if expandedForums[benchmark.id]}
-                  <div class="forum-inline">
-                    {#if ForumComponent}
-                      <svelte:component this={ForumComponent} topic_id={benchmark.id} />
-                    {:else}
-                      <p class="forum-loading">Loading discussion…</p>
-                    {/if}
-                  </div>
-                {/if}
               </div>
 
               <!-- Submit Result Button/Form -->
@@ -750,26 +713,6 @@
   .discussion-toggle:hover {
     background: hsl(var(--muted) / 0.4);
     color: hsl(var(--foreground));
-  }
-
-  .discussion-chevron {
-    transition: transform 0.2s;
-  }
-
-  .discussion-chevron-open {
-    transform: rotate(180deg);
-  }
-
-  .forum-inline {
-    margin-top: 0.5rem;
-    padding-left: 0.75rem;
-    border-left: 2px solid hsl(var(--border));
-  }
-
-  .forum-loading {
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    margin: 0.5rem 0;
   }
 
   /* ── Submit Form ───────────────────────────────────────────────────── */
