@@ -3,18 +3,9 @@
   import { browser } from "$app/environment";
   import Theme from "./Theme.svelte";
   import { WalletButton, WalletAddressChangeHandler, walletConnected, walletAddress, walletBalance } from "wallet-svelte-component";
-  // Forum loaded lazily to avoid sigmastate-js ESM crash on page load
-  let ForumComponent: any = null;
-  async function loadForum() {
-    if (!ForumComponent) {
-      try {
-        const mod = await import("forum-application");
-        ForumComponent = mod.Forum;
-      } catch (e) {
-        console.warn("Forum not available:", e);
-      }
-    }
-  }
+  // Forum is now rendered by a single full-height side-rail panel
+  // (see ForumSidebar.svelte). Each "dialogue" button funnels through
+  // `openForum(topicId, title)` instead of mounting its own Forum copy.
   import { web_explorer_uri_addr, reputation_proof, explorer_uri, source_explorer_url } from "$lib/common/store";
   import { web_explorer_uri_tkn } from "$lib/ergo/envs";
   import { FileCard, FileSourceCreation, fetchFileSourcesByHash } from "source-application";
@@ -36,6 +27,8 @@
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
+  import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
+  import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
 
   // ── API & Types ────────────────────────────────────────────────────────────
@@ -101,8 +94,6 @@
   let createProfileSubmitting = false;
   let profileSacrificeErg = "0";
   let lastProfileLookupKey = "";
-  let expandedCoverageForums: Record<string, boolean> = {};
-
   // Source-application state
   let skillSources: FileSource[] = [];
   let showFileSourceModal = false;
@@ -338,12 +329,6 @@
     })[0] ?? null;
   }
 
-  function toggleCoverageForum(id: string) {
-    expandedCoverageForums[id] = !expandedCoverageForums[id];
-    expandedCoverageForums = expandedCoverageForums;
-    if (expandedCoverageForums[id]) loadForum();
-  }
-
   function computeServiceCompositeScore(serviceId: string | undefined, skill: Skill): number {
     if (!serviceId) return 0;
     let composite = 0;
@@ -368,7 +353,6 @@
     detailTab = "benchmarks";
     selectedBenchmarkId = null;
     showCreateBenchmarkForm = false;
-    loadForum();
     setTimeout(() => { detailVisible = true; }, 50);
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -807,6 +791,7 @@
             <SkillLeaderboard
               benchmarks={selectedSkill.benchmarks}
               bind:selectedBenchmarkId
+              skillName={selectedSkill.name}
               onAddSource={openFileSourceModal}
               on:created={() => refreshSkills(selectedSkill?.boxId ?? null)}
             />
@@ -863,21 +848,16 @@
                         </table>
                       {/if}
                       <div class="discussion-section mt-3">
-                        <button class="discussion-toggle" on:click={() => toggleCoverageForum(cov.boxId)}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <button
+                          class="dialogue-btn"
+                          type="button"
+                          on:click={() => openForum(cov.boxId, `Coverage: ${cov.label || formatServiceId(cov.serviceId || cov.boxId)}`)}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                           </svg>
-                          Discussion
+                          Dialogue
                         </button>
-                        {#if expandedCoverageForums[cov.boxId]}
-                          <div class="forum-inline">
-                            {#if ForumComponent}
-                              <svelte:component this={ForumComponent} topic_id={cov.boxId} />
-                            {:else}
-                              <p class="forum-loading">Loading discussion...</p>
-                            {/if}
-                          </div>
-                        {/if}
                       </div>
                     </div>
                   {/each}
@@ -956,18 +936,18 @@
             </section>
           {/if}
 
-          <!-- Forum -->
+          <!-- Forum entry point — opens the single side-rail panel. -->
           <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Discussion</h2>
-            </div>
-            {#if ForumComponent}
-              <svelte:component this={ForumComponent} topic_id={selectedSkill.boxId} />
-            {:else}
-              <div class="detail-empty">
-                <p>Loading forum...</p>
-              </div>
-            {/if}
+            <button
+              class="dialogue-btn dialogue-btn-lg"
+              type="button"
+              on:click={() => selectedSkill && openForum(selectedSkill.boxId, `Skill: ${selectedSkill.name}`)}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+              </svg>
+              Open discussion
+            </button>
           </section>
         </div>
       </div>
@@ -1245,6 +1225,9 @@
 
 <!-- ── Toast Notifications ──────────────────────────────────────────────── -->
 <Toast />
+
+<!-- ── Single Forum side-rail (every dialogue button funnels here) ────── -->
+<ForumSidebar />
 
 <!-- ── File Source Creation Modal ──────────────────────────────────────── -->
 {#if showFileSourceModal}
@@ -1735,6 +1718,22 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  /* ── Dialogue (Forum side-rail trigger) Button ─────────────────────── */
+  .dialogue-btn {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border bg-transparent cursor-pointer transition-colors;
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border));
+  }
+  .dialogue-btn:hover,
+  .dialogue-btn:focus-visible {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    outline: none;
+  }
+  .dialogue-btn-lg {
+    @apply px-3 py-2 text-sm;
   }
 
   /* ── Duplicate Skill Notice ────────────────────────────────────────── */

@@ -1,13 +1,12 @@
 <script lang="ts">
   import type { Skill } from '$lib/types';
   import { skills, selectedSkill } from '$lib/stores';
-  import ErrorBoundary from './ErrorBoundary.svelte';
   import SkillMetadata from './SkillMetadata.svelte';
   import SkillLeaderboard from './SkillLeaderboard.svelte';
   import ClaimCoverageButton from './ClaimCoverageButton.svelte';
+  import { openForum } from './forumSidebar';
 
   export let skill: Skill;
-  export let ForumComponent: any = null;
 
   function goBack() {
     $selectedSkill = null;
@@ -96,16 +95,18 @@
     </section>
   {/if}
 
-  <!-- Forum -->
+  <!-- Forum entry point — the single side-rail panel hosts the actual chat. -->
   <section>
-    <h2 class="text-lg font-semibold mb-3">Discussion</h2>
-    <ErrorBoundary message="Forum failed to load. It may not be available in this environment.">
-      {#if ForumComponent}
-        <svelte:component this={ForumComponent} topicIdentifier={skill.boxId} reputationTokenId="" />
-      {:else}
-        <p class="text-sm text-muted-foreground">Loading forum…</p>
-      {/if}
-    </ErrorBoundary>
+    <button
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      type="button"
+      on:click={() => openForum(skill.boxId, `Skill: ${skill.name}`)}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+      Open discussion
+    </button>
   </section>
 </div>
 
