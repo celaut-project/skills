@@ -20,12 +20,22 @@ const initial: ForumSidebarState = {
 
 export const forumSidebar = writable<ForumSidebarState>(initial);
 
-/** Open the panel for a given topic id with a human title shown in the header. */
+/**
+ * Open the panel for a given topic id with a human title shown in the header.
+ * Title is pre-formatted at the call site — each section (skill, benchmark,
+ * result, coverage) knows its own context better than this generic store would,
+ * and keeping it stringly-typed avoids dragging skill/benchmark imports into
+ * the store layer.
+ */
 export function openForum(topicId: string, title: string): void {
   forumSidebar.set({ open: true, topicId, title });
 }
 
-/** Close the panel; topic stays so re-opening the same one preserves position. */
+/**
+ * Close the panel but preserve topicId. If the user re-opens the same topic,
+ * the {#key topicId} guard in ForumSidebar will see the id is unchanged and
+ * skip the remount, keeping Forum's internal scroll/draft state intact.
+ */
 export function closeForum(): void {
   forumSidebar.update((s) => ({ ...s, open: false }));
 }

@@ -62,6 +62,12 @@
       {#if loadError}
         <div class="forum-rail-error">{loadError}</div>
       {:else if ForumComponent && $forumSidebar.topicId}
+        <!--
+          {#key topicId} forces Forum to remount when the user jumps between
+          topics. Forum holds per-topic state (subscriptions, draft text) in
+          internal closures that aren't reactive to a topic_id prop change, so
+          a plain re-render would leave the previous topic's draft visible.
+        -->
         {#key $forumSidebar.topicId}
           <svelte:component this={ForumComponent} topic_id={$forumSidebar.topicId} />
         {/key}

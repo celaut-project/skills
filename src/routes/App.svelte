@@ -115,16 +115,30 @@
     }
   }
 
+  // Per-hash cache for source-application lookups. Selecting a skill, navigating
+  // away, then returning shouldn't trigger another Explorer round-trip — the
+  // source-application mapping is content-addressed by Blake2b256, so it never
+  // changes for a given hash within a session.
+  const fileSourceCache = new Map<string, FileSource[]>();
+
+  async function fetchFileSourcesCached(hash: string): Promise<FileSource[]> {
+    const hit = fileSourceCache.get(hash);
+    if (hit) return hit;
+    const fetched = (await fetchFileSourcesByHash($explorer_uri, hash)) ?? [];
+    fileSourceCache.set(hash, fetched);
+    return fetched;
+  }
+
   async function loadSkillSources(hash: string) {
     try {
-      const fetched = await fetchFileSourcesByHash($explorer_uri, hash);
-      skillSources = fetched ?? [];
+      skillSources = await fetchFileSourcesCached(hash);
     } catch {
       skillSources = [];
     }
   }
 
-  // Reload sources when selected skill changes
+  // Reload sources when the selected skill changes. Gated on sourceHash because
+  // skills without a declared source can never resolve in source-application.
   $: if (selectedSkill?.sourceHash) {
     loadSkillSources(selectedSkill.sourceHash);
   } else {
@@ -135,32 +149,44 @@
   $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
 
   // ── Best service highlight ────────────────────────────────────────────────
+  // Surfaces the "best" service for a skill as a prominent card with a download
+  // link when source-application has a binary registered for it. "Best" is the
+  // Coverage whose serviceId scored highest across all benchmarks attached to
+  // the skill, weighted by each benchmark's own reputation (so a service that
+  // wins on a heavily-vouched benchmark beats one that wins on an obscure one).
+
   /** Pick the Coverage with the highest reputation-weighted composite score. */
   function pickBestCoverage(skill: Skill): { coverage: Coverage; score: number } | null {
     let best: { coverage: Coverage; score: number } | null = null;
     for (const cov of skill.coverages) {
+      // Coverages without a serviceId can't compete — no results would match.
       if (!cov.serviceId) continue;
       const score = computeServiceCompositeScore(cov.serviceId, skill);
+      // Skip services with no winning result (score === 0) so the card only
+      // appears when there's actual evidence behind a winner.
       if (score <= 0) continue;
       if (!best || score > best.score) best = { coverage: cov, score };
     }
     return best;
   }
 
-  /** Blake2b256 hashes are exactly 64 hex chars; only those can resolve in source-application. */
+  /**
+   * Blake2b256 hashes are exactly 64 hex chars; source-application is keyed by
+   * that hash format, so any other serviceId shape (UUIDs, type-NFT ids, etc.)
+   * has zero chance of resolving and we skip the lookup entirely.
+   */
   function looksLikeFileHash(value: string | undefined): boolean {
     return !!value && /^[0-9a-f]{64}$/i.test(value);
   }
 
   $: bestCoverage = selectedSkill ? pickBestCoverage(selectedSkill) : null;
-  let bestServiceSources: any[] = [];
+  let bestServiceSources: FileSource[] = [];
   let bestServiceLoading = false;
 
   async function loadBestServiceSources(hash: string) {
     bestServiceLoading = true;
     try {
-      const fetched = await fetchFileSourcesByHash($explorer_uri, hash);
-      bestServiceSources = fetched ?? [];
+      bestServiceSources = await fetchFileSourcesCached(hash);
     } catch {
       bestServiceSources = [];
     } finally {
@@ -168,13 +194,20 @@
     }
   }
 
+  // Only hit source-application when the winning service has a Blake2b256
+  // serviceId — every other shape would 404. Resets to [] otherwise so the
+  // download UI clears between selections.
   $: if (bestCoverage && looksLikeFileHash(bestCoverage.coverage.serviceId)) {
     loadBestServiceSources(bestCoverage.coverage.serviceId!);
   } else {
     bestServiceSources = [];
   }
 
-  /** Pick the source with the highest reputationAmount (or first if tied). */
+  /**
+   * Pick the source with the highest reputationAmount (first wins on ties).
+   * Multiple uploaders can register the same hash in source-application; we
+   * surface the one the network trusts most, not just whichever arrived first.
+   */
   $: bestServiceDownload = bestServiceSources.length
     ? [...bestServiceSources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
     : null;
@@ -356,11 +389,21 @@
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
-  // Track duplicate skill names to flag concurrent submissions.
+  // Track duplicate skill names to flag concurrent submissions. Anyone can post
+  // a skill with the same human name as another — the chain doesn't enforce
+  // uniqueness — so the UI must surface "this name is claimed by N others" and
+  // let users jump between them via the sibling dropdown below.
   $: skillNameCounts = skills.reduce((acc, s) => {
     acc[s.name] = (acc[s.name] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+
+  // Sibling skills sharing the selected skill's name (excluding itself). Hoisted
+  // out of the template so it's recomputed only when skills/selectedSkill
+  // actually change, not on every render of the detail view.
+  $: siblingSkills = selectedSkill
+    ? skills.filter((s) => s.name === selectedSkill!.name && s.boxId !== selectedSkill!.boxId)
+    : [];
 
   /**
    * Compute a composite score for a coverage/service within a skill.
@@ -476,9 +519,10 @@
       try {
         parsedProtocols = parseProtocolsJson(protocolsRaw);
       } catch (err: any) {
-        newSkillProtocolsError = err.message || "Invalid protocols JSON.";
-        submitError = newSkillProtocolsError;
-        toasts.error(newSkillProtocolsError);
+        const message = err?.message || "Invalid protocols JSON.";
+        newSkillProtocolsError = message;
+        submitError = message;
+        toasts.error(message);
         return;
       }
     }
@@ -766,7 +810,6 @@
               </details>
             {/if}
             {#if skillNameCounts[selectedSkill.name] > 1}
-              {@const siblings = skills.filter((s) => s.name === selectedSkill?.name && s.boxId !== selectedSkill?.boxId)}
               <details class="duplicate-notice">
                 <summary class="duplicate-notice-summary">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -778,7 +821,7 @@
                   </svg>
                 </summary>
                 <ul class="duplicate-notice-list">
-                  {#each siblings as sibling (sibling.boxId)}
+                  {#each siblingSkills as sibling (sibling.boxId)}
                     <li>
                       <button type="button" class="duplicate-notice-item" on:click={() => selectSkill(sibling)}>
                         <span class="duplicate-notice-item-name">{sibling.name}</span>
