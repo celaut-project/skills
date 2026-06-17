@@ -155,9 +155,37 @@
   // the skill, weighted by each benchmark's own reputation (so a service that
   // wins on a heavily-vouched benchmark beats one that wins on an obscure one).
 
+  /**
+   * Aggregate profile reputation backing a composite score for one service.
+   *
+   * Per Josemi 2026-06-16: any entity's reputation derives from its profile
+   * (tokenId[0] of the box). The composite score on its own says "this service
+   * won across the benchmarks" but doesn't say "by whose word" — this number
+   * makes that explicit by summing the profile reputation of every box that
+   * contributed evidence: the coverage itself, each contributing benchmark, and
+   * each winning result. A high score with low data-reputation = anonymous
+   * brag; a high score with high data-reputation = vouched-for by reputable
+   * profiles.
+   */
+  function computeServiceDataReputation(serviceId: string | undefined, skill: Skill): number {
+    if (!serviceId) return 0;
+    const coverage = skill.coverages.find((c) => c.serviceId === serviceId);
+    let rep = coverage?.reputation ?? 0;
+    for (const bench of skill.benchmarks) {
+      const matches = bench.results.filter((r) => r.serviceId === serviceId);
+      const winner = pickRepresentativeResult(matches, bench.higherIsBetter);
+      if (!winner) continue;
+      rep += bench.reputation ?? 0;
+      rep += winner.reputation ?? 0;
+    }
+    return rep;
+  }
+
   /** Pick the Coverage with the highest reputation-weighted composite score. */
-  function pickBestCoverage(skill: Skill): { coverage: Coverage; score: number } | null {
-    let best: { coverage: Coverage; score: number } | null = null;
+  function pickBestCoverage(
+    skill: Skill,
+  ): { coverage: Coverage; score: number; dataReputation: number } | null {
+    let best: { coverage: Coverage; score: number; dataReputation: number } | null = null;
     for (const cov of skill.coverages) {
       // Coverages without a serviceId can't compete — no results would match.
       if (!cov.serviceId) continue;
@@ -165,7 +193,10 @@
       // Skip services with no winning result (score === 0) so the card only
       // appears when there's actual evidence behind a winner.
       if (score <= 0) continue;
-      if (!best || score > best.score) best = { coverage: cov, score };
+      if (!best || score > best.score) {
+        const dataReputation = computeServiceDataReputation(cov.serviceId, skill);
+        best = { coverage: cov, score, dataReputation };
+      }
     }
     return best;
   }
@@ -858,9 +889,16 @@
                     <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
                   {/if}
                 </div>
-                <div class="best-service-score" title="Composite score: per-benchmark winning result weighted by benchmark reputation">
+                <div class="best-service-score" title="Composite score: per-benchmark winning result weighted by benchmark reputation. Data reputation: aggregate profile reputation of the coverage, contributing benchmarks, and winning results — higher means more reputable profiles vouched for this score.">
                   <span class="best-service-score-value">{bestCoverage.score}</span>
                   <span class="best-service-score-label">composite score</span>
+                  <span class="best-service-rep">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    <span class="best-service-rep-value">{formatReputation(bestCoverage.dataReputation)}</span>
+                    <span class="best-service-rep-label">data rep</span>
+                  </span>
                 </div>
               </div>
               {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
@@ -1085,7 +1123,7 @@
                         <button
                           class="dialogue-btn"
                           type="button"
-                          on:click={() => openForum(cov.boxId, `Coverage: ${cov.label || formatServiceId(cov.serviceId || cov.boxId)}`)}
+                          on:click={() => openForum(cov.boxId, `Coverage: ${formatServiceId(cov.serviceId || cov.boxId)}`)}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
@@ -1586,7 +1624,9 @@
 
   /* ── Main content ───────────────────────────────────────────────────── */
   .main-content {
-    @apply min-h-[60vh];
+    /* pb-12 (3rem) reserves space for the fixed page-footer (h-12 = 3rem) so
+       trailing content isn't hidden behind it. */
+    @apply min-h-[60vh] pb-12;
   }
 
   /* ── Gallery ────────────────────────────────────────────────────────── */
@@ -2027,6 +2067,21 @@
   .best-service-score-label {
     @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
     color: hsl(var(--muted-foreground));
+  }
+  /* Data-reputation badge under the composite score. Visually subordinate
+     (smaller text, dimmer) — it's a "how much should I trust this number"
+     annotation, not a number to compare across services on its own. */
+  .best-service-rep {
+    @apply inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded;
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--muted-foreground));
+  }
+  .best-service-rep-value {
+    @apply text-xs font-semibold leading-none;
+    font-variant-numeric: tabular-nums;
+  }
+  .best-service-rep-label {
+    @apply text-[0.6rem] uppercase tracking-wider;
   }
   .best-service-download {
     @apply inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-md text-sm font-medium no-underline transition-colors;

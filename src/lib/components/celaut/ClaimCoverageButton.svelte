@@ -8,17 +8,10 @@
   import { getMainReputationBox } from '$lib/reputationContext';
 
   export let skillBoxId: string = '';
-  export let skillName: string = '';
 
   const dispatch = createEventDispatcher<{ created: { txId: string } }>();
   let showTooltip = false;
   let submitting = false;
-
-  function truncateAddress(value: string): string {
-    if (!value) return '';
-    if (value.length <= 12) return value;
-    return `${value.slice(0, 8)}…${value.slice(-4)}`;
-  }
 
   async function handleClaim() {
     if (!$walletConnected) {
@@ -37,14 +30,10 @@
     submitting = true;
     try {
       const serviceId = $walletAddress || undefined;
-      const label = skillName
-        ? `${skillName} by ${truncateAddress($walletAddress || 'wallet')}`
-        : `Coverage by ${truncateAddress($walletAddress || 'wallet')}`;
 
       const txId = await createCoverage({
         skillBoxId,
         serviceId,
-        label,
         tokenAmount: 1,
         mainBox: getMainReputationBox($reputation_proof)
       });
