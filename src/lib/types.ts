@@ -75,7 +75,6 @@ export interface Coverage {
   boxId: string;
   profileId: string;
   serviceId?: string;
-  label: string;
   reputation?: number;
 }
 
@@ -83,7 +82,6 @@ export interface Coverage {
 export interface CoverageCreationInput {
   skillBoxId: string;
   serviceId?: string;
-  label: string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
   /** Optional main box used for live on-chain writes. */

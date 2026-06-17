@@ -853,7 +853,7 @@
               </div>
               <div class="best-service-body">
                 <div class="best-service-text">
-                  <div class="best-service-name">{bestCoverage.coverage.label || 'Unnamed service'}</div>
+                  <div class="best-service-name">{bestCoverage.coverage.serviceId ? bestCoverage.coverage.serviceId.slice(0, 8) : 'Unnamed Service'}</div>
                   {#if bestCoverage.coverage.serviceId}
                     <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
                   {/if}

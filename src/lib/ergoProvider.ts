@@ -92,8 +92,7 @@ class ErgoDataProvider implements DataProvider {
       true,
       {
         skill_box_id: input.skillBoxId,
-        service_id: input.serviceId ?? null,
-        label: input.label
+        service_id: input.serviceId ?? null
       },
       false,
       getMainBox(input.mainBox, 'coverage')

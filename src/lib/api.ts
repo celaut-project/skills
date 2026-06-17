@@ -250,7 +250,6 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
           boxId: box.boxId,
           profileId,
           serviceId: parsed.service_id || undefined,
-          label: parsed.label || 'Unknown Service',
           reputation: 0
         } as Coverage;
       } catch {
@@ -498,7 +497,7 @@ export function getDemoSkills(): Skill[] {
       domain: 'security',
       otherSkillBoxIds: ['demo-004'],
       coverages: [
-        { boxId: 'cov-011', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1', label: 'ErgoShield' }
+        { boxId: 'cov-011', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1' }
       ],
       benchmarks: [
         {
@@ -526,7 +525,7 @@ export function getDemoSkills(): Skill[] {
       domain: 'finance',
       otherSkillBoxIds: ['demo-001', 'demo-004'],
       coverages: [
-        { boxId: 'cov-007', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8', label: 'PathFinder DEX' }
+        { boxId: 'cov-007', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8' }
       ],
       benchmarks: [
         {
@@ -555,8 +554,8 @@ export function getDemoSkills(): Skill[] {
       otherSkillBoxIds: ['demo-004'],
       sourceHash: 'c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4',
       coverages: [
-        { boxId: 'cov-008', serviceId: 'QmK1xK5pNfD4WyL9tB2mRa8jUc3eHb7g6', label: 'SigmaAudit' },
-        { boxId: 'cov-009', serviceId: 'QmL6wP9pMdE7VxR4sC1nYq6eDf5bZa8h3', label: 'ErgoSentinel' }
+        { boxId: 'cov-008', serviceId: 'QmK1xK5pNfD4WyL9tB2mRa8jUc3eHb7g6' },
+        { boxId: 'cov-009', serviceId: 'QmL6wP9pMdE7VxR4sC1nYq6eDf5bZa8h3' }
       ],
       benchmarks: [
         {
@@ -587,8 +586,8 @@ export function getDemoSkills(): Skill[] {
       otherSkillBoxIds: ['demo-img-002', 'demo-img-003'],
       sourceHash: 'f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7',
       coverages: [
-        { boxId: 'cov-img-001', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', label: 'VisionNet Pro' },
-        { boxId: 'cov-img-002', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O', label: 'EfficientClassifier' }
+        { boxId: 'cov-img-001', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N' },
+        { boxId: 'cov-img-002', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O' }
       ],
       benchmarks: [
         {
@@ -634,7 +633,7 @@ export function getDemoSkills(): Skill[] {
       otherSkillBoxIds: ['demo-img-001', 'demo-img-003'],
       sourceHash: 'bb22cc33dd44ee55ff66aa77bb88cc99dd00ee11ff22aa33bb44cc55dd66ee77',
       coverages: [
-        { boxId: 'cov-img-003', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S', label: 'MedVision AI' }
+        { boxId: 'cov-img-003', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S' }
       ],
       benchmarks: [
         {
@@ -662,9 +661,9 @@ export function getDemoSkills(): Skill[] {
       domain: 'infrastructure',
       otherSkillBoxIds: ['demo-img-001', 'demo-img-002'],
       coverages: [
-        { boxId: 'cov-img-004', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0', label: 'TinyClassifier' },
-        { boxId: 'cov-img-005', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1', label: 'EdgeInspect v3' },
-        { boxId: 'cov-img-006', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2', label: 'NanoVision' }
+        { boxId: 'cov-img-004', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0' },
+        { boxId: 'cov-img-005', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1' },
+        { boxId: 'cov-img-006', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2' }
       ],
       benchmarks: [
         {

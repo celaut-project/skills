@@ -54,7 +54,7 @@
     {:else}
       {#each skill.coverages as cov}
         <div class="card mb-2 flex items-center justify-between">
-          <span class="font-medium">{cov.label}</span>
+          <span class="font-medium">{cov.serviceId ? cov.serviceId.slice(0, 8) : 'Unnamed Service'}</span>
           <span class="text-xs text-muted-foreground font-mono">{(cov.serviceId || cov.boxId).slice(0,12)}…</span>
         </div>
       {/each}

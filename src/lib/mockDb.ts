@@ -127,7 +127,6 @@ class MockDatabase implements DataProvider {
       boxId: this.createId('cov'),
       profileId,
       serviceId: input.serviceId,
-      label: input.label,
       reputation: 0
     });
 
