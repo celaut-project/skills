@@ -1,11 +1,23 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import type { Benchmark, Result } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
+  import { walletConnected } from 'wallet-svelte-component';
   import { reputation_proof, explorer_uri, source_explorer_url, web_explorer_uri_token } from '$lib/common/store';
   import { openForum } from './forumSidebar';
+  // Result submission routes through the data facade so the same call path
+  // works in demo mode (mockDb) and live mode (ergoProvider → create_opinion).
+  import { createResult } from '$lib/data';
+  import { demoMode } from '$lib/config';
+  import { getMainReputationBox } from '$lib/reputationContext';
+
+  // Parent (App.svelte) listens for `created` to refresh the skill tree after
+  // a successful on-chain write. Mirrors the wiring used by ClaimCoverageButton
+  // and the benchmark creation form.
+  const dispatch = createEventDispatcher<{ created: { txId: string } }>();
 
   export let benchmarks: Benchmark[] = [];
   export let selectedBenchmarkId: string | null = null;
@@ -43,6 +55,7 @@
   let submitServiceId = '';
   let submitScore = '';
   let submitNotes = '';
+  let submitting = false;
 
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
@@ -98,18 +111,74 @@
     }
   }
 
-  function handleSubmitResult() {
-    const scoreStr = String(submitScore).trim();
-    if (!submitServiceId.trim() || !scoreStr) {
-      toasts.error('Service ID and Score are required.');
+  /**
+   * Submit a result for `benchmarkId` as a Result opinion.
+   *
+   * The form lives inside `{#each benchmarks as benchmark}`, so the
+   * benchmark id is passed explicitly rather than read from a top-level
+   * binding — keeps this handler usable from any row without leaking
+   * "currently focused benchmark" state.
+   *
+   * In live mode this flows: createResult → ergoProvider.createResult →
+   * `create_opinion(...)`. In demo mode it lands in mockDb. The same
+   * wallet + profile guards used by Coverage/Benchmark apply here.
+   */
+  async function handleSubmitResult(benchmarkId: string) {
+    if (!submitServiceId.trim()) {
+      toasts.error('Service ID is required.');
       return;
     }
-    console.log('Submit result:', { serviceId: submitServiceId, score: submitScore, notes: submitNotes });
-    toasts.info('Result submitted (pending Type NFT deployment)');
-    showSubmitForm = false;
-    submitServiceId = '';
-    submitScore = '';
-    submitNotes = '';
+    // `bind:value` on a `type="number"` input keeps `submitScore` as a string
+    // until the user types something parseable. Validate explicitly so an
+    // empty input doesn't get silently submitted as score=0.
+    const scoreStr = String(submitScore).trim();
+    if (!scoreStr) {
+      toasts.error('Score is required.');
+      return;
+    }
+    const score = Number(scoreStr);
+    if (!Number.isFinite(score)) {
+      toasts.error('Score must be a number.');
+      return;
+    }
+
+    // Live mode requires both a connected wallet (to sign the tx) and a
+    // reputation profile box (used as `mainBox` for create_opinion). Demo
+    // mode skips these — mockDb doesn't need a chain.
+    if (!$demoMode) {
+      if (!$walletConnected) {
+        toasts.error('Connect wallet to submit a result.');
+        return;
+      }
+      if (!$reputation_proof || !getMainReputationBox($reputation_proof)) {
+        toasts.error('Create a reputation profile first.');
+        return;
+      }
+    }
+
+    submitting = true;
+    try {
+      const txId = await createResult({
+        benchmarkId,
+        serviceId: submitServiceId.trim(),
+        score,
+        notes: submitNotes.trim(),
+        timestamp: Math.floor(Date.now() / 1000),
+        tokenAmount: 1,
+        mainBox: $reputation_proof ? getMainReputationBox($reputation_proof) : undefined
+      });
+
+      toasts.success($demoMode ? 'Result submitted (demo mode).' : 'Result published on-chain.');
+      dispatch('created', { txId });
+      showSubmitForm = false;
+      submitServiceId = '';
+      submitScore = '';
+      submitNotes = '';
+    } catch (error: any) {
+      toasts.error(error?.message || 'Result submission failed.');
+    } finally {
+      submitting = false;
+    }
   }
 </script>
 
@@ -279,7 +348,7 @@
                   Submit Result
                 </button>
               {:else}
-                <form class="submit-result-form" on:submit|preventDefault={handleSubmitResult}>
+                <form class="submit-result-form" on:submit|preventDefault={() => handleSubmitResult(benchmark.id)}>
                   <h4 class="form-title">Submit Result</h4>
                   <div class="form-row">
                     <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
@@ -294,8 +363,10 @@
                     <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
                   </div>
                   <div class="form-actions">
-                    <button type="submit" class="btn-submit">Submit</button>
-                    <button type="button" class="btn-cancel" on:click={() => showSubmitForm = false}>Cancel</button>
+                    <button type="submit" class="btn-submit" disabled={submitting}>
+                      {submitting ? 'Submitting…' : 'Submit'}
+                    </button>
+                    <button type="button" class="btn-cancel" on:click={() => showSubmitForm = false} disabled={submitting}>Cancel</button>
                   </div>
                 </form>
               {/if}
