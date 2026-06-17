@@ -159,7 +159,7 @@ export interface EntityWriteResult {
 }
 
 /** Tab options for the main navigation. */
-export type ActiveTab = 'gallery' | 'submit';
+export type ActiveTab = 'gallery' | 'submit' | 'profile';
 
 /** Error types for API operations. */
 export class ApiError extends Error {
