@@ -6,8 +6,7 @@
   // Forum is now rendered by a single full-height side-rail panel
   // (see ForumSidebar.svelte). Each "dialogue" button funnels through
   // `openForum(topicId, title)` instead of mounting its own Forum copy.
-  import { web_explorer_uri_addr, reputation_proof, explorer_uri, source_explorer_url } from "$lib/common/store";
-  import { web_explorer_uri_tkn } from "$lib/ergo/envs";
+  import { web_explorer_uri_addr, web_explorer_uri_token, reputation_proof, explorer_uri, source_explorer_url } from "$lib/common/store";
   import { FileCard, FileSourceCreation, fetchFileSourcesByHash } from "source-application";
   import type { FileSource } from "source-application";
   import { writable } from "svelte/store";
@@ -436,6 +435,57 @@
     ? skills.filter((s) => s.name === selectedSkill!.name && s.boxId !== selectedSkill!.boxId)
     : [];
 
+  type RelatedSkillDirection = "outgoing" | "incoming" | "both";
+
+  type RelatedSkillLink = {
+    skill: Skill;
+    direction: RelatedSkillDirection;
+  };
+
+  function relatedSkillDirectionLabel(direction: RelatedSkillDirection): string {
+    switch (direction) {
+      case "outgoing":
+        return "references";
+      case "incoming":
+        return "referenced by";
+      case "both":
+        return "mutual";
+    }
+  }
+
+  $: relatedSkills = selectedSkill
+    ? (() => {
+        const related = new Map<string, RelatedSkillLink>();
+
+        const addRelated = (skill: Skill, direction: RelatedSkillDirection) => {
+          const existing = related.get(skill.boxId);
+          if (!existing) {
+            related.set(skill.boxId, { skill, direction });
+            return;
+          }
+          if (existing.direction !== direction) {
+            existing.direction = "both";
+          }
+        };
+
+        for (const refId of selectedSkill.otherSkillBoxIds) {
+          const match = skills.find((s) => s.boxId === refId);
+          if (match && match.boxId !== selectedSkill.boxId) {
+            addRelated(match, "outgoing");
+          }
+        }
+
+        for (const skill of skills) {
+          if (skill.boxId === selectedSkill.boxId) continue;
+          if (skill.otherSkillBoxIds.includes(selectedSkill.boxId)) {
+            addRelated(skill, "incoming");
+          }
+        }
+
+        return [...related.values()];
+      })()
+    : [];
+
   /**
    * Compute a composite score for a coverage/service within a skill.
    * Score = sum of (result.score × benchmarkReputation) for all results
@@ -830,7 +880,7 @@
                     sources={skillSources}
                     explorerUri={$explorer_uri}
                     source_explorer_url={$source_explorer_url}
-                    webExplorerUriTkn={web_explorer_uri_tkn}
+                    webExplorerUriTkn={$web_explorer_uri_token}
                   />
                   {#if $reputation_proof}
                     <button class="add-source-btn mt-2" on:click={() => openFileSourceModal(selectedSkill?.sourceHash || '')}>
@@ -1182,27 +1232,23 @@
           {/if}
 
           <!-- Related skills -->
-          {#if selectedSkill.otherSkillBoxIds.length > 0}
+          {#if relatedSkills.length > 0}
             <section class="detail-section">
               <div class="detail-section-header">
                 <h2 class="detail-section-title">Related Skills</h2>
-                <span class="detail-count">{selectedSkill.otherSkillBoxIds.length}</span>
+                <span class="detail-count">{relatedSkills.length}</span>
               </div>
               <div class="space-y-2">
-                {#each selectedSkill.otherSkillBoxIds as refId}
-                  {@const related = skills.find(s => s.boxId === refId)}
-                  {#if related}
-                    <button class="detail-related-btn" on:click={() => selectSkill(related)}>
-                      <span class="font-medium">{related.name}</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M5 12h14M12 5l7 7-7 7"/>
-                      </svg>
-                    </button>
-                  {:else}
-                    <div class="detail-item">
-                      <span class="text-xs text-muted-foreground font-mono">{refId}</span>
-                    </div>
-                  {/if}
+                {#each relatedSkills as related}
+                  <button class="detail-related-btn" on:click={() => selectSkill(related.skill)}>
+                    <span class="font-medium">{related.skill.name}</span>
+                    <span class="detail-related-direction text-xs text-muted-foreground uppercase tracking-wide ml-auto">
+                      {relatedSkillDirectionLabel(related.direction)}
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                  </button>
                 {/each}
               </div>
             </section>

@@ -4,8 +4,7 @@
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
-  import { reputation_proof, explorer_uri, source_explorer_url } from '$lib/common/store';
-  import { web_explorer_uri_tkn } from '$lib/ergo/envs';
+  import { reputation_proof, explorer_uri, source_explorer_url, web_explorer_uri_token } from '$lib/common/store';
   import { openForum } from './forumSidebar';
 
   export let benchmarks: Benchmark[] = [];
@@ -162,7 +161,7 @@
                       sources={sourceCache[benchmark.sourceHash] || []}
                       explorerUri={$explorer_uri}
                       source_explorer_url={$source_explorer_url}
-                      webExplorerUriTkn={web_explorer_uri_tkn}
+                      webExplorerUriTkn={$web_explorer_uri_token}
                     />
                     {#if $reputation_proof && onAddSource}
                       <button class="add-source-btn-sm" on:click={() => onAddSource?.(benchmark.sourceHash || '')}>
@@ -237,7 +236,7 @@
                                     sources={sourceCache[result.sourceHash] || []}
                                     explorerUri={$explorer_uri}
                                     source_explorer_url={$source_explorer_url}
-                                    webExplorerUriTkn={web_explorer_uri_tkn}
+                                    webExplorerUriTkn={$web_explorer_uri_token}
                                   />
                                   {#if $reputation_proof && onAddSource}
                                     <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>

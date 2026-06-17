@@ -15,7 +15,7 @@ import type {
   BenchmarkCreationInput,
   ResultCreationInput
 } from './types';
-import { getDemoSkills } from './api';
+import { applySkillInheritance, getDemoSkills } from './api';
 
 class MockDatabase implements DataProvider {
   private skills: Skill[];
@@ -67,17 +67,17 @@ class MockDatabase implements DataProvider {
 
   async loadSkills(): Promise<Skill[]> {
     // Return a deep copy to prevent mutation
-    return this.clone(this.skills);
+    return applySkillInheritance(this.clone(this.skills));
   }
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {
-    const skill = this.skills.find(s => s.boxId === skillBoxId);
+    const skill = applySkillInheritance(this.clone(this.skills)).find(s => s.boxId === skillBoxId);
     if (!skill) return [];
     return this.clone(skill.coverages);
   }
 
   async loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
-    const skill = this.skills.find(s => s.boxId === skillBoxId);
+    const skill = applySkillInheritance(this.clone(this.skills)).find(s => s.boxId === skillBoxId);
     if (!skill) return [];
     return this.clone(skill.benchmarks);
   }
