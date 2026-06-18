@@ -691,6 +691,40 @@
     }>;
   }
 
+  // ── "All cases (median)" expansion state ──────────────────────────────────
+  // When a coverage's benchmark has no descriptors we collapse every case into
+  // a single median row. Clicking that row expands the individual per-case
+  // values so reviewers can audit the aggregate, keyed per (service, benchmark).
+  let expandedAllCases: Record<string, boolean> = {};
+  function allCasesKey(serviceId: string | undefined, benchmarkId: string): string {
+    return `${serviceId ?? ''}::${benchmarkId}`;
+  }
+  function toggleAllCases(serviceId: string | undefined, benchmarkId: string): void {
+    const key = allCasesKey(serviceId, benchmarkId);
+    expandedAllCases = { ...expandedAllCases, [key]: !expandedAllCases[key] };
+  }
+  function collectIndividualCases(
+    serviceId: string | undefined,
+    benchmark: Benchmark
+  ): Array<{ resultId: string; caseIndex: number; metricsValues: Array<number | null>; timestamp?: number }> {
+    if (!serviceId) return [];
+    const rows: Array<{ resultId: string; caseIndex: number; metricsValues: Array<number | null>; timestamp?: number }> = [];
+    for (const r of benchmark.results) {
+      if (r.serviceId !== serviceId) continue;
+      const data = (r as any).data as Array<{ caseMeta: number[]; metricsValues: number[] }> | undefined;
+      if (!Array.isArray(data) || data.length === 0) continue;
+      data.forEach((c, i) => {
+        rows.push({
+          resultId: r.id,
+          caseIndex: i,
+          metricsValues: c.metricsValues.map((v) => (typeof v === 'number' ? v : null)),
+          timestamp: (r as any).timestamp
+        });
+      });
+    }
+    return rows;
+  }
+
   function collectServiceResults(
     serviceId: string | undefined,
     skill: Skill
@@ -1182,17 +1216,40 @@
                               </thead>
                               <tbody>
                                 <!-- Aggregate row: median across every case the service ran. -->
-                                <tr class="aggregate-row">
+                                <tr class="aggregate-row" class:aggregate-row-clickable={block.descriptors.length === 0} on:click={() => block.descriptors.length === 0 && toggleAllCases(cov.serviceId, block.benchmark.id)}>
                                   {#each block.descriptors as _d}
                                     <td class="td-aggregate-label" colspan={1}>—</td>
                                   {/each}
                                   {#if block.descriptors.length === 0}
-                                    <td class="td-aggregate-label">All cases (median)</td>
+                                    <td class="td-aggregate-label">
+                                      <span class="all-cases-toggle-icon" aria-hidden="true">{(expandedAllCases[allCasesKey(cov.serviceId, block.benchmark.id)] ?? false) ? '▾' : '▸'}</span>
+                                      All cases (median)
+                                    </td>
                                   {/if}
                                   {#each block.aggregateMetrics as a}
                                     <td class="num">{a.value !== null ? formatReputation(a.value) : '—'}</td>
                                   {/each}
                                 </tr>
+                                {#if block.descriptors.length === 0 && (expandedAllCases[allCasesKey(cov.serviceId, block.benchmark.id)] ?? false)}
+                                  {@const cases = collectIndividualCases(cov.serviceId, block.benchmark)}
+                                  {#if cases.length === 0}
+                                    <tr class="all-cases-empty-row">
+                                      <td colspan={block.metrics.length + 1} class="all-cases-empty-cell">No individual cases recorded.</td>
+                                    </tr>
+                                  {:else}
+                                    {#each cases as c, i}
+                                      <tr class="all-cases-detail-row">
+                                        <td class="all-cases-detail-label">
+                                          <span class="all-cases-detail-index">#{i + 1}</span>
+                                          <code class="font-mono text-xs">{formatHash(c.resultId)}</code>
+                                        </td>
+                                        {#each c.metricsValues as v}
+                                          <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                        {/each}
+                                      </tr>
+                                    {/each}
+                                  {/if}
+                                {/if}
                                 {#if block.descriptors.length > 0}
                                   <tr class="aggregate-label-row">
                                     <td colspan={block.descriptors.length + block.metrics.length} class="aggregate-label-row-td">
@@ -2550,6 +2607,45 @@
   }
   .aggregate-label-row-divider {
     font-style: normal;
+  }
+  .aggregate-row-clickable {
+    cursor: pointer;
+  }
+  .aggregate-row-clickable:hover td {
+    background: hsl(var(--muted) / 0.3);
+  }
+  .all-cases-toggle-icon {
+    display: inline-block;
+    width: 0.85rem;
+    margin-right: 0.25rem;
+    color: hsl(var(--muted-foreground));
+  }
+  .all-cases-detail-row td {
+    background: hsl(var(--background));
+    font-weight: 400;
+    font-size: 0.75rem;
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+  }
+  .all-cases-detail-label {
+    color: hsl(var(--muted-foreground));
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .all-cases-detail-index {
+    color: hsl(var(--muted-foreground));
+    font-variant-numeric: tabular-nums;
+    font-size: 0.7rem;
+  }
+  .all-cases-empty-row td {
+    background: hsl(var(--background));
+    font-style: italic;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+  }
+  .all-cases-empty-cell {
+    text-align: center;
   }
 
   /* ── Comparative (services × benchmarks) matrix ────────────────────── */
