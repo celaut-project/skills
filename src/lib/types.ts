@@ -15,6 +15,10 @@
  */
 
 /** A Skill represents a registered AI problem/capability on-chain. */
+/*
+Type NFT definition:
+An objective declaration of a computational problem or target task. It acts as an abstract capability marker that isolates the structural definition of the problem itself, maintaining absolute independence from any specific execution logic, implementation strategies, communication interfaces, or application-layer protocols.
+*/
 export interface Skill {
   boxId: string;
   profileId: string;
@@ -48,6 +52,10 @@ export interface SkillCreationInput {
 }
 
 /** A Coverage links a service (AI agent) to a Skill it can address. */
+/*
+Type NFT definition:
+An explicit assertion declaring that a specific computational service is capable of addressing a designated computational problem. It establishes a referential linkage between a service identifier and a target abstract capability, serving as an unverified claim of functionality.
+*/
 export interface Coverage {
   boxId: string;
   profileId: string;
