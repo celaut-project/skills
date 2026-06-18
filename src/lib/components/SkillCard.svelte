@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import ProfileAvatar from './celaut/ProfileAvatar.svelte';
 
   export let name: string;
   export let prose: string;
@@ -12,6 +13,8 @@
   export let isDuplicate: boolean = false;
   export let index: number = 0;
   export let reputation: number = 0;
+  /** Profile id of the submitter — used to render an identicon avatar. */
+  export let profileId: string | undefined = undefined;
 
   let visible = false;
   onMount(() => {
@@ -36,7 +39,12 @@
 >
   <div class="card-inner">
     <div class="flex items-start justify-between gap-2 mb-3">
-      <h3 class="card-title">{name}</h3>
+      <div class="flex items-center gap-2 min-w-0">
+        {#if profileId}
+          <ProfileAvatar {profileId} size={18} title={`Submitted by ${profileId}`} />
+        {/if}
+        <h3 class="card-title">{name}</h3>
+      </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         {#if reputation > 0}
           <span class="reputation-badge" title="Reputation score">

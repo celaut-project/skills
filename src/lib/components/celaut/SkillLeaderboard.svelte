@@ -5,6 +5,7 @@
   import { aggregateMetricForService, bucketByDescriptor, median } from '$lib/scoring';
   import InfoTip from './InfoTip.svelte';
   import ExplorerLink from './ExplorerLink.svelte';
+  import ProfileAvatar from './ProfileAvatar.svelte';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
@@ -316,6 +317,7 @@
           <button class="benchmark-header" on:click={() => selectBenchmark(benchmark.id)}>
             <div class="benchmark-info">
               <h3 class="benchmark-name">
+                <ProfileAvatar profileId={benchmark.profileId} size={18} title={`Benchmark submitted by ${benchmark.profileId}`} />
                 {benchmark.name}
                 <!-- The <a> in ExplorerLink must not toggle the outer expand-collapse button. -->
                 <span role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
@@ -511,6 +513,7 @@
                     {#each benchmark.results as result}
                       <div class="raw-result">
                         <div class="raw-result-header">
+                          <ProfileAvatar profileId={result.profileId} size={16} title={`Result submitted by ${result.profileId}`} />
                           <code class="service-id">{formatServiceId(result.serviceId)}</code>
                           <ExplorerLink boxId={result.id} liveTooltip="View Result box on Ergo Explorer" />
                           <span class="raw-result-meta">

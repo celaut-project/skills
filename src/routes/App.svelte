@@ -24,6 +24,7 @@
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
   import InfoTip from "$lib/components/celaut/InfoTip.svelte";
   import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
+  import ProfileAvatar from "$lib/components/celaut/ProfileAvatar.svelte";
   import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
@@ -403,8 +404,30 @@
     return hidden;
   })();
 
+  // Collapse same-named submissions to the highest-reputation instance so the
+  // gallery shows the canonical "Image Classification" (etc.) card. The other
+  // submissions remain reachable from the skill-detail view via the
+  // `siblingSkills` dropdown, which already lists every concurrent entry with
+  // its own reputation badge.
+  function pickCanonicalByName(list: Skill[]): Skill[] {
+    const byName = new Map<string, Skill>();
+    for (const s of list) {
+      const current = byName.get(s.name);
+      if (!current) {
+        byName.set(s.name, s);
+        continue;
+      }
+      const currentRep = calculateSkillReputation(current).total;
+      const candidateRep = calculateSkillReputation(s).total;
+      if (candidateRep > currentRep) byName.set(s.name, s);
+    }
+    return Array.from(byName.values());
+  }
+
   $: displayedSkills = sortSkills(
-    filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId)),
+    pickCanonicalByName(
+      filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId))
+    ),
     currentSort
   );
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
@@ -813,6 +836,7 @@
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
               <div class="flex items-center gap-3">
+                <ProfileAvatar profileId={selectedSkill.profileId} size={28} title={`Skill submitted by ${selectedSkill.profileId}`} />
                 <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
                 <InfoTip title="What is a Skill?">
                   <p>A <strong>Skill</strong> is an on-chain declaration of a capability: a name, a prose description (what an agent must accomplish), an optional formal spec, and tags. Services <em>cover</em> a skill by claiming they can perform it, and <em>benchmarks</em> measure how well.</p>
@@ -883,12 +907,20 @@
                 </summary>
                 <ul class="duplicate-notice-list">
                   {#each siblingSkills as sibling (sibling.boxId)}
+                    {@const sibRep = calculateSkillReputation(sibling).total}
                     <li>
                       <button type="button" class="duplicate-notice-item" on:click={() => selectSkill(sibling)}>
+                        <ProfileAvatar profileId={sibling.profileId} size={16} title={`Submitted by ${sibling.profileId}`} />
                         <span class="duplicate-notice-item-name">{sibling.name}</span>
                         {#if sibling.domain}
                           <span class="duplicate-notice-item-domain">{sibling.domain}</span>
                         {/if}
+                        <span class="duplicate-notice-item-rep" title="Reputation">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                          </svg>
+                          {formatReputation(sibRep)}
+                        </span>
                         <span class="duplicate-notice-item-box">{formatSourceHash(sibling.boxId)}</span>
                       </button>
                     </li>
@@ -1102,6 +1134,7 @@
                     {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
                     <div class="coverage-card">
                       <div class="coverage-card-header">
+                        <ProfileAvatar profileId={cov.profileId} size={18} title={`Coverage submitted by ${cov.profileId}`} />
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
                         <ExplorerLink boxId={cov.boxId} liveTooltip="View Coverage box on Ergo Explorer" />
                         <span class="ml-auto coverage-score">
@@ -1388,6 +1421,7 @@
                 resultCount={skill.resultCount}
                 isDuplicate={skillNameCounts[skill.name] > 1}
                 reputation={calculateSkillReputation(skill).total}
+                profileId={skill.profileId}
                 index={i}
                 on:click={() => selectSkill(skill)}
               />
@@ -2236,8 +2270,23 @@
     color: hsl(var(--muted-foreground));
     font-size: 0.6875rem;
   }
-  .duplicate-notice-item-box {
+  .duplicate-notice-item-rep {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     margin-left: auto;
+    padding: 0.05rem 0.375rem;
+    border-radius: 9999px;
+    background: hsl(45 90% 50% / 0.15);
+    color: hsl(45 80% 35%);
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+  :global(.dark) .duplicate-notice-item-rep {
+    background: hsl(45 90% 50% / 0.12);
+    color: hsl(45 80% 70%);
+  }
+  .duplicate-notice-item-box {
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.6875rem;
     color: hsl(var(--muted-foreground));
