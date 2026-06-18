@@ -24,7 +24,7 @@ export interface Skill {
   profileId: string;
   name: string;
   prose: string;
-  formal: string;  // TODO Agregar formal al resto. La especificación formal de la habilidad, en un lenguaje formal (ej. TLA+, Alloy, etc.) o un DSL específico de cualquiera.
+  formal: string;  // TODO Agregar formal en el resto del código.
   tags: string[];
   domain: string;
   extendedSkillBoxIds: string[];
@@ -73,23 +73,40 @@ export interface CoverageCreationInput {
   mainBox?: unknown;
 }
 
-export interface BenchmarkFeature {
+export interface Descriptor {
+  name: string;
+  description: string;
+}
+
+export interface PerformanceMetric {
   name: string;
   description: string;
   higherIsBetter: boolean;
+}
+
+export interface CaseExecutionData {
+  /** Numerical values corresponding positionally to the Benchmark's caseDescriptors */
+  caseMeta: number[];
+  /** Numerical measurements corresponding positionally to the Benchmark's performanceMetrics */
+  metricsValues: number[];
 }
 
 /**
  * A Benchmark defines the structure/criteria for how results
  * are evaluated for a given skill — metrics, units, pass thresholds.
  */
+/*
+Type NFT definition:
+A structured specification of an evaluation space designed to analyze computational solutions against a problem domain. It defines the structural parameters used to describe problem cases alongside the directional performance metrics used to quantify execution outcomes, constituting the blueprint of the performance tensor.
+*/
 export interface Benchmark {
   id: string;
   profileId: string;
   skillBoxId: string;
   name: string;
   description: string;
-  features: BenchmarkFeature[]; // TODO Reemplaza metric y higherIsBetter en el código por features, que es un array de {name, description, higherIsBetter}. Esto permite tener múltiples métricas por benchmark.
+  caseDescriptors: Descriptor[];  // TODO Implement caseDescriptors in the rest of the codebase. They are the "dimensions" of the evaluation space, describing the problem cases.
+  performanceMetrics: PerformanceMetric[];  // TODO Implement performanceMetrics in the rest of the codebase. They are the "dimensions" of the evaluation space, describing how to measure performance.
   results: Result[];
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
@@ -101,13 +118,12 @@ export interface BenchmarkCreationInput {
   skillBoxId: string;
   name: string;
   description: string;
-  metric: string;
-  higherIsBetter: boolean;
+  caseDescriptors: Descriptor[];
+  performanceMetrics: PerformanceMetric[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
-  /** Optional main box used for live on-chain writes. */
   mainBox?: unknown;
 }
 
@@ -115,12 +131,16 @@ export interface BenchmarkCreationInput {
  * A Result is an individual benchmark result submitted on-chain,
  * evaluating a service's performance against a Skill's Benchmark.
  */
+/*
+Type NFT definition:
+An empirical data payload recording the performance profile of a single computational service across an evaluation space. It populates the performance tensor by binding the service identity to a collection of specific problem cases and their corresponding quantitative execution metrics.
+*/
 export interface Result {
   id: string;
   profileId: string;
   benchmarkId: string;
   serviceId: string;
-  score: number;
+  data: CaseExecutionData[];  // TODO Implement data in the rest of the codebase. It is the actual performance tensor, a collection of case executions and their corresponding metrics.
   notes: string;
   timestamp: number;
   reputation?: number;
@@ -132,7 +152,7 @@ export interface Result {
 export interface ResultCreationInput {
   benchmarkId: string;
   serviceId: string;
-  score: number;
+  data: CaseExecutionData[];
   notes: string;
   timestamp?: number;
   /** Blake2b256 hash of off-chain source file */

@@ -27,8 +27,8 @@ export const EXPLORER_API = 'https://api.ergoplatform.com';
  * producing against the Ergo Explorer API.
  */
 export const SKILL_TYPE_ID = 'ffce59c01b9c0c245005f9c2daf817607e912a3ececd5f61aaba48d30230f60c';
-export const BENCHMARK_TYPE_ID = 'celaut:benchmark-schema:v1';
-export const RESULT_TYPE_ID = 'celaut:benchmark:v1';
+export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f57ac451c995a30f54d';
+export const RESULT_TYPE_ID = '49b26dc06b1680769477264d2e8e9bf561005236cde3097630bffcff631b7aef';
 export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
