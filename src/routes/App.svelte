@@ -36,6 +36,13 @@
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
   import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
+  import {
+    buildComparisonTensor,
+    pickBestService,
+    aggregateMetricForService,
+    type ComparisonTensor,
+    type TensorRow
+  } from "$lib/scoring";
   import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
@@ -71,6 +78,7 @@
   // Submit skill form
   let newSkillName = "";
   let newSkillProse = "";
+  let newSkillFormal = "";
   let newSkillTags = "";
   let newSkillDomain = "";
   let submitting = false;
@@ -154,48 +162,30 @@
 
   /**
    * Aggregate profile reputation backing a composite score for one service.
-   *
-   * Per Josemi 2026-06-16: any entity's reputation derives from its profile
-   * (tokenId[0] of the box). The composite score on its own says "this service
-   * won across the benchmarks" but doesn't say "by whose word" — this number
-   * makes that explicit by summing the profile reputation of every box that
-   * contributed evidence: the coverage itself, each contributing benchmark, and
-   * each winning result. A high score with low data-reputation = anonymous
-   * brag; a high score with high data-reputation = vouched-for by reputable
-   * profiles.
+   * (Pulled from the comparison tensor — see scoring.ts.)
+   * Adds the coverage's own profile reputation on top of the tensor's
+   * compositeReputation (which only counts benchmark+result contributions),
+   * matching the pre-tensor behaviour.
    */
-  function computeServiceDataReputation(serviceId: string | undefined, skill: Skill): number {
-    if (!serviceId) return 0;
-    const coverage = skill.coverages.find((c) => c.serviceId === serviceId);
-    let rep = coverage?.reputation ?? 0;
-    for (const bench of skill.benchmarks) {
-      const matches = bench.results.filter((r) => r.serviceId === serviceId);
-      const winner = pickRepresentativeResult(matches, bench.higherIsBetter);
-      if (!winner) continue;
-      rep += bench.reputation ?? 0;
-      rep += winner.reputation ?? 0;
-    }
-    return rep;
+  function dataReputationForRow(skill: Skill, row: TensorRow): number {
+    const coverage = skill.coverages.find((c) => c.serviceId === row.serviceId);
+    return (coverage?.reputation ?? 0) + row.compositeReputation;
   }
 
-  /** Pick the Coverage with the highest reputation-weighted composite score. */
+  /** Pick the Coverage whose service has the highest composite tensor score. */
   function pickBestCoverage(
     skill: Skill,
   ): { coverage: Coverage; score: number; dataReputation: number } | null {
-    let best: { coverage: Coverage; score: number; dataReputation: number } | null = null;
-    for (const cov of skill.coverages) {
-      // Coverages without a serviceId can't compete — no results would match.
-      if (!cov.serviceId) continue;
-      const score = computeServiceCompositeScore(cov.serviceId, skill);
-      // Skip services with no winning result (score === 0) so the card only
-      // appears when there's actual evidence behind a winner.
-      if (score <= 0) continue;
-      if (!best || score > best.score) {
-        const dataReputation = computeServiceDataReputation(cov.serviceId, skill);
-        best = { coverage: cov, score, dataReputation };
-      }
-    }
-    return best;
+    const bestRow = pickBestService(skill);
+    if (!bestRow) return null;
+    const coverage = skill.coverages.find((c) => c.serviceId === bestRow.serviceId);
+    if (!coverage) return null;
+    if (bestRow.composite <= 0) return null;
+    return {
+      coverage,
+      score: bestRow.composite,
+      dataReputation: dataReputationForRow(skill, bestRow)
+    };
   }
 
   /**
@@ -485,29 +475,16 @@
     : [];
 
   /**
-   * Compute a composite score for a coverage/service within a skill.
-   * Score = sum of (result.score × benchmarkReputation) for all results
-   * matching this service across the skill's benchmarks.
+   * Composite score for one service across the skill's full (benchmark × metric)
+   * tensor — delegates to scoring.ts so the aggregation rule lives in one place.
+   * See the TODO header in scoring.ts for the open Josemi questions on
+   * aggregation/normalization.
    */
-  function pickRepresentativeResult(matches: Result[], higherIsBetter: boolean): Result | null {
-    if (matches.length === 0) return null;
-    return [...matches].sort((a, b) => {
-      const repDelta = calculateResultReputation(b).total - calculateResultReputation(a).total;
-      if (repDelta !== 0) return repDelta;
-      return higherIsBetter ? b.score - a.score : a.score - b.score;
-    })[0] ?? null;
-  }
-
   function computeServiceCompositeScore(serviceId: string | undefined, skill: Skill): number {
     if (!serviceId) return 0;
-    let composite = 0;
-    for (const bench of skill.benchmarks) {
-      const chosen = pickRepresentativeResult(bench.results.filter((result) => result.serviceId === serviceId), bench.higherIsBetter);
-      if (chosen) {
-        composite += chosen.score * Math.max(calculateBenchmarkReputation(bench).total, 1);
-      }
-    }
-    return Math.round(composite * 100) / 100;
+    const tensor = buildComparisonTensor(skill);
+    const row = tensor.rows.find((r) => r.serviceId === serviceId);
+    return row?.composite ?? 0;
   }
 
   function formatHash(hash: string | undefined): string {
@@ -539,6 +516,7 @@
   function forkSkill(skill: Skill) {
     newSkillName = skill.name;
     newSkillProse = skill.prose;
+    newSkillFormal = skill.formal ?? '';
     newSkillDomain = skill.domain;
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
@@ -568,6 +546,7 @@
       const txId = await createSkill({
         name: newSkillName.trim(),
         prose: newSkillProse.trim(),
+        formal: newSkillFormal.trim(),
         tags: newSkillTags.split(",").map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
         extendedSkillBoxIds: [...relatedSkillBoxIds],
@@ -580,6 +559,7 @@
       toasts.success($demoMode ? "Skill submitted successfully (demo mode)." : "Skill published on-chain.");
       newSkillName = '';
       newSkillProse = '';
+      newSkillFormal = '';
       newSkillDomain = '';
       newSkillTags = '';
       prefillRelatedBoxIds = [];
@@ -612,12 +592,22 @@
 
     benchmarkSubmitting = true;
     try {
+      // Quick-create path: one PerformanceMetric, zero CaseDescriptors.
+      // TODO Josemi: design the richer multi-metric / multi-descriptor form.
+      // The current inline form only collects a single metric name + direction,
+      // matching the legacy benchmark shape. A multidimensional benchmark
+      // editor (add/remove rows for caseDescriptors and performanceMetrics)
+      // is needed before users can author tensor-shaped benchmarks from the UI.
       await createBenchmarkEntity({
         skillBoxId: selectedSkill.boxId,
         name: benchmarkName.trim(),
         description: benchmarkDescription.trim(),
-        metric: benchmarkMetric.trim(),
-        higherIsBetter: benchmarkHigherIsBetter,
+        caseDescriptors: [],
+        performanceMetrics: [{
+          name: benchmarkMetric.trim(),
+          description: '',
+          higherIsBetter: benchmarkHigherIsBetter
+        }],
         mainBox: currentMainBox()
       });
       await refreshSkills(selectedSkill.boxId);
@@ -641,47 +631,51 @@
 
   // ── Coverage view helpers ──────────────────────────────────────────────────
   /**
-   * For a given service, return its best-result row per benchmark (only benchmarks
-   * the service has at least one result for). Used by the Coverages sub-tab.
+   * For a given service, return a per-(benchmark, metric) breakdown using the
+   * tensor's reputation-weighted aggregate value. Used by the Coverages tab —
+   * one row per metric column the service has data on.
    */
   function collectServiceResults(serviceId: string | undefined, skill: Skill) {
-    if (!serviceId) return [] as Array<{ benchmark: Benchmark; result: Result | null; count: number }>;
-    return skill.benchmarks
-      .map((bench) => {
-        const matches = bench.results.filter((r) => r.serviceId === serviceId);
-        const result = pickRepresentativeResult(matches, bench.higherIsBetter);
-        return { benchmark: bench, result, count: matches.length };
-      })
-      .filter((row) => row.count > 0);
+    if (!serviceId) return [] as Array<{
+      benchmark: Benchmark;
+      metricName: string;
+      higherIsBetter: boolean;
+      value: number | null;
+      resultsReputation: number;
+      count: number;
+    }>;
+    const rows: Array<{
+      benchmark: Benchmark;
+      metricName: string;
+      higherIsBetter: boolean;
+      value: number | null;
+      resultsReputation: number;
+      count: number;
+    }> = [];
+    for (const bench of skill.benchmarks) {
+      const metrics = bench.performanceMetrics ?? [];
+      metrics.forEach((m, i) => {
+        const agg = aggregateMetricForService(bench, serviceId, i);
+        if (agg.resultCount === 0) return;
+        rows.push({
+          benchmark: bench,
+          metricName: m.name,
+          higherIsBetter: m.higherIsBetter,
+          value: agg.value,
+          resultsReputation: agg.resultsReputation,
+          count: agg.resultCount
+        });
+      });
+    }
+    return rows;
   }
 
   /**
-   * Build a (coverage × benchmark) matrix where each cell uses the highest-
-   * reputation result when multiple submissions exist for the same pairing.
+   * Comparison view = the full (service × metric-column) tensor.
+   * See scoring.ts for column definitions and aggregation rules.
    */
-  function buildComparisonMatrix(skill: Skill) {
-    const bestPerService = (bench: Benchmark, sid: string | undefined): Result | null => {
-      if (!sid) return null;
-      return pickRepresentativeResult(bench.results.filter((r) => r.serviceId === sid), bench.higherIsBetter);
-    };
-    const columnWinners = skill.benchmarks.map((bench) => {
-      const allBests = skill.coverages
-        .map((cov) => bestPerService(bench, cov.serviceId)?.score ?? null)
-        .filter((v): v is number => v !== null);
-      if (allBests.length === 0) return null;
-      return bench.higherIsBetter ? Math.max(...allBests) : Math.min(...allBests);
-    });
-    const rows = skill.coverages.map((cov) => {
-      const cells = skill.benchmarks.map((bench, i) => {
-        const chosen = bestPerService(bench, cov.serviceId);
-        const score = chosen?.score ?? null;
-        const winner = columnWinners[i];
-        const isBest = score !== null && winner !== null && score === winner;
-        return { score, isBest, reputation: chosen ? calculateResultReputation(chosen).total : null };
-      });
-      return { serviceId: cov.serviceId || cov.boxId, cells };
-    });
-    return { rows };
+  function buildComparisonMatrix(skill: Skill): ComparisonTensor {
+    return buildComparisonTensor(skill);
   }
 
   onMount(() => {
@@ -1068,7 +1062,8 @@
                           <thead>
                             <tr>
                               <th>Benchmark</th>
-                              <th class="num">Chosen result</th>
+                              <th>Metric</th>
+                              <th class="num">Value</th>
                               <th class="num">Reputation</th>
                               <th class="num">Runs</th>
                             </tr>
@@ -1077,8 +1072,14 @@
                             {#each serviceResults as row}
                               <tr>
                                 <td>{row.benchmark.name}</td>
-                                <td class="num">{row.result ? formatReputation(row.result.score) : '—'}</td>
-                                <td class="num">{row.result ? formatReputation(calculateResultReputation(row.result).total) : '—'}</td>
+                                <td>
+                                  <code class="font-mono text-xs">{row.metricName}</code>
+                                  <span class="text-xs text-muted-foreground" title={row.higherIsBetter ? 'Higher is better' : 'Lower is better'}>
+                                    {row.higherIsBetter ? '↑' : '↓'}
+                                  </span>
+                                </td>
+                                <td class="num">{row.value !== null ? formatReputation(row.value) : '—'}</td>
+                                <td class="num">{formatReputation(row.resultsReputation)}</td>
                                 <td class="num">{row.count}</td>
                               </tr>
                             {/each}
@@ -1116,33 +1117,47 @@
                 </div>
               {:else}
                 {@const matrix = buildComparisonMatrix(selectedSkill)}
-                <div class="comparative-wrapper">
-                  <table class="comparative-table">
-                    <thead>
-                      <tr>
-                        <th class="comp-service-col">Service</th>
-                        {#each selectedSkill.benchmarks as bench}
-                          <th class="num" title={bench.description}>{bench.name}</th>
-                        {/each}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each matrix.rows as row}
+                {#if matrix.columns.length === 0}
+                  <div class="detail-empty">
+                    <p>None of this skill's benchmarks declare performance metrics yet.</p>
+                  </div>
+                {:else}
+                  <div class="comparative-wrapper">
+                    <table class="comparative-table">
+                      <thead>
                         <tr>
-                          <td>
-                            <code class="font-mono text-xs">{formatHash(row.serviceId)}</code>
-                          </td>
-                          {#each row.cells as cell}
-                            <td class="num" class:comp-cell-best={cell.isBest}>
-                              {cell.score !== null ? formatReputation(cell.score) : '—'}
-                            </td>
+                          <th class="comp-service-col">Service</th>
+                          {#each matrix.columns as col}
+                            <th class="num" title={`${col.benchmarkName} → ${col.metric.name} ${col.metric.higherIsBetter ? '↑' : '↓'}${col.metric.description ? ` · ${col.metric.description}` : ''}`}>
+                              <div class="comp-col-bench">{col.benchmarkName}</div>
+                              <div class="comp-col-metric">
+                                <code class="font-mono text-xs">{col.metric.name}</code>
+                                <span class="text-xs text-muted-foreground">{col.metric.higherIsBetter ? '↑' : '↓'}</span>
+                              </div>
+                            </th>
                           {/each}
+                          <th class="num" title="Composite score across all metric columns, reputation-weighted (see scoring.ts).">Composite</th>
                         </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                  <p class="comparative-note">Each cell uses the highest-reputation submission for that service and benchmark. Highlighted cells are the best scores within each benchmark column.</p>
-                </div>
+                      </thead>
+                      <tbody>
+                        {#each matrix.rows as row}
+                          <tr>
+                            <td>
+                              <code class="font-mono text-xs">{formatHash(row.serviceId)}</code>
+                            </td>
+                            {#each row.cells as cell, i}
+                              <td class="num" class:comp-cell-best={cell.value !== null && cell.value === matrix.columnWinners[i]}>
+                                {cell.value !== null ? formatReputation(cell.value) : '—'}
+                              </td>
+                            {/each}
+                            <td class="num">{formatReputation(row.composite)}</td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                    <p class="comparative-note">Tensor: rows are services, columns are (benchmark → metric). Cells show the reputation-weighted mean across that service's case executions. Highlighted = best in column. Composite weights by both benchmark and result reputation — see open clarification questions in <code>scoring.ts</code>.</p>
+                  </div>
+                {/if}
               {/if}
             </section>
           {/if}
@@ -1323,6 +1338,13 @@
               {#if validationErrors["prose"]}
                 <p class="field-error-msg">{validationErrors["prose"]}</p>
               {/if}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional)</span></label>
+              <textarea id="skill-formal" class="form-input form-textarea" bind:value={newSkillFormal} placeholder="Optional machine-readable problem specification (e.g. type signature, IO schema, formal predicate)."></textarea>
+              <!-- TODO Josemi: confirm whether `formal` should be a free-text field
+                   or a structured editor (e.g. JSON-Schema / typed grammar). For
+                   now it's a plain textarea stored verbatim. -->
             </div>
             <div class="form-group">
               <label class="form-label" for="skill-domain">Domain</label>

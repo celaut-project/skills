@@ -67,6 +67,7 @@ class ErgoDataProvider implements DataProvider {
       {
         name: input.name,
         prose: input.prose,
+        formal: input.formal ?? '',
         tags: input.tags,
         domain: input.domain,
         extended_skill_boxes: input.extendedSkillBoxIds,
@@ -74,7 +75,7 @@ class ErgoDataProvider implements DataProvider {
       },
       LOCKED,
       // create_opinion requiere una RPBox. Si no viene en el input, se necesita una alternativa global o lanzar error.
-      getMainBox((input as any).mainBox, 'skill') 
+      getMainBox((input as any).mainBox, 'skill')
     );
 
     if (!txId) {
@@ -117,8 +118,8 @@ class ErgoDataProvider implements DataProvider {
         skill_box_id: input.skillBoxId,
         name: input.name,
         description: input.description,
-        metric: input.metric,
-        higher_is_better: input.higherIsBetter,
+        case_descriptors: input.caseDescriptors,
+        performance_metrics: input.performanceMetrics,
         source_hash: input.sourceHash ?? null
       },
       LOCKED,
@@ -142,7 +143,13 @@ class ErgoDataProvider implements DataProvider {
       {
         benchmark_id: input.benchmarkId,
         service_id: input.serviceId,
-        score: input.score,
+        // The performance tensor: an array of CaseExecutionData, each with
+        // caseMeta (positional to caseDescriptors) and metricsValues
+        // (positional to performanceMetrics).
+        data: input.data.map((c) => ({
+          case_meta: c.caseMeta,
+          metrics_values: c.metricsValues
+        })),
         notes: input.notes,
         timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
         source_hash: input.sourceHash ?? null

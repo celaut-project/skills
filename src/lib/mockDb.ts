@@ -101,6 +101,7 @@ class MockDatabase implements DataProvider {
       profileId,
       name: input.name,
       prose: input.prose,
+      formal: input.formal ?? '',
       tags: [...input.tags],
       domain: input.domain,
       extendedSkillBoxIds: [...input.extendedSkillBoxIds],
@@ -145,8 +146,8 @@ class MockDatabase implements DataProvider {
       skillBoxId: input.skillBoxId,
       name: input.name,
       description: input.description,
-      metric: input.metric,
-      higherIsBetter: input.higherIsBetter,
+      caseDescriptors: [...(input.caseDescriptors ?? [])],
+      performanceMetrics: [...(input.performanceMetrics ?? [])],
       results: [],
       reputation: 0,
       sourceHash: input.sourceHash
@@ -168,7 +169,10 @@ class MockDatabase implements DataProvider {
       profileId,
       benchmarkId: input.benchmarkId,
       serviceId: input.serviceId,
-      score: input.score,
+      data: input.data.map((c) => ({
+        caseMeta: [...c.caseMeta],
+        metricsValues: [...c.metricsValues]
+      })),
       notes: input.notes,
       timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
       sourceHash: input.sourceHash,

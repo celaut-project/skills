@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { Benchmark, Result } from '$lib/types';
+  import type { Benchmark, Result, CaseExecutionData } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
+  import { aggregateMetricForService } from '$lib/scoring';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
@@ -50,25 +51,28 @@
     });
   }
 
-  // Submit result form state
+  // Submit result form state — see TODO at handleSubmitResult.
   let showSubmitForm = false;
   let submitServiceId = '';
-  let submitScore = '';
+  // Strings keyed by metric/descriptor index so partial typing stays valid.
+  let submitMetricValues: Record<number, string> = {};
+  let submitCaseMeta: Record<number, string> = {};
   let submitNotes = '';
   let submitting = false;
 
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
     showSubmitForm = false;
+    submitMetricValues = {};
+    submitCaseMeta = {};
   }
 
-  function sortResults(results: Result[], higherIsBetter: boolean): Result[] {
-    return [...results].sort((a, b) => higherIsBetter ? b.score - a.score : a.score - b.score);
-  }
-
-  function formatDate(ts: number): string {
-    if (!ts) return '-';
-    return new Date(ts * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  function formatScore(value: number | null | undefined): string {
+    if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+    if (value === 0) return '0';
+    if (Math.abs(value) >= 100) return value.toFixed(1);
+    if (Math.abs(value) >= 10) return value.toFixed(2);
+    return value.toPrecision(3);
   }
 
   function relativeTime(ts: number): string {
@@ -81,25 +85,46 @@
     return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
-  function formatScore(score: number): string {
-    if (score === 0) return '0';
-    if (Math.abs(score) >= 100) return score.toFixed(1);
-    if (Math.abs(score) >= 10) return score.toFixed(2);
-    return score.toPrecision(3);
-  }
-
   function truncateNotes(notes: string, maxLen: number = 30): string {
     if (!notes) return '-';
     if (notes.length <= maxLen) return notes;
     return notes.slice(0, maxLen) + '…';
   }
 
-  function computeStats(results: Result[]): { mean: number; stddev: number } {
-    if (results.length === 0) return { mean: 0, stddev: 0 };
-    const scores = results.map(r => r.score);
-    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / scores.length;
-    return { mean, stddev: Math.sqrt(variance) };
+  /**
+   * Aggregate every service's mean per metric for one benchmark — the row set
+   * the leaderboard table renders.
+   *
+   * Sort key: composite within this benchmark (sum of direction-adjusted
+   * metric means × max(result-rep, 1)). Cross-benchmark ranking happens in
+   * the App-level tensor view, not here.
+   *
+   * TODO Josemi: confirm per-benchmark sort key — currently a sum across
+   * metrics with direction sign applied. If different metrics should be
+   * weighted differently within a benchmark (e.g. "primary metric" first)
+   * that needs to be modelled on the Benchmark entity.
+   */
+  function leaderboardRows(benchmark: Benchmark) {
+    const serviceIds = Array.from(new Set(benchmark.results.map((r) => r.serviceId).filter(Boolean)));
+    const metrics = benchmark.performanceMetrics ?? [];
+    const rows = serviceIds.map((serviceId) => {
+      const perMetric = metrics.map((m, i) => {
+        const agg = aggregateMetricForService(benchmark, serviceId, i);
+        return { metricName: m.name, higherIsBetter: m.higherIsBetter, ...agg };
+      });
+      const composite = perMetric.reduce((sum, cell) => {
+        if (cell.value === null) return sum;
+        const sign = cell.higherIsBetter ? 1 : -1;
+        return sum + sign * cell.value * Math.max(cell.resultsReputation, 1);
+      }, 0);
+      const latest = benchmark.results
+        .filter((r) => r.serviceId === serviceId)
+        .reduce((max, r) => Math.max(max, r.timestamp || 0), 0);
+      const submissions = benchmark.results.filter((r) => r.serviceId === serviceId).length;
+      return { serviceId, perMetric, composite, latest, submissions };
+    });
+    rows.sort((a, b) => b.composite - a.composite);
+    return rows;
   }
 
   async function copyHash(hash: string) {
@@ -114,32 +139,54 @@
   /**
    * Submit a result for `benchmarkId` as a Result opinion.
    *
-   * The form lives inside `{#each benchmarks as benchmark}`, so the
-   * benchmark id is passed explicitly rather than read from a top-level
-   * binding — keeps this handler usable from any row without leaking
-   * "currently focused benchmark" state.
+   * Builds a single CaseExecutionData from the form inputs:
+   *   - caseMeta[i]      ← submitCaseMeta[i]
+   *   - metricsValues[i] ← submitMetricValues[i]
    *
-   * In live mode this flows: createResult → ergoProvider.createResult →
-   * `create_opinion(...)`. In demo mode it lands in mockDb. The same
-   * wallet + profile guards used by Coverage/Benchmark apply here.
+   * TODO Josemi: this only supports submitting ONE case execution per Result.
+   * The on-chain Result entity already supports many cases per submission;
+   * the UI should grow a "+ Add case" affordance so a single Result can
+   * carry a full mini-tensor. Please confirm whether one-case-per-submission
+   * is acceptable as a first step or whether we should block on multi-case
+   * UX from the start.
    */
-  async function handleSubmitResult(benchmarkId: string) {
+  async function handleSubmitResult(benchmark: Benchmark) {
     if (!submitServiceId.trim()) {
       toasts.error('Service ID is required.');
       return;
     }
-    // `bind:value` on a `type="number"` input keeps `submitScore` as a string
-    // until the user types something parseable. Validate explicitly so an
-    // empty input doesn't get silently submitted as score=0.
-    const scoreStr = String(submitScore).trim();
-    if (!scoreStr) {
-      toasts.error('Score is required.');
-      return;
+    const metrics = benchmark.performanceMetrics ?? [];
+    const descriptors = benchmark.caseDescriptors ?? [];
+
+    // Validate every metric has a numeric value.
+    const metricsValues: number[] = [];
+    for (let i = 0; i < metrics.length; i += 1) {
+      const raw = String(submitMetricValues[i] ?? '').trim();
+      if (!raw) {
+        toasts.error(`Metric "${metrics[i].name}" is required.`);
+        return;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        toasts.error(`Metric "${metrics[i].name}" must be a number.`);
+        return;
+      }
+      metricsValues.push(n);
     }
-    const score = Number(scoreStr);
-    if (!Number.isFinite(score)) {
-      toasts.error('Score must be a number.');
-      return;
+
+    const caseMeta: number[] = [];
+    for (let i = 0; i < descriptors.length; i += 1) {
+      const raw = String(submitCaseMeta[i] ?? '').trim();
+      if (!raw) {
+        toasts.error(`Case descriptor "${descriptors[i].name}" is required.`);
+        return;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        toasts.error(`Case descriptor "${descriptors[i].name}" must be a number.`);
+        return;
+      }
+      caseMeta.push(n);
     }
 
     // Live mode requires both a connected wallet (to sign the tx) and a
@@ -158,10 +205,11 @@
 
     submitting = true;
     try {
+      const data: CaseExecutionData[] = [{ caseMeta, metricsValues }];
       const txId = await createResult({
-        benchmarkId,
+        benchmarkId: benchmark.id,
         serviceId: submitServiceId.trim(),
-        score,
+        data,
         notes: submitNotes.trim(),
         timestamp: Math.floor(Date.now() / 1000),
         tokenAmount: 1,
@@ -172,7 +220,8 @@
       dispatch('created', { txId });
       showSubmitForm = false;
       submitServiceId = '';
-      submitScore = '';
+      submitMetricValues = {};
+      submitCaseMeta = {};
       submitNotes = '';
     } catch (error: any) {
       toasts.error(error?.message || 'Result submission failed.');
@@ -191,12 +240,28 @@
 
     <div class="benchmarks-list">
       {#each benchmarks as benchmark}
+        {@const metrics = benchmark.performanceMetrics ?? []}
+        {@const descriptors = benchmark.caseDescriptors ?? []}
         <div class="benchmark-card" class:benchmark-card-selected={selectedBenchmarkId === benchmark.id}>
           <button class="benchmark-header" on:click={() => selectBenchmark(benchmark.id)}>
             <div class="benchmark-info">
               <h3 class="benchmark-name">{benchmark.name}</h3>
               <div class="benchmark-meta">
-                <span class="benchmark-metric">Metric: <code>{benchmark.metric}</code></span>
+                {#if metrics.length === 0}
+                  <span class="benchmark-metric benchmark-metric-empty">No metrics defined</span>
+                {:else}
+                  {#each metrics as m}
+                    <span class="benchmark-metric">
+                      <code>{m.name}</code>
+                      <span class="metric-arrow" title={m.higherIsBetter ? 'Higher is better' : 'Lower is better'}>{m.higherIsBetter ? '↑' : '↓'}</span>
+                    </span>
+                  {/each}
+                {/if}
+                {#if descriptors.length > 0}
+                  <span class="benchmark-descriptors" title="Case descriptors (problem-space dimensions)">
+                    {descriptors.length} descriptor{descriptors.length !== 1 ? 's' : ''}
+                  </span>
+                {/if}
               </div>
             </div>
             <div class="benchmark-result-count">
@@ -215,6 +280,34 @@
           {#if selectedBenchmarkId === benchmark.id}
             <div class="benchmark-detail">
               <p class="benchmark-description">{benchmark.description}</p>
+
+              {#if descriptors.length > 0 || metrics.length > 0}
+                <div class="benchmark-schema">
+                  {#if descriptors.length > 0}
+                    <div class="schema-block">
+                      <div class="schema-label">Case descriptors (problem dimensions)</div>
+                      <ul class="schema-list">
+                        {#each descriptors as d}
+                          <li><code>{d.name}</code> — {d.description || 'no description'}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                  {#if metrics.length > 0}
+                    <div class="schema-block">
+                      <div class="schema-label">Performance metrics</div>
+                      <ul class="schema-list">
+                        {#each metrics as m}
+                          <li>
+                            <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
+                            {m.description ? `— ${m.description}` : ''}
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
 
               <!-- Source Hash (FileCard) -->
               {#if benchmark.sourceHash}
@@ -241,86 +334,131 @@
                 </details>
               {/if}
 
-              <!-- Results Table -->
-              {#if benchmark.results.length > 0}
-                {@const stats = computeStats(benchmark.results)}
-                <div class="stats-summary">
-                  <span class="stats-label">Mean:</span>
-                  <span class="stats-value">{formatScore(stats.mean)}</span>
-                  <span class="stats-separator">±</span>
-                  <span class="stats-value">{formatScore(stats.stddev)}</span>
-                  <span class="stats-label stats-label-secondary">({benchmark.results.length} results)</span>
-                </div>
-
+              <!-- Per-service leaderboard table (aggregated across cases). -->
+              {#if benchmark.results.length > 0 && metrics.length > 0}
+                {@const rows = leaderboardRows(benchmark)}
                 <div class="leaderboard-table-wrapper">
                   <table class="leaderboard-table">
                     <thead>
                       <tr>
                         <th class="th-rank">Rank</th>
-                        <th class="th-service">Service ID</th>
-                        <th class="th-score">Score</th>
-                        <th class="th-notes">Notes</th>
-                        <th class="th-date">Date</th>
-                        <th class="th-actions"></th>
+                        <th class="th-service">Service</th>
+                        {#each metrics as m}
+                          <th class="th-metric" title={m.description}>
+                            <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
+                          </th>
+                        {/each}
+                        <th class="th-runs" title="Number of Result submissions">Runs</th>
+                        <th class="th-date">Latest</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {#each sortResults(benchmark.results, benchmark.higherIsBetter) as result, i}
+                      {#each rows as row, i}
                         <tr class="leaderboard-row">
                           <td class="td-rank">
                             <span class="rank-num" class:rank-gold={i === 0} class:rank-silver={i === 1} class:rank-bronze={i === 2}>#{i + 1}</span>
                           </td>
                           <td class="td-service">
-                            <code class="service-id">{formatServiceId(result.serviceId)}</code>
+                            <code class="service-id">{formatServiceId(row.serviceId)}</code>
                           </td>
-                          <td class="td-score">{formatScore(result.score)}</td>
-                          <td class="td-notes" title={result.notes || ''}>{truncateNotes(result.notes)}</td>
-                          <td class="td-date">{relativeTime(result.timestamp)}</td>
-                          <td class="td-actions">
-                            <button
-                              class="forum-toggle-sm"
-                              type="button"
-                              on:click={() => openForum(result.id, `Result for ${formatServiceId(result.serviceId)} — ${benchmark.name}`)}
-                              title="Open discussion for this result"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-                        <!-- Result Source Hash (the per-result Forum embed is now in the side-rail) -->
-                        {#if result.sourceHash}
-                          <tr class="result-extras-row">
-                            <td colspan="6" class="result-extras-cell">
-                              <details class="source-details-result">
-                                <summary class="source-summary-result">
-                                  <span>📄</span>
-                                  <code class="source-hash-code-sm">{formatSourceHash(result.sourceHash)}</code>
-                                </summary>
-                                <div class="source-card-result">
-                                  <FileCard
-                                    fileHash={result.sourceHash}
-                                    profile={$reputation_proof}
-                                    sources={sourceCache[result.sourceHash] || []}
-                                    explorerUri={$explorer_uri}
-                                    source_explorer_url={$source_explorer_url}
-                                    webExplorerUriTkn={$web_explorer_uri_token}
-                                  />
-                                  {#if $reputation_proof && onAddSource}
-                                    <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>
-                                      + Add Source
-                                    </button>
-                                  {/if}
-                                </div>
-                              </details>
+                          {#each row.perMetric as cell}
+                            <td class="td-score" title={`${cell.metricName} · weighted mean across ${cell.resultCount} result(s)`}>
+                              {formatScore(cell.value)}
                             </td>
-                          </tr>
-                        {/if}
+                          {/each}
+                          <td class="td-runs">{row.submissions}</td>
+                          <td class="td-date">{relativeTime(row.latest)}</td>
+                        </tr>
                       {/each}
                     </tbody>
                   </table>
                 </div>
+
+                <!-- Raw per-result tensor (collapsed by default). -->
+                <details class="raw-results-details">
+                  <summary class="raw-results-summary">
+                    Raw submissions ({benchmark.results.length})
+                  </summary>
+                  <div class="raw-results-list">
+                    {#each benchmark.results as result}
+                      <div class="raw-result">
+                        <div class="raw-result-header">
+                          <code class="service-id">{formatServiceId(result.serviceId)}</code>
+                          <span class="raw-result-meta">
+                            {result.data?.length ?? 0} case{(result.data?.length ?? 0) !== 1 ? 's' : ''}
+                            · {relativeTime(result.timestamp)}
+                          </span>
+                          <button
+                            class="forum-toggle-sm"
+                            type="button"
+                            on:click={() => openForum(result.id, `Result for ${formatServiceId(result.serviceId)} — ${benchmark.name}`)}
+                            title="Open discussion for this result"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                            </svg>
+                          </button>
+                        </div>
+                        {#if (result.data?.length ?? 0) === 0}
+                          <p class="raw-result-empty">No case executions in this submission.</p>
+                        {:else}
+                          <table class="raw-cases-table">
+                            <thead>
+                              <tr>
+                                {#each descriptors as d}
+                                  <th><code>{d.name}</code></th>
+                                {/each}
+                                {#each metrics as m}
+                                  <th class="num"><code>{m.name}</code></th>
+                                {/each}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {#each result.data as c}
+                                <tr>
+                                  {#each descriptors as _, i}
+                                    <td><code>{c.caseMeta[i] ?? '—'}</code></td>
+                                  {/each}
+                                  {#each metrics as _, i}
+                                    <td class="num">{formatScore(c.metricsValues[i])}</td>
+                                  {/each}
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        {/if}
+                        {#if result.notes}
+                          <p class="raw-result-notes" title={result.notes}>Notes: {truncateNotes(result.notes, 80)}</p>
+                        {/if}
+                        {#if result.sourceHash}
+                          <details class="source-details-result">
+                            <summary class="source-summary-result">
+                              <span>📄</span>
+                              <code class="source-hash-code-sm">{formatSourceHash(result.sourceHash)}</code>
+                            </summary>
+                            <div class="source-card-result">
+                              <FileCard
+                                fileHash={result.sourceHash}
+                                profile={$reputation_proof}
+                                sources={sourceCache[result.sourceHash] || []}
+                                explorerUri={$explorer_uri}
+                                source_explorer_url={$source_explorer_url}
+                                webExplorerUriTkn={$web_explorer_uri_token}
+                              />
+                              {#if $reputation_proof && onAddSource}
+                                <button class="add-source-btn-sm" on:click={() => onAddSource?.(result.sourceHash || '')}>
+                                  + Add Source
+                                </button>
+                              {/if}
+                            </div>
+                          </details>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                </details>
+              {:else if metrics.length === 0}
+                <p class="no-results">This benchmark has no performance metrics yet — add metrics before submitting results.</p>
               {:else}
                 <p class="no-results">No results submitted yet.</p>
               {/if}
@@ -340,35 +478,72 @@
               </div>
 
               <!-- Submit Result Button/Form -->
-              {#if !showSubmitForm}
-                <button class="submit-result-btn" on:click={() => showSubmitForm = true}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-                  </svg>
-                  Submit Result
-                </button>
-              {:else}
-                <form class="submit-result-form" on:submit|preventDefault={() => handleSubmitResult(benchmark.id)}>
-                  <h4 class="form-title">Submit Result</h4>
-                  <div class="form-row">
-                    <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
-                    <input id="result-service-{benchmark.id}" class="form-input" bind:value={submitServiceId} placeholder="e.g. QmXf39bC4F7dNK2Pw..." required />
-                  </div>
-                  <div class="form-row">
-                    <label class="form-label" for="result-score-{benchmark.id}">Score ({benchmark.metric}) <span class="text-red-500">*</span></label>
-                    <input id="result-score-{benchmark.id}" class="form-input" type="number" step="any" bind:value={submitScore} placeholder="e.g. 94.2" required />
-                  </div>
-                  <div class="form-row">
-                    <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
-                    <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
-                  </div>
-                  <div class="form-actions">
-                    <button type="submit" class="btn-submit" disabled={submitting}>
-                      {submitting ? 'Submitting…' : 'Submit'}
-                    </button>
-                    <button type="button" class="btn-cancel" on:click={() => showSubmitForm = false} disabled={submitting}>Cancel</button>
-                  </div>
-                </form>
+              {#if metrics.length > 0}
+                {#if !showSubmitForm}
+                  <button class="submit-result-btn" on:click={() => showSubmitForm = true}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    Submit Result
+                  </button>
+                {:else}
+                  <form class="submit-result-form" on:submit|preventDefault={() => handleSubmitResult(benchmark)}>
+                    <h4 class="form-title">Submit Result</h4>
+                    <p class="form-hint">
+                      One case execution per submission for now —
+                      multi-case entry coming soon (see TODO in <code>SkillLeaderboard.svelte</code>).
+                    </p>
+                    <div class="form-row">
+                      <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
+                      <input id="result-service-{benchmark.id}" class="form-input" bind:value={submitServiceId} placeholder="e.g. QmXf39bC4F7dNK2Pw..." required />
+                    </div>
+                    {#each descriptors as d, i}
+                      <div class="form-row">
+                        <label class="form-label" for="result-case-{benchmark.id}-{i}">
+                          Case · <code>{d.name}</code>
+                          {#if d.description}<span class="form-hint-inline">— {d.description}</span>{/if}
+                          <span class="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="result-case-{benchmark.id}-{i}"
+                          class="form-input"
+                          type="number"
+                          step="any"
+                          bind:value={submitCaseMeta[i]}
+                          placeholder="numeric value"
+                          required
+                        />
+                      </div>
+                    {/each}
+                    {#each metrics as m, i}
+                      <div class="form-row">
+                        <label class="form-label" for="result-metric-{benchmark.id}-{i}">
+                          Metric · <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
+                          <span class="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="result-metric-{benchmark.id}-{i}"
+                          class="form-input"
+                          type="number"
+                          step="any"
+                          bind:value={submitMetricValues[i]}
+                          placeholder={m.description || 'numeric value'}
+                          required
+                        />
+                      </div>
+                    {/each}
+                    <div class="form-row">
+                      <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
+                      <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
+                    </div>
+                    <div class="form-actions">
+                      <button type="submit" class="btn-submit" disabled={submitting}>
+                        {submitting ? 'Submitting…' : 'Submit'}
+                      </button>
+                      <button type="button" class="btn-cancel" on:click={() => showSubmitForm = false} disabled={submitting}>Cancel</button>
+                    </div>
+                  </form>
+                {/if}
               {/if}
             </div>
           {/if}
@@ -468,9 +643,17 @@
 
   .benchmark-meta {
     display: flex;
-    gap: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
+    align-items: center;
+  }
+
+  .benchmark-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
   }
 
   .benchmark-metric code {
@@ -478,6 +661,22 @@
     padding: 0.125rem 0.375rem;
     border-radius: 0.25rem;
     background: hsl(var(--muted));
+  }
+
+  .benchmark-metric-empty {
+    font-style: italic;
+  }
+
+  .benchmark-descriptors {
+    padding: 0.0625rem 0.375rem;
+    border-radius: 9999px;
+    background: hsl(var(--muted) / 0.5);
+    font-size: 0.6875rem;
+  }
+
+  .metric-arrow {
+    font-size: 0.875rem;
+    line-height: 1;
   }
 
   .benchmark-result-count {
@@ -508,8 +707,50 @@
     line-height: 1.5;
   }
 
+  .benchmark-schema {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 0.375rem;
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+  @media (min-width: 640px) {
+    .benchmark-schema {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .schema-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.25rem;
+  }
+
+  .schema-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.75rem;
+    color: hsl(var(--foreground));
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .schema-list code {
+    font-size: 0.6875rem;
+    padding: 0.0625rem 0.25rem;
+    border-radius: 0.1875rem;
+    background: hsl(var(--muted) / 0.5);
+  }
+
   /* ── Source Hash ────────────────────────────────────────────────────── */
-  /* ── Source Details (FileCard wrappers) ───────────────────────────── */
   .source-details-inline,
   .source-details-result {
     border: 1px solid hsl(var(--border));
@@ -591,47 +832,12 @@
     background: hsl(var(--muted) / 0.5);
   }
 
-  /* ── Stats Summary ─────────────────────────────────────────────────── */
-  .stats-summary {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    margin-bottom: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    background: hsl(var(--muted) / 0.3);
-    border: 1px solid hsl(var(--border) / 0.5);
-    font-size: 0.8125rem;
-  }
-
-  .stats-label {
-    color: hsl(var(--muted-foreground));
-    font-weight: 500;
-    font-size: 0.75rem;
-  }
-
-  .stats-label-secondary {
-    margin-left: 0.25rem;
-    font-weight: 400;
-  }
-
-  .stats-value {
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    color: hsl(var(--foreground));
-  }
-
-  .stats-separator {
-    color: hsl(var(--muted-foreground));
-    font-size: 0.75rem;
-  }
-
   /* ── Leaderboard Table ─────────────────────────────────────────────── */
   .leaderboard-table-wrapper {
     border: 1px solid hsl(var(--border));
     border-radius: 0.5rem;
-    overflow: hidden;
-    margin-bottom: 1rem;
+    overflow: auto;
+    margin-bottom: 0.75rem;
   }
 
   .leaderboard-table {
@@ -652,13 +858,13 @@
     color: hsl(var(--muted-foreground));
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
   }
 
   .th-rank { width: 3.5rem; text-align: center; }
-  .th-score { width: 5rem; text-align: right; }
-  .th-notes { width: 10rem; }
-  .th-date { width: 5.5rem; text-align: right; }
-  .th-actions { width: 2.5rem; }
+  .th-metric { text-align: right; }
+  .th-runs { width: 3rem; text-align: right; }
+  .th-date { width: 6rem; text-align: right; }
 
   .leaderboard-row {
     border-top: 1px solid hsl(var(--border));
@@ -673,9 +879,9 @@
     color: hsl(var(--foreground));
   }
 
-  .td-rank {
-    text-align: center;
-  }
+  .td-rank { text-align: center; }
+  .td-runs { text-align: right; font-variant-numeric: tabular-nums; }
+  .td-date { text-align: right; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
 
   .rank-num {
     font-size: 0.75rem;
@@ -705,25 +911,6 @@
     color: hsl(var(--foreground));
   }
 
-  .td-notes {
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    max-width: 10rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .td-date {
-    text-align: right;
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .td-actions {
-    text-align: center;
-  }
-
   .forum-toggle-sm {
     display: inline-flex;
     align-items: center;
@@ -743,12 +930,83 @@
     border-color: hsl(var(--border));
   }
 
-  .result-extras-row {
-    border-top: none;
+  .raw-results-details {
+    margin-bottom: 1rem;
   }
 
-  .result-extras-cell {
-    padding: 0.125rem 0.75rem 0.5rem 3.5rem !important;
+  .raw-results-summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.2);
+    display: inline-block;
+  }
+  .raw-results-summary:hover {
+    background: hsl(var(--muted) / 0.4);
+  }
+
+  .raw-results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .raw-result {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid hsl(var(--border) / 0.5);
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+  }
+
+  .raw-result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .raw-result-meta {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    margin-left: auto;
+    margin-right: 0.25rem;
+  }
+
+  .raw-cases-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.75rem;
+  }
+  .raw-cases-table th {
+    text-align: left;
+    padding: 0.25rem 0.5rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.6875rem;
+  }
+  .raw-cases-table td {
+    padding: 0.25rem 0.5rem;
+    border-top: 1px solid hsl(var(--border) / 0.4);
+  }
+  .raw-cases-table td.num,
+  .raw-cases-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .raw-result-empty {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0.25rem 0;
+  }
+
+  .raw-result-notes {
+    margin-top: 0.375rem;
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
   }
 
   .no-results, .no-benchmarks {
@@ -815,7 +1073,18 @@
   .form-title {
     font-size: 0.875rem;
     font-weight: 600;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .form-hint {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.625rem;
+  }
+
+  .form-hint-inline {
+    font-weight: 400;
+    color: hsl(var(--muted-foreground));
   }
 
   .form-row {

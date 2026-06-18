@@ -123,7 +123,7 @@ async function loadProfileMap(): Promise<Map<string, ReputationProof>> {
  * Mutates entities in-place and returns the same array. Safe to call with
  * an empty array.
  */
-export async function hydrateReputations<T extends { profileId: string; reputation: number }>(
+export async function hydrateReputations<T extends { profileId: string; reputation?: number }>(
   entities: T[],
 ): Promise<T[]> {
   if (entities.length === 0) return entities;
@@ -244,6 +244,46 @@ export function applySkillInheritance(skills: Skill[]): Skill[] {
   return skills.map(resolve);
 }
 
+/**
+ * Lift a legacy single-axis benchmark (`metric` string + `higherIsBetter`)
+ * into the new multidimensional shape (`performanceMetrics[]`,
+ * `caseDescriptors[]`). The legacy `score` per result becomes a single
+ * CaseExecutionData with empty caseMeta and one metricsValue.
+ *
+ * Once Josemi confirms the demo data should be authored natively in the new
+ * shape (with real caseDescriptors and multi-metric benchmarks), this shim
+ * can be removed and the rawSkills literal rewritten.
+ * TODO Josemi: confirm whether to keep this legacy-lift or rewrite demo
+ * data with native multidimensional examples.
+ */
+function liftLegacyBenchmark(benchmark: any): any {
+  if (Array.isArray(benchmark.performanceMetrics)) {
+    return benchmark; // already in new shape
+  }
+  const metricName: string = benchmark.metric || 'score';
+  const higherIsBetter: boolean = benchmark.higherIsBetter ?? true;
+  const liftedResults = (benchmark.results || []).map((r: any) => {
+    if (Array.isArray(r.data)) return r;
+    return {
+      ...r,
+      data: [{
+        caseMeta: [],
+        metricsValues: [Number(r.score ?? 0)]
+      }]
+    };
+  });
+  return {
+    ...benchmark,
+    caseDescriptors: benchmark.caseDescriptors ?? [],
+    performanceMetrics: [{
+      name: metricName,
+      description: benchmark.description || '',
+      higherIsBetter
+    }],
+    results: liftedResults
+  };
+}
+
 function enrichDemoSkills(rawSkills: any[]): Skill[] {
   return rawSkills.map((skill: any, skillIndex: number) => {
     const skillProfileId = demoProfileId(`skill-${skillIndex + 1}-${skill.boxId}`);
@@ -251,6 +291,7 @@ function enrichDemoSkills(rawSkills: any[]): Skill[] {
     return {
       ...skill,
       profileId: skillProfileId,
+      formal: skill.formal ?? '',
       reputation: demoReputationFor(skillProfileId),
       coverages: skill.coverages.map((coverage: any) => {
         const profileId = demoProfileId(`coverage-${coverage.serviceId || coverage.boxId}`);
@@ -260,7 +301,8 @@ function enrichDemoSkills(rawSkills: any[]): Skill[] {
           reputation: demoReputationFor(profileId)
         };
       }),
-      benchmarks: skill.benchmarks.map((benchmark: any, benchmarkIndex: number) => {
+      benchmarks: skill.benchmarks.map((benchmarkRaw: any, benchmarkIndex: number) => {
+        const benchmark = liftLegacyBenchmark(benchmarkRaw);
         const benchmarkProfileId = demoProfileId(`benchmark-${skill.boxId}-${benchmark.id}-${benchmarkIndex + 1}`);
         return {
           ...benchmark,
@@ -297,6 +339,7 @@ export function parseSkillBox(box: any): Skill | null {
       profileId,
       name: parsed.name || 'Unnamed Skill',
       prose: parsed.prose || '',
+      formal: parsed.formal || '',
       tags: parsed.tags || [],
       domain: parsed.domain || '',
       extendedSkillBoxIds: parsed.extended_skill_boxes || [],
@@ -370,8 +413,8 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
           skillBoxId,
           name: parsed.name || 'Unnamed Benchmark',
           description: parsed.description || '',
-          metric: parsed.metric || '',
-          higherIsBetter: parsed.higher_is_better ?? true,
+          caseDescriptors: Array.isArray(parsed.case_descriptors) ? parsed.case_descriptors : [],
+          performanceMetrics: Array.isArray(parsed.performance_metrics) ? parsed.performance_metrics : [],
           results: [],
           sourceHash: parsed.source_hash,
           reputation: 0
@@ -395,12 +438,17 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
         const r9 = box.additionalRegisters?.R9?.renderedValue || '';
         const parsed = JSON.parse(r9);
         const profileId = deriveProfileId(box, parsed, box.boxId);
+        const rawCases = Array.isArray(parsed.data) ? parsed.data : [];
+        const data = rawCases.map((c: any) => ({
+          caseMeta: Array.isArray(c?.case_meta) ? c.case_meta.map(Number) : [],
+          metricsValues: Array.isArray(c?.metrics_values) ? c.metrics_values.map(Number) : []
+        }));
         return {
           id: box.boxId,
           profileId,
           benchmarkId: benchmarkId,
           serviceId: parsed.service_id || '',
-          score: parsed.score || 0,
+          data,
           notes: parsed.notes || '',
           timestamp: parsed.timestamp || 0,
           sourceHash: parsed.source_hash,
