@@ -50,6 +50,7 @@
   import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
+  import { viewedProfileId } from "$lib/stores";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
   // If skill A references skill B via extendedSkillBoxIds, and A's reputation >= this
@@ -773,11 +774,73 @@
       // Demo mode is URL-only and session-scoped: `?env=demo` (or `?env=dev`)
       // flips it on for this page load. No persistence — reloading without
       // the param goes back to live data (default false in config.ts).
-      const env = new URL(window.location.href).searchParams.get("env");
+      const url = new URL(window.location.href);
+      const env = url.searchParams.get("env");
       if (env === "demo" || env === "dev") demoMode.set(true);
+      const initialProfile = url.searchParams.get("profile");
+      if (initialProfile) viewedProfileId.set(initialProfile);
       loadSkills();
+
+      // Back/forward button: keep the profile-detail view in sync with the URL.
+      const popHandler = () => {
+        const next = new URL(window.location.href).searchParams.get("profile");
+        viewedProfileId.set(next || null);
+      };
+      window.addEventListener("popstate", popHandler);
+      return () => window.removeEventListener("popstate", popHandler);
     }
   });
+
+  // Mirror `viewedProfileId` into the URL so the profile-detail view is
+  // bookmarkable and the browser back button restores the prior gallery state.
+  let lastSyncedProfileId: string | null | undefined = undefined;
+  $: if (browser && lastSyncedProfileId !== $viewedProfileId) {
+    const current = new URL(window.location.href);
+    const currentParam = current.searchParams.get("profile");
+    if ($viewedProfileId) {
+      if (currentParam !== $viewedProfileId) {
+        current.searchParams.set("profile", $viewedProfileId);
+        window.history.pushState({}, "", current);
+      }
+    } else if (currentParam) {
+      current.searchParams.delete("profile");
+      window.history.pushState({}, "", current);
+    }
+    lastSyncedProfileId = $viewedProfileId;
+  }
+
+  function closeProfileView(): void {
+    viewedProfileId.set(null);
+  }
+
+  // ── Profile detail aggregation ─────────────────────────────────────────────
+  // Roll up every entity in `skills` authored by the viewed profile so the
+  // detail view can show the profile's full footprint without another lookup.
+  interface ProfileContributions {
+    submittedSkills: Skill[];
+    coverages: Array<{ skill: Skill; coverage: Coverage }>;
+    benchmarks: Array<{ skill: Skill; benchmark: Benchmark }>;
+    results: Array<{ skill: Skill; benchmark: Benchmark; result: Result }>;
+  }
+  $: profileContributions = ((): ProfileContributions => {
+    const empty: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
+    const pid = $viewedProfileId;
+    if (!pid) return empty;
+    const acc: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
+    for (const skill of skills) {
+      if (skill.profileId === pid) acc.submittedSkills.push(skill);
+      for (const cov of skill.coverages) {
+        if (cov.profileId === pid) acc.coverages.push({ skill, coverage: cov });
+      }
+      for (const bench of skill.benchmarks) {
+        if (bench.profileId === pid) acc.benchmarks.push({ skill, benchmark: bench });
+        for (const result of bench.results) {
+          if (result.profileId === pid) acc.results.push({ skill, benchmark: bench, result });
+        }
+      }
+    }
+    return acc;
+  })();
 </script>
 
 <!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
@@ -859,7 +922,127 @@
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
 <main class="main-content">
 
-  {#if activeTab === "gallery"}
+  {#if $viewedProfileId}
+    <!-- ── Profile Detail (?profile=<token_id>) ─────────────────────────── -->
+    <div class="detail-view detail-visible">
+      <div class="detail-container">
+        <button class="back-button" on:click={closeProfileView}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Close profile
+        </button>
+
+        <div class="detail-card">
+          <div class="flex items-center gap-3 mb-3">
+            <ProfileAvatar profileId={$viewedProfileId} size={48} clickable={false} title={`Profile ${$viewedProfileId}`} />
+            <div class="min-w-0">
+              <h1 class="text-2xl md:text-3xl font-extrabold">Profile</h1>
+              <code class="font-mono text-xs break-all text-muted-foreground">{$viewedProfileId}</code>
+            </div>
+          </div>
+          <div class="profile-summary-grid">
+            <div class="profile-summary-cell">
+              <span class="profile-summary-label">Skills submitted</span>
+              <span class="profile-summary-value">{profileContributions.submittedSkills.length}</span>
+            </div>
+            <div class="profile-summary-cell">
+              <span class="profile-summary-label">Coverages</span>
+              <span class="profile-summary-value">{profileContributions.coverages.length}</span>
+            </div>
+            <div class="profile-summary-cell">
+              <span class="profile-summary-label">Benchmarks</span>
+              <span class="profile-summary-value">{profileContributions.benchmarks.length}</span>
+            </div>
+            <div class="profile-summary-cell">
+              <span class="profile-summary-label">Results</span>
+              <span class="profile-summary-value">{profileContributions.results.length}</span>
+            </div>
+          </div>
+        </div>
+
+        {#if profileContributions.submittedSkills.length > 0}
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <h2 class="detail-section-title">Skills Submitted</h2>
+              <span class="detail-count">{profileContributions.submittedSkills.length}</span>
+            </div>
+            <div class="space-y-2">
+              {#each profileContributions.submittedSkills as s}
+                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
+                  <span class="font-medium">{s.name}</span>
+                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(calculateSkillReputation(s).total)}</span>
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if profileContributions.coverages.length > 0}
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <h2 class="detail-section-title">Coverages</h2>
+              <span class="detail-count">{profileContributions.coverages.length}</span>
+            </div>
+            <div class="space-y-2">
+              {#each profileContributions.coverages as { skill: s, coverage }}
+                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
+                  <span class="font-medium">{s.name}</span>
+                  <code class="font-mono text-xs text-muted-foreground">{formatHash(coverage.serviceId || coverage.boxId)}</code>
+                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(coverage.reputation ?? 0)}</span>
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if profileContributions.benchmarks.length > 0}
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <h2 class="detail-section-title">Benchmarks</h2>
+              <span class="detail-count">{profileContributions.benchmarks.length}</span>
+            </div>
+            <div class="space-y-2">
+              {#each profileContributions.benchmarks as { skill: s, benchmark }}
+                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
+                  <span class="font-medium">{benchmark.name}</span>
+                  <span class="text-xs text-muted-foreground">on {s.name}</span>
+                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(benchmark.reputation ?? 0)}</span>
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if profileContributions.results.length > 0}
+          <section class="detail-section">
+            <div class="detail-section-header">
+              <h2 class="detail-section-title">Results</h2>
+              <span class="detail-count">{profileContributions.results.length}</span>
+            </div>
+            <div class="space-y-2">
+              {#each profileContributions.results as { skill: s, benchmark, result }}
+                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
+                  <span class="font-medium">{benchmark.name}</span>
+                  <code class="font-mono text-xs text-muted-foreground">{formatHash(result.serviceId)}</code>
+                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(result.reputation ?? 0)}</span>
+                </button>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if profileContributions.submittedSkills.length === 0 && profileContributions.coverages.length === 0 && profileContributions.benchmarks.length === 0 && profileContributions.results.length === 0}
+          <section class="detail-section">
+            <div class="detail-empty">
+              <p>No on-chain contributions found for this profile in the currently loaded skill set.</p>
+            </div>
+          </section>
+        {/if}
+      </div>
+    </div>
+
+  {:else if activeTab === "gallery"}
 
     {#if selectedSkill}
       <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
@@ -2607,6 +2790,30 @@
   }
   .aggregate-label-row-divider {
     font-style: normal;
+  }
+  .profile-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .profile-summary-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: hsl(var(--muted) / 0.4);
+  }
+  .profile-summary-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+  }
+  .profile-summary-value {
+    font-weight: 700;
+    font-size: 1.5rem;
   }
   .aggregate-row-clickable {
     cursor: pointer;

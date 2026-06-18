@@ -51,3 +51,10 @@ export const filteredSkills = derived(
 export const totalResults = derived(skills, ($skills) =>
   $skills.reduce((sum, s) => sum + s.resultCount, 0)
 );
+
+/**
+ * Profile id selected for the profile-detail view, or null for no selection.
+ * Set when a user clicks any ProfileAvatar (or arrives via the `?profile=`
+ * URL parameter) and consumed by App.svelte to render the profile screen.
+ */
+export const viewedProfileId = writable<string | null>(null);
