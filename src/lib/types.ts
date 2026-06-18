@@ -43,7 +43,7 @@ export interface Skill {
   prose: string;
   tags: string[];
   domain: string;
-  otherSkillBoxIds: string[];
+  extendedSkillBoxIds: string[];
   coverages: Coverage[];
   benchmarks: Benchmark[];
   resultCount: number;
@@ -60,11 +60,12 @@ export interface SkillCreationInput {
   prose: string;
   tags: string[];
   domain: string;
-  otherSkillBoxIds: string[];
+  extendedSkillBoxIds: string[];
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
   /** Set of protocols this skill speaks (celaut.proto Protocol set, JSON form). */
   protocols?: Protocol[];
+  networks?: Protocol[];
   /** Reputation token supply to mint when creating the skill profile. */
   tokenAmount?: number;
   mainBox?: unknown;

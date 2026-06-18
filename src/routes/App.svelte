@@ -41,7 +41,7 @@
   import { demoMode } from "$lib/config";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
-  // If skill A references skill B via otherSkillBoxIds, and A's reputation >= this
+  // If skill A references skill B via extendedSkillBoxIds, and A's reputation >= this
   // threshold, then B is hidden from the main gallery (still accessible from A's detail).
   // Default 0 = any relationship hides the related skill.
   const REPUTATION_THRESHOLD = 0;
@@ -397,14 +397,14 @@
   }
 
   // ── Compute which boxIds are subsumed by a higher-reputation skill ───────
-  // A skill B is hidden if another skill A references B in otherSkillBoxIds
+  // A skill B is hidden if another skill A references B in extendedSkillBoxIds
   // AND A's reputation >= REPUTATION_THRESHOLD.
   $: hiddenBoxIds = (() => {
     const hidden = new Set<string>();
     for (const skill of skills) {
       const rep = calculateSkillReputation(skill);
-      if (rep.total >= REPUTATION_THRESHOLD && skill.otherSkillBoxIds.length > 0) {
-        for (const refId of skill.otherSkillBoxIds) {
+      if (rep.total >= REPUTATION_THRESHOLD && skill.extendedSkillBoxIds.length > 0) {
+        for (const refId of skill.extendedSkillBoxIds) {
           hidden.add(refId);
         }
       }
@@ -468,7 +468,7 @@
           }
         };
 
-        for (const refId of selectedSkill.otherSkillBoxIds) {
+        for (const refId of selectedSkill.extendedSkillBoxIds) {
           const match = skills.find((s) => s.boxId === refId);
           if (match && match.boxId !== selectedSkill.boxId) {
             addRelated(match, "outgoing");
@@ -477,7 +477,7 @@
 
         for (const skill of skills) {
           if (skill.boxId === selectedSkill.boxId) continue;
-          if (skill.otherSkillBoxIds.includes(selectedSkill.boxId)) {
+          if (skill.extendedSkillBoxIds.includes(selectedSkill.boxId)) {
             addRelated(skill, "incoming");
           }
         }
@@ -563,7 +563,7 @@
 
   // ── Fork / Edit skill ──────────────────────────────────────────────────────
   // Pre-populates the Submit form with the selected skill's data and switches view.
-  // Adds the original skill's boxId to otherSkillBoxIds so the new skill references it.
+  // Adds the original skill's boxId to extendedSkillBoxIds so the new skill references it.
   let prefillRelatedBoxIds: string[] = [];
 
   function forkSkill(skill: Skill) {
@@ -572,7 +572,7 @@
     newSkillDomain = skill.domain;
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
-    relatedSkillBoxIds = [skill.boxId, ...skill.otherSkillBoxIds];
+    relatedSkillBoxIds = [skill.boxId, ...skill.extendedSkillBoxIds];
     // Switch to submit tab
     selectedSkill = null;
     activeTab = "submit";
@@ -617,7 +617,7 @@
         prose: newSkillProse.trim(),
         tags: newSkillTags.split(",").map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
-        otherSkillBoxIds: [...relatedSkillBoxIds],
+        extendedSkillBoxIds: [...relatedSkillBoxIds],
         sourceHash: "",
         protocols: parsedProtocols,
         tokenAmount: 1,

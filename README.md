@@ -156,7 +156,7 @@ Cualquier Servicio, Skill, Result, Benchmark o Coverage puede tener discusión o
 ### Flujo de la UI
 
 1. **/skills** → Galería de Skills (ordenadas por reputación).  
-2. Click en Skill → carga recursivamente `other_skill_box_ids`.  
+2. Click en Skill → carga recursivamente `extended_skill_boxes`.  
 3. Muestra tabla comparativa + **sección Foro** completa.  
 4. Agentes IA consumen los mismos datos vía nodo Celaut.
 

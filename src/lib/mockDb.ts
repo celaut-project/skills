@@ -103,7 +103,7 @@ class MockDatabase implements DataProvider {
       prose: input.prose,
       tags: [...input.tags],
       domain: input.domain,
-      otherSkillBoxIds: [...input.otherSkillBoxIds],
+      extendedSkillBoxIds: [...input.extendedSkillBoxIds],
       coverages: [],
       benchmarks: [],
       resultCount: 0,

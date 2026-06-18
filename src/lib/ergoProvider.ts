@@ -69,9 +69,10 @@ class ErgoDataProvider implements DataProvider {
         prose: input.prose,
         tags: input.tags,
         domain: input.domain,
-        other_skill_box_ids: input.otherSkillBoxIds,
+        extended_skill_boxes: input.extendedSkillBoxIds,
         source_hash: input.sourceHash ?? null,
-        protocols: input.protocols ?? []
+        protocols: input.protocols ?? [],
+        networks: input.networks ?? [],
       },
       LOCKED,
       // create_opinion requiere una RPBox. Si no viene en el input, se necesita una alternativa global o lanzar error.

@@ -46,7 +46,7 @@
         prose: newSkillProse.trim(),
         tags: newSkillTags.split(',').map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
-        other_skill_box_ids: []
+        extended_skill_boxes: []
       });
       // TODO: swap for real createReputationBox call once Type NFT is deployed
       submitTx = null;

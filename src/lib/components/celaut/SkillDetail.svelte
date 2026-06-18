@@ -77,10 +77,10 @@
   </section>
 
   <!-- Related skills -->
-  {#if skill.otherSkillBoxIds.length > 0}
+  {#if skill.extendedSkillBoxIds.length > 0}
     <section class="mb-6">
       <h2 class="text-lg font-semibold mb-3">Related skills</h2>
-      {#each skill.otherSkillBoxIds as refId}
+      {#each skill.extendedSkillBoxIds as refId}
         {@const related = $skills.find(s => s.boxId === refId)}
         {#if related}
           <button class="card mb-2 w-full text-left hover:bg-accent transition-colors" on:click={() => selectRelated(related)}>

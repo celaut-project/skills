@@ -169,7 +169,7 @@ function cloneSkill(skill: Skill): Skill {
   return {
     ...skill,
     tags: [...skill.tags],
-    otherSkillBoxIds: [...skill.otherSkillBoxIds],
+    extendedSkillBoxIds: [...skill.extendedSkillBoxIds],
     protocols: skill.protocols ? skill.protocols.map((protocol) => ({
       ...protocol,
       tags: [...protocol.tags]
@@ -213,7 +213,7 @@ export function applySkillInheritance(skills: Skill[]): Skill[] {
     active.add(skill.boxId);
 
     const base = cloneSkill(skill);
-    const inherited = skill.otherSkillBoxIds
+    const inherited = skill.extendedSkillBoxIds
       .map((refId) => skillMap.get(refId))
       .filter(Boolean) as Skill[];
 
@@ -303,7 +303,7 @@ export function parseSkillBox(box: any): Skill | null {
       prose: parsed.prose || '',
       tags: parsed.tags || [],
       domain: parsed.domain || '',
-      otherSkillBoxIds: parsed.other_skill_box_ids || [],
+      extendedSkillBoxIds: parsed.extended_skill_boxes || [],
       protocols: Array.isArray(parsed.protocols) ? parsed.protocols : [],
       coverages: [],
       benchmarks: [],
@@ -432,7 +432,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Maximize risk-adjusted returns on the XAU/BTC pair using on-chain verifiable strategies. Agents must demonstrate consistent alpha generation across bull and bear regimes with transparent position tracking.',
       tags: ['trading', 'gold', 'bitcoin', 'risk-management'],
       domain: 'finance',
-      otherSkillBoxIds: [],
+      extendedSkillBoxIds: [],
       sourceHash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
       coverages: [
         { boxId: 'cov-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', label: 'AlphaTrader v2' },
@@ -477,7 +477,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Gold-Bitcoin pair trading optimization with focus on low-latency execution and MEV protection. Targets sub-second arbitrage across centralized and decentralized venues.',
       tags: ['trading', 'gold', 'bitcoin', 'arbitrage', 'mev'],
       domain: 'finance',
-      otherSkillBoxIds: ['demo-001'],
+      extendedSkillBoxIds: ['demo-001'],
       coverages: [
         { boxId: 'cov-010', serviceId: 'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3', label: 'GoldBot Fast' }
       ],
@@ -505,7 +505,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Sort and classify UTXOs by satoshi value for optimal fee management. Agents should minimize transaction costs while maintaining privacy guarantees through intelligent UTXO selection and consolidation.',
       tags: ['utxo', 'optimization', 'fees', 'privacy'],
       domain: 'infrastructure',
-      otherSkillBoxIds: [],
+      extendedSkillBoxIds: [],
       sourceHash: '7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b',
       coverages: [
         { boxId: 'cov-003', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2', label: 'UTXOptimizer' }
@@ -534,7 +534,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Classify community sentiment from forum discussions, social media, and on-chain governance proposals into structured signals. Must handle multi-language input and provide confidence scores with explainability.',
       tags: ['nlp', 'sentiment', 'community', 'governance'],
       domain: 'analytics',
-      otherSkillBoxIds: ['demo-001'],
+      extendedSkillBoxIds: ['demo-001'],
       sourceHash: '1122334455667788990011223344556677889900aabbccddeeff00112233445566',
       coverages: [],
       benchmarks: [
@@ -561,7 +561,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Detect and prevent miner extractable value (MEV) attacks including front-running, sandwich attacks, and transaction reordering on Ergo and EVM chains. Agents must provide real-time mempool monitoring and transaction shielding.',
       tags: ['mev', 'security', 'mempool', 'front-running'],
       domain: 'security',
-      otherSkillBoxIds: ['demo-003'],
+      extendedSkillBoxIds: ['demo-003'],
       coverages: [
         { boxId: 'cov-004', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', label: 'MEVShield Pro' },
         { boxId: 'cov-005', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', label: 'FlashGuard' },
@@ -593,7 +593,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Comprehensive MEV protection suite for Ergo-based DEXes. Focuses on sandwich attack prevention with configurable slippage bounds and private mempool routing.',
       tags: ['mev', 'security', 'dex', 'ergo'],
       domain: 'security',
-      otherSkillBoxIds: ['demo-004'],
+      extendedSkillBoxIds: ['demo-004'],
       coverages: [
         { boxId: 'cov-011', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1' }
       ],
@@ -621,7 +621,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Find optimal liquidity paths across decentralized exchanges on Ergo, Ethereum, and Cardano. Agents must account for slippage, bridge fees, gas costs, and execution latency to maximize net output for multi-hop swaps.',
       tags: ['defi', 'liquidity', 'routing', 'cross-chain', 'dex'],
       domain: 'finance',
-      otherSkillBoxIds: ['demo-004'],
+      extendedSkillBoxIds: ['demo-004'],
       coverages: [
         { boxId: 'cov-007', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8' }
       ],
@@ -649,7 +649,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Automated audit of ErgoScript and Plutus smart contracts for common vulnerability patterns: integer overflow, replay attacks, box value manipulation, and register injection. Must generate detailed reports with severity scoring and remediation steps.',
       tags: ['audit', 'ergoscript', 'vulnerability', 'smart-contracts'],
       domain: 'security',
-      otherSkillBoxIds: ['demo-005'],
+      extendedSkillBoxIds: ['demo-005'],
       sourceHash: 'c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4',
       coverages: [
         { boxId: 'cov-008', serviceId: 'QmK1xK5pNfD4WyL9tB2mRa8jUc3eHb7g6' },
@@ -681,7 +681,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'General-purpose image classification service supporting ImageNet-1k categories. Optimized for throughput on GPU clusters with batch inference support and automatic model selection.',
       tags: ['vision', 'classification', 'imagenet', 'gpu'],
       domain: 'analytics',
-      otherSkillBoxIds: [],
+      extendedSkillBoxIds: [],
       sourceHash: 'f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7',
       coverages: [
         { boxId: 'cov-img-001', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N' },
@@ -728,7 +728,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Medical image classification specializing in radiology scans (X-ray, CT, MRI). HIPAA-compliant inference pipeline with explainability via GradCAM attention maps and confidence calibration.',
       tags: ['vision', 'classification', 'medical', 'radiology', 'explainability'],
       domain: 'analytics',
-      otherSkillBoxIds: ['demo-img-001'],
+      extendedSkillBoxIds: ['demo-img-001'],
       sourceHash: 'bb22cc33dd44ee55ff66aa77bb88cc99dd00ee11ff22aa33bb44cc55dd66ee77',
       coverages: [
         { boxId: 'cov-img-003', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S' }
@@ -757,7 +757,7 @@ export function getDemoSkills(): Skill[] {
       prose: 'Edge-optimized image classification for IoT and embedded devices. Sub-5ms inference on ARM Cortex-M7 with INT8 quantization. Targets industrial quality inspection and anomaly detection use cases.',
       tags: ['vision', 'classification', 'edge', 'iot', 'quantization'],
       domain: 'infrastructure',
-      otherSkillBoxIds: ['demo-img-002'],
+      extendedSkillBoxIds: ['demo-img-002'],
       coverages: [
         { boxId: 'cov-img-004', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0' },
         { boxId: 'cov-img-005', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1' },
