@@ -1164,7 +1164,8 @@
 
           <!-- Related skills -->
           {#if relatedSkills.length > 0}
-            <section class="detail-section">
+          <!-- Lo ocultamos, pues es igual a "concurrent submissions for this skill"-->
+            <section class="detail-section" hidden>
               <div class="detail-section-header">
                 <h2 class="detail-section-title">Related Skills</h2>
                 <span class="detail-count">{relatedSkills.length}</span>
