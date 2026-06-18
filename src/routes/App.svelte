@@ -390,15 +390,21 @@
 
   // ── Compute which boxIds are subsumed by a higher-reputation skill ───────
   // A skill B is hidden if another skill A references B in extendedSkillBoxIds
-  // AND A's reputation >= REPUTATION_THRESHOLD.
+  // AND A's reputation >= REPUTATION_THRESHOLD AND A's reputation is strictly
+  // greater than B's reputation. The strict-greater check stops a low-rep
+  // descendant from masking a higher-rep ancestor (e.g. demo-img-003 rep 13
+  // extending demo-img-001 rep 28 would otherwise hide the canonical entry).
   $: hiddenBoxIds = (() => {
     const hidden = new Set<string>();
+    const skillByBoxId = new Map(skills.map((s) => [s.boxId, s] as const));
     for (const skill of skills) {
-      const rep = calculateSkillReputation(skill);
-      if (rep.total >= REPUTATION_THRESHOLD && skill.extendedSkillBoxIds.length > 0) {
-        for (const refId of skill.extendedSkillBoxIds) {
-          hidden.add(refId);
-        }
+      const rep = calculateSkillReputation(skill).total;
+      if (rep < REPUTATION_THRESHOLD || skill.extendedSkillBoxIds.length === 0) continue;
+      for (const refId of skill.extendedSkillBoxIds) {
+        const target = skillByBoxId.get(refId);
+        if (!target) continue;
+        const targetRep = calculateSkillReputation(target).total;
+        if (rep > targetRep) hidden.add(refId);
       }
     }
     return hidden;
