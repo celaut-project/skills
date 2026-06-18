@@ -572,7 +572,7 @@
     newSkillDomain = skill.domain;
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
-    relatedSkillBoxIds = [skill.boxId];
+    relatedSkillBoxIds = [skill.boxId, ...skill.otherSkillBoxIds];
     // Switch to submit tab
     selectedSkill = null;
     activeTab = "submit";

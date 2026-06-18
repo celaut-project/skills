@@ -25,6 +25,8 @@ import {
   RESULT_TYPE_ID
 } from './api';
 
+const LOCKED: boolean = true; // For now, we lock the boxes we create. This can be changed later if needed. Esto evita que los boxes puedan actualizarse, pues cada entidad puede ser referenciada por otra, y una actualización de una entidad modificaría su propio identificador (id de la caja), ademas de que no queremos que las entidades puedan ser modificadas una vez creadas, para mantener la integridad de la reputación.
+
 function getMainBox(inputMainBox: unknown, entityName: string): RPBox {
   if (!inputMainBox) {
     throw new ApiError(
@@ -55,12 +57,12 @@ class ErgoDataProvider implements DataProvider {
 
   async createSkill(input: SkillCreationInput): Promise<string> {
     // Nota: create_opinion suele requerir un tokenAmount (usamos reputationSupply o 1 por defecto)
-    // y una caja de reputación destino. Si es una habilidad raíz, se suele apuntar a sí misma o usar un ID vacío.
+    // y, opcionalmente, un objeto al que hace referencia. Si es una habilidad raíz, se suele apuntar a sí misma o usar un ID vacío.
     const txId = await create_opinion(
       'https://ergoplatform.com',
       input.tokenAmount ?? 1,
       SKILL_TYPE_ID,
-      '', // ID de la caja objetivo. Una skill no apunta a nada en concreto.
+      '', // ID del objetivo. Una skill no apunta a nada en concreto.
       true,
       {
         name: input.name,
@@ -71,7 +73,7 @@ class ErgoDataProvider implements DataProvider {
         source_hash: input.sourceHash ?? null,
         protocols: input.protocols ?? []
       },
-      false,
+      LOCKED,
       // create_opinion requiere una RPBox. Si no viene en el input, se necesita una alternativa global o lanzar error.
       getMainBox((input as any).mainBox, 'skill') 
     );
@@ -94,7 +96,7 @@ class ErgoDataProvider implements DataProvider {
         skill_box_id: input.skillBoxId,
         service_id: input.serviceId ?? null
       },
-      false,
+      LOCKED,
       getMainBox(input.mainBox, 'coverage')
     );
 
@@ -120,7 +122,7 @@ class ErgoDataProvider implements DataProvider {
         higher_is_better: input.higherIsBetter,
         source_hash: input.sourceHash ?? null
       },
-      true,
+      LOCKED,
       getMainBox(input.mainBox, 'benchmark')
     );
 
@@ -146,7 +148,7 @@ class ErgoDataProvider implements DataProvider {
         timestamp: input.timestamp ?? Math.floor(Date.now() / 1000),
         source_hash: input.sourceHash ?? null
       },
-      false,
+      LOCKED,
       getMainBox(input.mainBox, 'result')
     );
 
