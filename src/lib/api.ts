@@ -170,10 +170,6 @@ function cloneSkill(skill: Skill): Skill {
     ...skill,
     tags: [...skill.tags],
     extendedSkillBoxIds: [...skill.extendedSkillBoxIds],
-    protocols: skill.protocols ? skill.protocols.map((protocol) => ({
-      ...protocol,
-      tags: [...protocol.tags]
-    })) : skill.protocols,
     coverages: skill.coverages.map(cloneCoverage),
     benchmarks: skill.benchmarks.map(cloneBenchmark)
   };
@@ -304,7 +300,6 @@ export function parseSkillBox(box: any): Skill | null {
       tags: parsed.tags || [],
       domain: parsed.domain || '',
       extendedSkillBoxIds: parsed.extended_skill_boxes || [],
-      protocols: Array.isArray(parsed.protocols) ? parsed.protocols : [],
       coverages: [],
       benchmarks: [],
       resultCount: 0,

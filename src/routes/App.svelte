@@ -34,7 +34,7 @@
   import { formatServiceId, formatSourceHash } from "$lib/api";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
-  import type { Skill, Coverage, Benchmark, Result, Protocol } from "$lib/types";
+  import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
   import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
   import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
@@ -73,8 +73,6 @@
   let newSkillProse = "";
   let newSkillTags = "";
   let newSkillDomain = "";
-  let newSkillProtocolsJson = "";
-  let newSkillProtocolsError: string | null = null;
   let submitting = false;
   let submitTx: string | null = null;
   let submitError: string | null = null;
@@ -517,34 +515,6 @@
     return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
   }
 
-  /**
-   * Parse the protocols JSON field into Protocol[].
-   * Accepts either a JSON array of Protocol objects or a single object.
-   * Per celaut.proto: each entry has `tags: string[]`, `prose: string`,
-   * and optionally `formal: string` (base64 of the proto `bytes formal`).
-   */
-  function parseProtocolsJson(raw: string): Protocol[] {
-    let value: unknown;
-    try {
-      value = JSON.parse(raw);
-    } catch {
-      throw new Error("Protocols field must be valid JSON.");
-    }
-    const list = Array.isArray(value) ? value : [value];
-    return list.map((entry, idx) => {
-      if (!entry || typeof entry !== "object") {
-        throw new Error(`Protocol #${idx + 1} must be an object.`);
-      }
-      const e = entry as Record<string, unknown>;
-      const tags = Array.isArray(e.tags) ? e.tags.map(String) : [];
-      const prose = typeof e.prose === "string" ? e.prose : "";
-      const formal = typeof e.formal === "string" ? e.formal : undefined;
-      const out: Protocol = { tags, prose };
-      if (formal) out.formal = formal;
-      return out;
-    });
-  }
-
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
     detailVisible = false;
@@ -591,23 +561,6 @@
     if (!requireProfileForWrite()) { submitError = !$walletConnected ? "Connect your wallet first." : "Create a reputation profile first."; return; }
     if (!newSkillName.trim()) { submitError = "Name is required."; validationErrors = { name: "Skill name is required." }; return; }
 
-    // Parse the optional protocols JSON; reject early if malformed so we don't
-    // burn a tx on garbage that will never round-trip through the parser.
-    let parsedProtocols: Protocol[] = [];
-    newSkillProtocolsError = null;
-    const protocolsRaw = newSkillProtocolsJson.trim();
-    if (protocolsRaw) {
-      try {
-        parsedProtocols = parseProtocolsJson(protocolsRaw);
-      } catch (err: any) {
-        const message = err?.message || "Invalid protocols JSON.";
-        newSkillProtocolsError = message;
-        submitError = message;
-        toasts.error(message);
-        return;
-      }
-    }
-
     submitting = true;
     submitError = null;
     submitTx = null;
@@ -619,7 +572,6 @@
         domain: newSkillDomain.trim(),
         extendedSkillBoxIds: [...relatedSkillBoxIds],
         sourceHash: "",
-        protocols: parsedProtocols,
         tokenAmount: 1,
         mainBox: currentMainBox(),
       });
@@ -630,8 +582,6 @@
       newSkillProse = '';
       newSkillDomain = '';
       newSkillTags = '';
-      newSkillProtocolsJson = '';
-      newSkillProtocolsError = null;
       prefillRelatedBoxIds = [];
       relatedSkillBoxIds = [];
     } catch (e: any) {
@@ -975,40 +925,6 @@
 
           <!-- Skill Metadata -->
           <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
-
-          {#if selectedSkill.protocols && selectedSkill.protocols.length > 0}
-            <section class="protocols-section">
-              <h3 class="protocols-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M4 17l6-6-6-6"/><path d="M12 19h8"/>
-                </svg>
-                Protocols
-                <span class="protocols-count">{selectedSkill.protocols.length}</span>
-              </h3>
-              <ul class="protocols-list">
-                {#each selectedSkill.protocols as protocol, i (i)}
-                  <li class="protocol-card">
-                    {#if protocol.tags && protocol.tags.length > 0}
-                      <div class="protocol-tags">
-                        {#each protocol.tags as tag}
-                          <span class="protocol-tag">{tag}</span>
-                        {/each}
-                      </div>
-                    {/if}
-                    {#if protocol.prose}
-                      <p class="protocol-prose">{protocol.prose}</p>
-                    {/if}
-                    {#if protocol.formal}
-                      <details class="protocol-formal">
-                        <summary>formal spec (base64)</summary>
-                        <code class="protocol-formal-code">{protocol.formal}</code>
-                      </details>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            </section>
-          {/if}
 
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
@@ -1418,24 +1334,6 @@
             <div class="form-group">
               <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
               <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="skill-protocols">
-                Protocols
-                <span class="text-muted-foreground font-normal text-xs">(JSON, optional — mirrors celaut.proto <code>Protocol</code>)</span>
-              </label>
-              <textarea
-                id="skill-protocols"
-                class="form-input form-textarea"
-                class:form-input-error={newSkillProtocolsError}
-                bind:value={newSkillProtocolsJson}
-                placeholder={`[\n  { "tags": ["http", "grpc"], "prose": "JSON-RPC over HTTP/2" }\n]`}
-                rows="4"
-              ></textarea>
-              {#if newSkillProtocolsError}
-                <p class="field-error mt-1 text-xs" style="color: hsl(var(--destructive));">{newSkillProtocolsError}</p>
-              {/if}
             </div>
 
             <SubmitFormEnhancements
@@ -2143,56 +2041,6 @@
     padding: 0;
     font-size: 0.75rem;
     font-weight: 400;
-  }
-
-  /* ── Skill Protocols ───────────────────────────────────────────────── */
-  .protocols-section {
-    @apply mb-6;
-  }
-  .protocols-title {
-    @apply flex items-center gap-2 text-sm font-semibold mb-3;
-    color: hsl(var(--foreground));
-  }
-  .protocols-count {
-    @apply inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-semibold;
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  .protocols-list {
-    @apply flex flex-col gap-2 list-none p-0 m-0;
-  }
-  .protocol-card {
-    @apply p-3 rounded-md border;
-    background: hsl(var(--muted) / 0.3);
-    border-color: hsl(var(--border) / 0.6);
-  }
-  .protocol-tags {
-    @apply flex flex-wrap gap-1.5 mb-1.5;
-  }
-  .protocol-tag {
-    @apply text-xs px-1.5 py-0.5 rounded;
-    background: hsl(var(--primary) / 0.12);
-    color: hsl(var(--primary));
-    font-family: var(--font-mono, ui-monospace, monospace);
-  }
-  .protocol-prose {
-    @apply text-sm leading-snug m-0;
-    color: hsl(var(--foreground));
-  }
-  .protocol-formal {
-    @apply mt-2 text-xs;
-    color: hsl(var(--muted-foreground));
-  }
-  .protocol-formal summary {
-    cursor: pointer;
-  }
-  .protocol-formal-code {
-    @apply block mt-1 p-2 rounded text-xs break-all;
-    background: hsl(var(--background));
-    border: 1px solid hsl(var(--border));
-    font-family: var(--font-mono, ui-monospace, monospace);
-    max-height: 10rem;
-    overflow-y: auto;
   }
 
   /* ── Duplicate Skill Notice ────────────────────────────────────────── */

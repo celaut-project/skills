@@ -108,8 +108,7 @@ class MockDatabase implements DataProvider {
       benchmarks: [],
       resultCount: 0,
       reputation: 0,
-      sourceHash: input.sourceHash,
-      protocols: input.protocols ? input.protocols.map((p) => ({ ...p, tags: [...p.tags] })) : []
+      sourceHash: input.sourceHash
     };
 
     this.skills.push(skill);
