@@ -40,6 +40,7 @@
     buildComparisonTensor,
     pickBestService,
     aggregateMetricForService,
+    bucketByDescriptor,
     type ComparisonTensor,
     type TensorRow
   } from "$lib/scoring";
@@ -169,7 +170,7 @@
    */
   function dataReputationForRow(skill: Skill, row: TensorRow): number {
     const coverage = skill.coverages.find((c) => c.serviceId === row.serviceId);
-    return (coverage?.reputation ?? 0) + row.compositeReputation;
+    return (coverage?.reputation ?? 0) + row.compositeWeight;
   }
 
   /** Pick the Coverage whose service has the highest composite tensor score. */
@@ -631,43 +632,67 @@
 
   // ── Coverage view helpers ──────────────────────────────────────────────────
   /**
-   * For a given service, return a per-(benchmark, metric) breakdown using the
-   * tensor's reputation-weighted aggregate value. Used by the Coverages tab —
-   * one row per metric column the service has data on.
+   * Per-benchmark breakdown of a service's results, grouped by descriptor
+   * tuple. Each block has:
+   *   - benchmark + its descriptor/metric schema
+   *   - aggregateMetrics — median across every case (the headline number)
+   *   - descriptorRows   — one row per unique caseMeta tuple, with per-metric
+   *                        medians at that bucket
+   *
+   * This is the data the Coverages tab renders so a service's strength on a
+   * particular descriptor sub-region (e.g. "fast at small batch, slow at
+   * large") is visible, not flattened away.
    */
-  function collectServiceResults(serviceId: string | undefined, skill: Skill) {
-    if (!serviceId) return [] as Array<{
-      benchmark: Benchmark;
-      metricName: string;
-      higherIsBetter: boolean;
+  interface ServiceBenchmarkBlock {
+    benchmark: Benchmark;
+    descriptors: { name: string; description?: string }[];
+    metrics: { name: string; description?: string; higherIsBetter: boolean }[];
+    aggregateMetrics: Array<{
       value: number | null;
       resultsReputation: number;
-      count: number;
+      caseCount: number;
+      resultCount: number;
     }>;
-    const rows: Array<{
-      benchmark: Benchmark;
-      metricName: string;
-      higherIsBetter: boolean;
-      value: number | null;
-      resultsReputation: number;
-      count: number;
-    }> = [];
+    descriptorRows: Array<{
+      caseMeta: number[];
+      perMetric: Array<number | null>;
+      caseCount: number;
+    }>;
+  }
+
+  function collectServiceResults(
+    serviceId: string | undefined,
+    skill: Skill
+  ): ServiceBenchmarkBlock[] {
+    if (!serviceId) return [];
+    const blocks: ServiceBenchmarkBlock[] = [];
     for (const bench of skill.benchmarks) {
       const metrics = bench.performanceMetrics ?? [];
-      metrics.forEach((m, i) => {
-        const agg = aggregateMetricForService(bench, serviceId, i);
-        if (agg.resultCount === 0) return;
-        rows.push({
-          benchmark: bench,
-          metricName: m.name,
-          higherIsBetter: m.higherIsBetter,
-          value: agg.value,
-          resultsReputation: agg.resultsReputation,
-          count: agg.resultCount
-        });
+      const descriptors = bench.caseDescriptors ?? [];
+      if (metrics.length === 0) continue;
+
+      const aggregateMetrics = metrics.map((_m, i) =>
+        aggregateMetricForService(bench, serviceId, i)
+      );
+      // Skip benchmarks the service hasn't touched.
+      if (aggregateMetrics.every((a) => a.resultCount === 0)) continue;
+
+      const buckets = bucketByDescriptor(bench).filter((b) => b.serviceValues.has(serviceId));
+      const descriptorRows = buckets.map((b) => ({
+        caseMeta: b.caseMeta,
+        perMetric: b.serviceValues.get(serviceId) ?? Array(metrics.length).fill(null),
+        caseCount: b.caseCount
+      }));
+
+      blocks.push({
+        benchmark: bench,
+        descriptors,
+        metrics,
+        aggregateMetrics,
+        descriptorRows
       });
     }
-    return rows;
+    return blocks;
   }
 
   /**
@@ -1043,48 +1068,79 @@
               {:else}
                 <div class="space-y-3">
                   {#each selectedSkill.coverages as cov}
-                    {@const serviceResults = collectServiceResults(cov.serviceId, selectedSkill)}
+                    {@const serviceBlocks = collectServiceResults(cov.serviceId, selectedSkill)}
                     {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
                     <div class="coverage-card">
                       <div class="coverage-card-header">
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
-                        <span class="ml-auto coverage-score" title="Composite score using the highest-reputation submission per benchmark">
+                        <span class="ml-auto coverage-score" title="Composite = direction-signed z-score per metric column, weighted by benchmark × result reputation.">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                           </svg>
                           {formatReputation(compositeScore)}
                         </span>
                       </div>
-                      {#if serviceResults.length === 0}
+                      {#if serviceBlocks.length === 0}
                         <p class="coverage-empty">No results submitted yet for this service.</p>
                       {:else}
-                        <table class="coverage-benchmark-table">
-                          <thead>
-                            <tr>
-                              <th>Benchmark</th>
-                              <th>Metric</th>
-                              <th class="num">Value</th>
-                              <th class="num">Reputation</th>
-                              <th class="num">Runs</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {#each serviceResults as row}
-                              <tr>
-                                <td>{row.benchmark.name}</td>
-                                <td>
-                                  <code class="font-mono text-xs">{row.metricName}</code>
-                                  <span class="text-xs text-muted-foreground" title={row.higherIsBetter ? 'Higher is better' : 'Lower is better'}>
-                                    {row.higherIsBetter ? '↑' : '↓'}
-                                  </span>
-                                </td>
-                                <td class="num">{row.value !== null ? formatReputation(row.value) : '—'}</td>
-                                <td class="num">{formatReputation(row.resultsReputation)}</td>
-                                <td class="num">{row.count}</td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
+                        {#each serviceBlocks as block}
+                          <div class="benchmark-block">
+                            <div class="benchmark-block-header">
+                              <span class="benchmark-block-name">{block.benchmark.name}</span>
+                              <span class="benchmark-block-meta">
+                                {block.aggregateMetrics.reduce((acc, a) => acc + a.caseCount, 0)} case run{block.aggregateMetrics.reduce((acc, a) => acc + a.caseCount, 0) !== 1 ? 's' : ''}
+                                · {block.aggregateMetrics[0]?.resultCount ?? 0} submission{(block.aggregateMetrics[0]?.resultCount ?? 0) !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <table class="coverage-benchmark-table">
+                              <thead>
+                                <tr>
+                                  {#each block.descriptors as d}
+                                    <th title={d.description}><code class="font-mono text-xs">{d.name}</code></th>
+                                  {/each}
+                                  {#each block.metrics as m}
+                                    <th class="num" title={m.description}>
+                                      <code class="font-mono text-xs">{m.name}</code>
+                                      <span class="text-xs text-muted-foreground">{m.higherIsBetter ? '↑' : '↓'}</span>
+                                    </th>
+                                  {/each}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <!-- Aggregate row: median across every case the service ran. -->
+                                <tr class="aggregate-row">
+                                  {#each block.descriptors as _d}
+                                    <td class="td-aggregate-label" colspan={1}>—</td>
+                                  {/each}
+                                  {#if block.descriptors.length === 0}
+                                    <td class="td-aggregate-label">All cases (median)</td>
+                                  {/if}
+                                  {#each block.aggregateMetrics as a}
+                                    <td class="num">{a.value !== null ? formatReputation(a.value) : '—'}</td>
+                                  {/each}
+                                </tr>
+                                {#if block.descriptors.length > 0}
+                                  <tr class="aggregate-label-row">
+                                    <td colspan={block.descriptors.length + block.metrics.length} class="aggregate-label-row-td">
+                                      <span>↑ Aggregate (median across all cases)</span>
+                                      <span class="aggregate-label-row-divider">— per-descriptor breakdown below —</span>
+                                    </td>
+                                  </tr>
+                                  {#each block.descriptorRows as r}
+                                    <tr>
+                                      {#each block.descriptors as _d, i}
+                                        <td><code class="font-mono text-xs">{r.caseMeta[i] ?? '—'}</code></td>
+                                      {/each}
+                                      {#each r.perMetric as v}
+                                        <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                      {/each}
+                                    </tr>
+                                  {/each}
+                                {/if}
+                              </tbody>
+                            </table>
+                          </div>
+                        {/each}
                       {/if}
                       <div class="discussion-section mt-3">
                         <button
@@ -1155,7 +1211,7 @@
                         {/each}
                       </tbody>
                     </table>
-                    <p class="comparative-note">Tensor: rows are services, columns are (benchmark → metric). Cells show the reputation-weighted mean across that service's case executions. Highlighted = best in column. Composite weights by both benchmark and result reputation — see open clarification questions in <code>scoring.ts</code>.</p>
+                    <p class="comparative-note">Tensor: rows are services, columns are (benchmark → metric). Cells show the <strong>median</strong> across that service's case executions. Highlighted = best in column. Composite is the direction-signed <strong>z-score per column</strong>, weighted by <code>max(benchmark_rep, 1) × max(result_rep, 1)</code> — so higher = better across all benchmarks regardless of metric scale.</p>
                   </div>
                 {/if}
               {/if}
@@ -2346,6 +2402,54 @@
   .comparative-table .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  .benchmark-block {
+    margin-top: 0.75rem;
+    border: 1px solid hsl(var(--border) / 0.5);
+    border-radius: 0.375rem;
+    overflow: hidden;
+  }
+  .benchmark-block-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.4rem 0.625rem;
+    background: hsl(var(--muted) / 0.2);
+    border-bottom: 1px solid hsl(var(--border) / 0.4);
+  }
+  .benchmark-block-name {
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+  .benchmark-block-meta {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+  }
+  .aggregate-row td {
+    background: hsl(var(--muted) / 0.15);
+    font-weight: 600;
+  }
+  .td-aggregate-label {
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+    font-weight: 500 !important;
+  }
+  .aggregate-label-row td {
+    background: hsl(var(--muted) / 0.1) !important;
+    padding: 0.25rem 0.625rem !important;
+  }
+  .aggregate-label-row-td {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+  .aggregate-label-row-divider {
+    font-style: normal;
   }
 
   /* ── Comparative (services × benchmarks) matrix ────────────────────── */

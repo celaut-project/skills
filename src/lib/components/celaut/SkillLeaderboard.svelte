@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import type { Benchmark, Result, CaseExecutionData } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
-  import { aggregateMetricForService } from '$lib/scoring';
+  import { aggregateMetricForService, bucketByDescriptor, median } from '$lib/scoring';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
@@ -92,31 +92,52 @@
   }
 
   /**
-   * Aggregate every service's mean per metric for one benchmark — the row set
-   * the leaderboard table renders.
+   * Aggregate every service's median per metric for one benchmark — the row
+   * set the leaderboard table renders.
    *
-   * Sort key: composite within this benchmark (sum of direction-adjusted
-   * metric means × max(result-rep, 1)). Cross-benchmark ranking happens in
-   * the App-level tensor view, not here.
-   *
-   * TODO Josemi: confirm per-benchmark sort key — currently a sum across
-   * metrics with direction sign applied. If different metrics should be
-   * weighted differently within a benchmark (e.g. "primary metric" first)
-   * that needs to be modelled on the Benchmark entity.
+   * Cell aggregation: median across every case the service contributed.
+   * Within-benchmark sort: per-column z-score, sign-flipped for
+   * lower-is-better metrics, then a weighted mean by max(resultRep, 1).
+   * (Same algorithm as the global composite — see scoring.ts — restricted
+   * to this benchmark's columns. Cross-benchmark ranking lives in App.svelte.)
    */
   function leaderboardRows(benchmark: Benchmark) {
     const serviceIds = Array.from(new Set(benchmark.results.map((r) => r.serviceId).filter(Boolean)));
     const metrics = benchmark.performanceMetrics ?? [];
-    const rows = serviceIds.map((serviceId) => {
-      const perMetric = metrics.map((m, i) => {
-        const agg = aggregateMetricForService(benchmark, serviceId, i);
-        return { metricName: m.name, higherIsBetter: m.higherIsBetter, ...agg };
+    const cells = serviceIds.map((serviceId) =>
+      metrics.map((_m, i) => aggregateMetricForService(benchmark, serviceId, i))
+    );
+
+    // Per-column z-score params for within-benchmark ranking.
+    const colStats = metrics.map((_m, i) => {
+      const vals = cells.map((c) => c[i]?.value).filter((v): v is number => typeof v === 'number');
+      if (vals.length === 0) return { mean: 0, sigma: 0 };
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const sigma =
+        vals.length < 2
+          ? 0
+          : Math.sqrt(vals.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (vals.length - 1));
+      return { mean, sigma };
+    });
+
+    const rows = serviceIds.map((serviceId, serviceIdx) => {
+      const perMetric = metrics.map((m, i) => ({
+        metricName: m.name,
+        higherIsBetter: m.higherIsBetter,
+        ...cells[serviceIdx][i]
+      }));
+      let weighted = 0;
+      let weightTotal = 0;
+      perMetric.forEach((cell, i) => {
+        if (cell.value === null) return;
+        const { mean, sigma } = colStats[i];
+        const z = sigma === 0 ? 0 : (cell.value - mean) / sigma;
+        const signed = cell.higherIsBetter ? z : -z;
+        const w = Math.max(cell.resultsReputation, 1);
+        weighted += signed * w;
+        weightTotal += w;
       });
-      const composite = perMetric.reduce((sum, cell) => {
-        if (cell.value === null) return sum;
-        const sign = cell.higherIsBetter ? 1 : -1;
-        return sum + sign * cell.value * Math.max(cell.resultsReputation, 1);
-      }, 0);
+      const composite = weightTotal === 0 ? 0 : weighted / weightTotal;
       const latest = benchmark.results
         .filter((r) => r.serviceId === serviceId)
         .reduce((max, r) => Math.max(max, r.timestamp || 0), 0);
@@ -125,6 +146,45 @@
     });
     rows.sort((a, b) => b.composite - a.composite);
     return rows;
+  }
+
+  /**
+   * Per-descriptor breakdown: each row is one (descriptor-tuple, service) pair
+   * with the per-metric median at that bucket. Descriptor values are only
+   * rendered once per bucket so adjacent rows visually group together.
+   *
+   * This is the answer to Josemi's "group by descriptor" requirement — the
+   * aggregate leaderboard above collapses all cases into one row per service,
+   * which hides the fact that two services may dominate on different
+   * sub-regions of the descriptor space. The breakdown surfaces exactly that.
+   */
+  function descriptorBreakdownRows(benchmark: Benchmark) {
+    const buckets = bucketByDescriptor(benchmark);
+    const metricCount = benchmark.performanceMetrics?.length ?? 0;
+    type Row = {
+      bucketKey: string;
+      caseMeta: number[];
+      serviceId: string;
+      perMetric: Array<number | null>;
+      isFirstInBucket: boolean;
+      bucketRowSpan: number;
+    };
+    const out: Row[] = [];
+    for (const bucket of buckets) {
+      const services = [...bucket.serviceValues.keys()];
+      services.forEach((sid, i) => {
+        const vals = bucket.serviceValues.get(sid) ?? Array(metricCount).fill(null);
+        out.push({
+          bucketKey: bucket.key,
+          caseMeta: bucket.caseMeta,
+          serviceId: sid,
+          perMetric: vals,
+          isFirstInBucket: i === 0,
+          bucketRowSpan: services.length
+        });
+      });
+    }
+    return out;
   }
 
   async function copyHash(hash: string) {
@@ -373,6 +433,58 @@
                     </tbody>
                   </table>
                 </div>
+
+                <!-- By-descriptor breakdown: shows per-(case, service) median. -->
+                {#if descriptors.length > 0}
+                  {@const breakdown = descriptorBreakdownRows(benchmark)}
+                  {#if breakdown.length > 0}
+                    <details class="descriptor-breakdown-details">
+                      <summary class="descriptor-breakdown-summary">
+                        By descriptor ({breakdown.length} row{breakdown.length !== 1 ? 's' : ''} across
+                        {new Set(breakdown.map((r) => r.bucketKey)).size} case{new Set(breakdown.map((r) => r.bucketKey)).size !== 1 ? 's' : ''})
+                      </summary>
+                      <p class="descriptor-breakdown-hint">
+                        Per-service medians at each unique
+                        {descriptors.map((d) => d.name).join(' · ')} tuple. Cells empty when a
+                        service didn't run that case.
+                      </p>
+                      <div class="leaderboard-table-wrapper">
+                        <table class="descriptor-breakdown-table">
+                          <thead>
+                            <tr>
+                              {#each descriptors as d}
+                                <th class="th-descriptor" title={d.description}><code>{d.name}</code></th>
+                              {/each}
+                              <th>Service</th>
+                              {#each metrics as m}
+                                <th class="th-metric" title={m.description}>
+                                  <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
+                                </th>
+                              {/each}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each breakdown as row}
+                              <tr class="leaderboard-row" class:descriptor-bucket-first={row.isFirstInBucket}>
+                                {#each descriptors as _d, i}
+                                  {#if row.isFirstInBucket}
+                                    <td class="td-descriptor" rowspan={row.bucketRowSpan}>
+                                      <code>{row.caseMeta[i] ?? '—'}</code>
+                                    </td>
+                                  {/if}
+                                {/each}
+                                <td class="td-service"><code class="service-id">{formatServiceId(row.serviceId)}</code></td>
+                                {#each row.perMetric as v}
+                                  <td class="td-score">{formatScore(v)}</td>
+                                {/each}
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  {/if}
+                {/if}
 
                 <!-- Raw per-result tensor (collapsed by default). -->
                 <details class="raw-results-details">
@@ -928,6 +1040,70 @@
     background: hsl(var(--muted) / 0.4);
     color: hsl(var(--foreground));
     border-color: hsl(var(--border));
+  }
+
+  .descriptor-breakdown-details {
+    margin-bottom: 0.75rem;
+  }
+
+  .descriptor-breakdown-summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.2);
+    display: inline-block;
+  }
+  .descriptor-breakdown-summary:hover {
+    background: hsl(var(--muted) / 0.4);
+  }
+
+  .descriptor-breakdown-hint {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0.5rem 0;
+    line-height: 1.4;
+  }
+
+  .descriptor-breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .descriptor-breakdown-table thead {
+    background-color: hsl(var(--muted) / 0.5);
+  }
+  .descriptor-breakdown-table th {
+    padding: 0.4rem 0.625rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .descriptor-breakdown-table .th-descriptor { background: hsl(var(--muted) / 0.3); }
+  .descriptor-breakdown-table .th-metric { text-align: right; }
+  .descriptor-breakdown-table td {
+    padding: 0.4rem 0.625rem;
+    color: hsl(var(--foreground));
+    border-top: 1px solid hsl(var(--border) / 0.4);
+  }
+  .descriptor-breakdown-table .td-descriptor {
+    vertical-align: top;
+    background: hsl(var(--muted) / 0.15);
+    border-right: 1px solid hsl(var(--border) / 0.5);
+    font-variant-numeric: tabular-nums;
+  }
+  .descriptor-breakdown-table .td-score {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .descriptor-bucket-first {
+    border-top: 2px solid hsl(var(--border) / 0.7);
   }
 
   .raw-results-details {

@@ -836,6 +836,169 @@ export function getDemoSkills(): Skill[] {
         }
       ],
       resultCount: 7
+    },
+    // ── Skill 8: LLM Inference — NATIVE multi-descriptor / multi-metric ──
+    // Demonstrates the post-2026-06-18 tensor shape: each benchmark declares
+    // caseDescriptors[] (problem axes) and performanceMetrics[] (measurement
+    // axes), and each Result.data is a list of cases sweeping the descriptor
+    // grid. The leaderboard groups these by descriptor tuple.
+    {
+      boxId: 'demo-008',
+      name: 'LLM Inference Service',
+      prose: 'Serve large-language-model completions with bounded latency, predictable cost, and reproducible quality. Agents must handle batched inference across varying context lengths and model sizes; results are reported per (model_size, context_tokens, batch_size) configuration so consumers can pick the best service for their workload.',
+      tags: ['llm', 'inference', 'serving', 'gpu'],
+      domain: 'analytics',
+      extendedSkillBoxIds: [],
+      sourceHash: '8a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7008',
+      coverages: [
+        { boxId: 'cov-llm-a', serviceId: 'QmLLM-A-fast-gpu', label: 'BlazeServe (A100)' },
+        { boxId: 'cov-llm-b', serviceId: 'QmLLM-B-cheap-cpu', label: 'CheapCPU' },
+        { boxId: 'cov-llm-c', serviceId: 'QmLLM-C-balanced', label: 'Balanced-H100' }
+      ],
+      benchmarks: [
+        {
+          id: 'bench-llm-perf',
+          skillBoxId: 'demo-008',
+          name: 'Inference Performance Grid',
+          description: 'Latency, throughput, and cost across model size, context length, and batch size. Cases sweep a 2×3×2 grid; metrics are independent dimensions.',
+          // NEW SHAPE: native multi-descriptor + multi-metric.
+          caseDescriptors: [
+            { name: 'model_size_b', description: 'Parameter count, in billions (7 or 70).' },
+            { name: 'context_tokens', description: 'Prompt + completion tokens per request.' },
+            { name: 'batch_size', description: 'Concurrent requests per inference call.' }
+          ],
+          performanceMetrics: [
+            { name: 'latency_p50_ms', description: 'Median end-to-end request latency.', higherIsBetter: false },
+            { name: 'throughput_tok_per_s', description: 'Decoded tokens per second per request.', higherIsBetter: true },
+            { name: 'cost_per_1k_tokens_usd', description: 'Billed cost per 1k output tokens.', higherIsBetter: false }
+          ],
+          results: [
+            {
+              id: 'res-llm-001',
+              benchmarkId: 'bench-llm-perf',
+              serviceId: 'QmLLM-A-fast-gpu',
+              notes: 'A100 80GB cluster, vLLM 0.6 with paged-attention.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,   512, 1],  metricsValues: [ 180,  92, 0.0009] },
+                { caseMeta: [7,   512, 8],  metricsValues: [ 240, 380, 0.00045] },
+                { caseMeta: [7,  2048, 1],  metricsValues: [ 520,  88, 0.0011] },
+                { caseMeta: [7,  2048, 8],  metricsValues: [ 690, 360, 0.00055] },
+                { caseMeta: [7,  8192, 1],  metricsValues: [1850,  72, 0.0017] },
+                { caseMeta: [7,  8192, 8],  metricsValues: [2400, 290, 0.00085] },
+                { caseMeta: [70,  512, 1],  metricsValues: [ 410,  41, 0.0042] },
+                { caseMeta: [70,  512, 8],  metricsValues: [ 720, 165, 0.0021] },
+                { caseMeta: [70, 2048, 1],  metricsValues: [1300,  38, 0.0055] },
+                { caseMeta: [70, 2048, 8],  metricsValues: [2200, 145, 0.0027] },
+                { caseMeta: [70, 8192, 1],  metricsValues: [5100,  29, 0.0091] },
+                { caseMeta: [70, 8192, 8],  metricsValues: [7400, 110, 0.0046] }
+              ]
+            },
+            {
+              id: 'res-llm-002',
+              benchmarkId: 'bench-llm-perf',
+              serviceId: 'QmLLM-B-cheap-cpu',
+              notes: 'Spot-priced CPU instances; cheap but slow.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,   512, 1],  metricsValues: [1600,  12, 0.00012] },
+                { caseMeta: [7,   512, 8],  metricsValues: [3200,  60, 0.00006] },
+                { caseMeta: [7,  2048, 1],  metricsValues: [4900,  10, 0.00015] },
+                { caseMeta: [7,  2048, 8],  metricsValues: [9800,  52, 0.00008] }
+                // Larger sweeps OOM on CPU instances — intentionally missing
+                // cases so the UI exercises the partial-coverage path.
+              ]
+            },
+            {
+              id: 'res-llm-003',
+              benchmarkId: 'bench-llm-perf',
+              serviceId: 'QmLLM-C-balanced',
+              notes: 'H100 single-node; midrange cost.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,   512, 1],  metricsValues: [ 140, 110, 0.0014] },
+                { caseMeta: [7,   512, 8],  metricsValues: [ 200, 440, 0.0007] },
+                { caseMeta: [7,  2048, 1],  metricsValues: [ 430, 105, 0.0017] },
+                { caseMeta: [7,  2048, 8],  metricsValues: [ 600, 410, 0.00085] },
+                { caseMeta: [7,  8192, 1],  metricsValues: [1500,  86, 0.0024] },
+                { caseMeta: [7,  8192, 8],  metricsValues: [2100, 335, 0.0012] },
+                { caseMeta: [70,  512, 1],  metricsValues: [ 320,  52, 0.0055] },
+                { caseMeta: [70,  512, 8],  metricsValues: [ 580, 200, 0.0028] },
+                { caseMeta: [70, 2048, 1],  metricsValues: [ 990,  48, 0.0072] },
+                { caseMeta: [70, 2048, 8],  metricsValues: [1700, 180, 0.0036] },
+                { caseMeta: [70, 8192, 1],  metricsValues: [3800,  36, 0.0118] },
+                { caseMeta: [70, 8192, 8],  metricsValues: [5500, 138, 0.006] }
+              ]
+            },
+            {
+              id: 'res-llm-004',
+              benchmarkId: 'bench-llm-perf',
+              serviceId: 'QmLLM-C-balanced',
+              notes: 'Same service, re-run with TensorRT-LLM build for a vouching duplicate.',
+              timestamp: 1734393600,
+              data: [
+                { caseMeta: [7,   512, 1],  metricsValues: [ 130, 115, 0.0014] },
+                { caseMeta: [7,  2048, 1],  metricsValues: [ 415, 108, 0.0017] },
+                { caseMeta: [70, 2048, 1],  metricsValues: [ 960,  50, 0.0072] }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'bench-llm-quality',
+          skillBoxId: 'demo-008',
+          name: 'Quality Grid (MMLU + HumanEval)',
+          description: 'Quality across model size on two evaluation suites. caseMeta = [model_size_b, eval_suite_id] where 0 = MMLU, 1 = HumanEval.',
+          caseDescriptors: [
+            { name: 'model_size_b', description: 'Parameter count, in billions.' },
+            { name: 'eval_suite_id', description: '0 = MMLU (general knowledge), 1 = HumanEval (code).' }
+          ],
+          performanceMetrics: [
+            { name: 'accuracy_pct', description: 'Suite accuracy (%) — for code suites this is pass@1.', higherIsBetter: true },
+            { name: 'std_err', description: 'Standard error of the accuracy estimate.', higherIsBetter: false }
+          ],
+          results: [
+            {
+              id: 'res-llm-q-001',
+              benchmarkId: 'bench-llm-quality',
+              serviceId: 'QmLLM-A-fast-gpu',
+              notes: 'Stock model snapshots.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,  0], metricsValues: [62.4, 1.1] },
+                { caseMeta: [7,  1], metricsValues: [34.7, 1.8] },
+                { caseMeta: [70, 0], metricsValues: [78.9, 0.9] },
+                { caseMeta: [70, 1], metricsValues: [62.1, 1.6] }
+              ]
+            },
+            {
+              id: 'res-llm-q-002',
+              benchmarkId: 'bench-llm-quality',
+              serviceId: 'QmLLM-C-balanced',
+              notes: 'Same checkpoints, different harness build.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,  0], metricsValues: [62.1, 1.2] },
+                { caseMeta: [7,  1], metricsValues: [35.1, 1.7] },
+                { caseMeta: [70, 0], metricsValues: [79.3, 0.8] },
+                { caseMeta: [70, 1], metricsValues: [61.8, 1.5] }
+              ]
+            },
+            {
+              id: 'res-llm-q-003',
+              benchmarkId: 'bench-llm-quality',
+              serviceId: 'QmLLM-B-cheap-cpu',
+              notes: 'CPU service only runs the 7B suite — 70B is intentionally absent.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [7,  0], metricsValues: [61.9, 1.3] },
+                { caseMeta: [7,  1], metricsValues: [33.4, 1.9] }
+              ]
+            }
+          ]
+        }
+      ],
+      resultCount: 7
     }
   ];
 
