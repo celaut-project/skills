@@ -20,6 +20,7 @@ export interface Skill {
   profileId: string;
   name: string;
   prose: string;
+  formal: string;  // TODO Agregar formal al resto. La especificación formal de la habilidad, en un lenguaje formal (ej. TLA+, Alloy, etc.) o un DSL específico de cualquiera.
   tags: string[];
   domain: string;
   extendedSkillBoxIds: string[];
@@ -35,6 +36,7 @@ export interface Skill {
 export interface SkillCreationInput {
   name: string;
   prose: string;
+  formal: string;  // TODO Agregar formal al resto.
   tags: string[];
   domain: string;
   extendedSkillBoxIds: string[];
