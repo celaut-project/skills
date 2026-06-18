@@ -61,6 +61,7 @@
   let submitMetricValues: Record<number, string> = {};
   let submitCaseMeta: Record<number, string> = {};
   let submitNotes = '';
+  let submitSourceHash = '';
   let submitting = false;
 
   function selectBenchmark(id: string) {
@@ -68,6 +69,7 @@
     showSubmitForm = false;
     submitMetricValues = {};
     submitCaseMeta = {};
+    submitSourceHash = '';
   }
 
   function formatScore(value: number | null | undefined): string {
@@ -275,6 +277,7 @@
         data,
         notes: submitNotes.trim(),
         timestamp: Math.floor(Date.now() / 1000),
+        sourceHash: submitSourceHash.trim() || undefined,
         tokenAmount: 1,
         mainBox: $reputation_proof ? getMainReputationBox($reputation_proof) : undefined
       });
@@ -286,6 +289,7 @@
       submitMetricValues = {};
       submitCaseMeta = {};
       submitNotes = '';
+      submitSourceHash = '';
     } catch (error: any) {
       toasts.error(error?.message || 'Result submission failed.');
     } finally {
@@ -667,6 +671,10 @@
                     <div class="form-row">
                       <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
                       <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
+                    </div>
+                    <div class="form-row">
+                      <label class="form-label" for="result-source-{benchmark.id}">Source hash (optional)</label>
+                      <input id="result-source-{benchmark.id}" class="form-input" bind:value={submitSourceHash} placeholder="Blake2b256 hash of off-chain source file" />
                     </div>
                     <div class="form-actions">
                       <button type="submit" class="btn-submit" disabled={submitting}>

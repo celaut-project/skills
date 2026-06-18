@@ -90,13 +90,30 @@
   let submitTx: string | null = null;
   let submitError: string | null = null;
 
-  // Create Benchmark form
+  // Create Benchmark form — multi-metric, multi-descriptor authoring
+  // aligned with current Benchmark/BenchmarkCreationInput shape in types.ts.
   let benchmarkName = "";
   let benchmarkDescription = "";
-  let benchmarkMetric = "";
-  let benchmarkHigherIsBetter = true;
+  let benchmarkMetrics: { name: string; description: string; higherIsBetter: boolean }[] = [
+    { name: "", description: "", higherIsBetter: true }
+  ];
+  let benchmarkDescriptors: { name: string; description: string }[] = [];
+  let benchmarkSourceHash = "";
   let benchmarkSubmitting = false;
   let relatedSkillBoxIds: string[] = [];
+
+  function addBenchmarkMetric() {
+    benchmarkMetrics = [...benchmarkMetrics, { name: "", description: "", higherIsBetter: true }];
+  }
+  function removeBenchmarkMetric(i: number) {
+    benchmarkMetrics = benchmarkMetrics.filter((_, idx) => idx !== i);
+  }
+  function addBenchmarkDescriptor() {
+    benchmarkDescriptors = [...benchmarkDescriptors, { name: "", description: "" }];
+  }
+  function removeBenchmarkDescriptor(i: number) {
+    benchmarkDescriptors = benchmarkDescriptors.filter((_, idx) => idx !== i);
+  }
 
   // Wallet/profile bootstrap state
   let userProfiles: Awaited<ReturnType<typeof getUserProfiles>> = [];
@@ -615,40 +632,38 @@
       toasts.error("Benchmark name is required.");
       return;
     }
-    if (!benchmarkMetric.trim()) {
-      toasts.error("Metric is required.");
+    const cleanedMetrics = benchmarkMetrics
+      .map((m) => ({ name: m.name.trim(), description: m.description.trim(), higherIsBetter: !!m.higherIsBetter }))
+      .filter((m) => m.name);
+    if (cleanedMetrics.length === 0) {
+      toasts.error("At least one performance metric is required.");
       return;
     }
+    const cleanedDescriptors = benchmarkDescriptors
+      .map((d) => ({ name: d.name.trim(), description: d.description.trim() }))
+      .filter((d) => d.name);
     if (!requireProfileForWrite()) {
       return;
     }
 
     benchmarkSubmitting = true;
     try {
-      // Quick-create path: one PerformanceMetric, zero CaseDescriptors.
-      // TODO Josemi: design the richer multi-metric / multi-descriptor form.
-      // The current inline form only collects a single metric name + direction,
-      // matching the legacy benchmark shape. A multidimensional benchmark
-      // editor (add/remove rows for caseDescriptors and performanceMetrics)
-      // is needed before users can author tensor-shaped benchmarks from the UI.
       await createBenchmarkEntity({
         skillBoxId: selectedSkill.boxId,
         name: benchmarkName.trim(),
         description: benchmarkDescription.trim(),
-        caseDescriptors: [],
-        performanceMetrics: [{
-          name: benchmarkMetric.trim(),
-          description: '',
-          higherIsBetter: benchmarkHigherIsBetter
-        }],
+        caseDescriptors: cleanedDescriptors,
+        performanceMetrics: cleanedMetrics,
+        sourceHash: benchmarkSourceHash.trim() || undefined,
         mainBox: currentMainBox()
       });
       await refreshSkills(selectedSkill.boxId);
       toasts.success($demoMode ? "Benchmark created (demo mode)." : "Benchmark published on-chain.");
       benchmarkName = "";
       benchmarkDescription = "";
-      benchmarkMetric = "";
-      benchmarkHigherIsBetter = true;
+      benchmarkMetrics = [{ name: "", description: "", higherIsBetter: true }];
+      benchmarkDescriptors = [];
+      benchmarkSourceHash = "";
       detailTab = "benchmarks";
     } catch (e: any) {
       toasts.error(e?.message || "Benchmark creation failed.");
@@ -1254,22 +1269,84 @@
                   <textarea id="bench-desc" class="form-input form-textarea" bind:value={benchmarkDescription} placeholder="What does this benchmark measure?"></textarea>
                 </div>
                 <div class="form-group">
-                  <label class="form-label" for="bench-metric">Metric <span class="text-red-500">*</span></label>
-                  <input id="bench-metric" class="form-input" bind:value={benchmarkMetric} placeholder="e.g. accuracy, latency_ms, f1_score" required />
-                </div>
-                <div class="form-group form-toggle-group">
-                  <label class="form-label" for="bench-higher">Higher is better?</label>
-                  <div class="toggle-wrapper">
-                    <button
-                      type="button"
-                      class="toggle-btn"
-                      class:toggle-active={benchmarkHigherIsBetter}
-                      on:click={() => benchmarkHigherIsBetter = !benchmarkHigherIsBetter}
-                    >
-                      <span class="toggle-indicator" class:toggle-indicator-on={benchmarkHigherIsBetter}></span>
-                    </button>
-                    <span class="toggle-label">{benchmarkHigherIsBetter ? 'Yes' : 'No'}</span>
+                  <div class="form-label">Performance metrics <span class="text-red-500">*</span></div>
+                  <p class="form-hint">Each metric is an axis of measurement (e.g. <code>accuracy ↑</code>, <code>latency_ms ↓</code>). At least one is required.</p>
+                  <div class="bench-row-list">
+                    {#each benchmarkMetrics as metric, i}
+                      <div class="bench-row">
+                        <input
+                          class="form-input bench-row-name"
+                          bind:value={metric.name}
+                          placeholder="metric name (e.g. accuracy)"
+                          aria-label="Metric name"
+                        />
+                        <input
+                          class="form-input bench-row-desc"
+                          bind:value={metric.description}
+                          placeholder="description (optional)"
+                          aria-label="Metric description"
+                        />
+                        <div class="form-toggle-group bench-row-toggle">
+                          <button
+                            type="button"
+                            class="toggle-btn"
+                            class:toggle-active={metric.higherIsBetter}
+                            on:click={() => { metric.higherIsBetter = !metric.higherIsBetter; benchmarkMetrics = benchmarkMetrics; }}
+                            title={metric.higherIsBetter ? 'Higher is better' : 'Lower is better'}
+                          >
+                            <span class="toggle-indicator" class:toggle-indicator-on={metric.higherIsBetter}></span>
+                          </button>
+                          <span class="toggle-label">{metric.higherIsBetter ? '↑ Higher' : '↓ Lower'}</span>
+                        </div>
+                        <button
+                          type="button"
+                          class="bench-row-remove"
+                          on:click={() => removeBenchmarkMetric(i)}
+                          disabled={benchmarkMetrics.length <= 1}
+                          aria-label="Remove metric"
+                        >×</button>
+                      </div>
+                    {/each}
                   </div>
+                  <button type="button" class="bench-row-add" on:click={addBenchmarkMetric}>+ Add metric</button>
+                </div>
+                <div class="form-group">
+                  <div class="form-label">Case descriptors</div>
+                  <p class="form-hint">Optional problem-space dimensions (e.g. <code>batch_size</code>, <code>context_tokens</code>). Each result case must provide a value per descriptor.</p>
+                  <div class="bench-row-list">
+                    {#each benchmarkDescriptors as descriptor, i}
+                      <div class="bench-row">
+                        <input
+                          class="form-input bench-row-name"
+                          bind:value={descriptor.name}
+                          placeholder="descriptor name (e.g. batch_size)"
+                          aria-label="Descriptor name"
+                        />
+                        <input
+                          class="form-input bench-row-desc"
+                          bind:value={descriptor.description}
+                          placeholder="description (optional)"
+                          aria-label="Descriptor description"
+                        />
+                        <button
+                          type="button"
+                          class="bench-row-remove"
+                          on:click={() => removeBenchmarkDescriptor(i)}
+                          aria-label="Remove descriptor"
+                        >×</button>
+                      </div>
+                    {/each}
+                  </div>
+                  <button type="button" class="bench-row-add" on:click={addBenchmarkDescriptor}>+ Add descriptor</button>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="bench-source">Source hash (optional)</label>
+                  <input
+                    id="bench-source"
+                    class="form-input"
+                    bind:value={benchmarkSourceHash}
+                    placeholder="Blake2b256 hash of off-chain source file"
+                  />
                 </div>
                 <button type="submit" class="submit-btn" disabled={benchmarkSubmitting}>
                   {#if benchmarkSubmitting}
@@ -2192,6 +2269,56 @@
   /* ── Create Benchmark form ──────────────────────────────────────── */
   .create-benchmark-form {
     @apply space-y-5;
+  }
+
+  .bench-row-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .bench-row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1.4fr) auto auto;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .bench-row-toggle {
+    justify-content: flex-start;
+  }
+  .bench-row-remove {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--muted-foreground));
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .bench-row-remove:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .bench-row-add {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    background: transparent;
+    border: 1px dashed hsl(var(--border));
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+  }
+  .bench-row-add:hover {
+    border-color: hsl(var(--foreground) / 0.4);
+    background: hsl(var(--muted) / 0.3);
+  }
+  .form-hint {
+    @apply text-xs text-muted-foreground;
+    margin-top: -0.25rem;
   }
 
   .form-toggle-group {
