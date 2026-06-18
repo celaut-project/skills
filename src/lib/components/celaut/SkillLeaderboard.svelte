@@ -1256,15 +1256,15 @@
     border-radius: 0.5rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    background: hsl(142 50% 42%);
-    color: white;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
     border: none;
     cursor: pointer;
     transition: background 0.2s;
   }
 
   .submit-result-btn:hover {
-    background: hsl(142 50% 38%);
+    background: hsl(var(--primary) / 0.85);
   }
 
   .submit-result-form {
@@ -1330,14 +1330,14 @@
     border-radius: 0.375rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    background: hsl(142 50% 42%);
-    color: white;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
     border: none;
     cursor: pointer;
   }
 
   .btn-submit:hover {
-    background: hsl(142 50% 38%);
+    background: hsl(var(--primary) / 0.85);
   }
 
   .btn-cancel {

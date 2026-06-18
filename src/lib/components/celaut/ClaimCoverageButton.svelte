@@ -96,15 +96,15 @@
   }
 
   .claim-btn-active {
-    background-color: hsl(142 50% 42%);
-    color: white;
-    border-color: hsl(142 50% 38%);
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary) / 0.85);
     cursor: pointer;
     opacity: 1;
   }
 
   .claim-btn-active:hover {
-    background-color: hsl(142 50% 38%);
+    background-color: hsl(var(--primary) / 0.85);
   }
 
   .claim-tooltip {

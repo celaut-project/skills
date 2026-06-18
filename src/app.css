@@ -2,71 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Web fonts to match celaut-project.github.io (Playfair Display + Lato). */
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@500;700&display=swap');
+
 @layer base {
   :root {
-    --font-heading: 'Inter', system-ui, sans-serif;
-    --font-body: 'Inter', system-ui, sans-serif;
+    /* Typography — Playfair Display for headings, Lato for body, matching
+       the celaut-project.github.io public site. */
+    --font-heading: 'Playfair Display', 'Inter', system-ui, serif;
+    --font-body: 'Lato', 'Inter', system-ui, sans-serif;
 
-    /* Neutral light theme — slate/gray, no purple/blue */
-    --background: 210 11% 97%;
-    --foreground: 220 14% 10%;
+    /* Palette ported from celaut-project.github.io design tokens:
+         background  #f9eee7  (warm cream)
+         foreground  #1d4241  (deep teal)
+         accent      #ef9c82  (soft coral) — hover #e88a6f
+         muted text  #576c6b
+         border      #e0d5cb
+    */
+    --background: 24 60% 94%;
+    --foreground: 179 39% 19%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 14% 10%;
+    --card-foreground: 179 39% 19%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 14% 10%;
+    --popover-foreground: 179 39% 19%;
 
-    --primary: 142 50% 42%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 15 80% 73%;
+    --primary-foreground: 179 39% 19%;
 
-    --secondary: 210 10% 93%;
-    --secondary-foreground: 220 14% 10%;
+    --secondary: 28 22% 84%;
+    --secondary-foreground: 179 39% 19%;
 
-    --muted: 210 10% 93%;
-    --muted-foreground: 215 8% 46%;
+    --muted: 28 30% 90%;
+    --muted-foreground: 178 10% 38%;
 
-    --accent: 142 50% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 15 80% 73%;
+    --accent-foreground: 179 39% 19%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 12% 87%;
-    --input: 214 12% 87%;
-    --ring: 142 50% 42%;
+    --border: 28 22% 84%;
+    --input: 28 22% 84%;
+    --ring: 15 80% 73%;
 
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 220 16% 7%;
-    --foreground: 210 11% 93%;
+    /* Dark theme uses the celaut deep-teal as the surface and keeps the
+       coral accent. Foreground is the warm cream so contrast stays high. */
+    --background: 179 39% 14%;
+    --foreground: 24 60% 94%;
 
-    --card: 220 14% 11%;
-    --card-foreground: 210 11% 93%;
+    --card: 179 39% 17%;
+    --card-foreground: 24 60% 94%;
 
-    --popover: 220 14% 11%;
-    --popover-foreground: 210 11% 93%;
+    --popover: 179 39% 17%;
+    --popover-foreground: 24 60% 94%;
 
-    --primary: 142 50% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 15 80% 73%;
+    --primary-foreground: 179 39% 19%;
 
-    --secondary: 220 12% 15%;
-    --secondary-foreground: 210 11% 93%;
+    --secondary: 179 30% 22%;
+    --secondary-foreground: 24 60% 94%;
 
-    --muted: 220 12% 17%;
-    --muted-foreground: 215 8% 55%;
+    --muted: 179 30% 22%;
+    --muted-foreground: 24 25% 78%;
 
-    --accent: 142 50% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 15 80% 73%;
+    --accent-foreground: 179 39% 19%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 12% 20%;
-    --input: 220 12% 20%;
-    --ring: 142 50% 50%;
+    --border: 179 25% 28%;
+    --input: 179 25% 28%;
+    --ring: 15 80% 73%;
   }
 }
 

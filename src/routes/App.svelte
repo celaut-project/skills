@@ -1849,7 +1849,7 @@
               </svg>
               <div>
                 <p class="font-semibold">Skill submitted!</p>
-                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(142 50% 42%);">{submitTx}</a>
+                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(var(--primary));">{submitTx}</a>
               </div>
             </div>
           {/if}
@@ -2345,7 +2345,7 @@
   }
 
   .toggle-active {
-    background: hsl(142 50% 42%);
+    background: hsl(var(--primary));
   }
 
   .toggle-indicator {
@@ -2431,11 +2431,12 @@
   }
 
   .submit-btn {
-    @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-white transition-all duration-200;
-    background: hsl(142 50% 42%);
+    @apply w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
   .submit-btn:hover:not(:disabled) {
-    background: hsl(142 50% 38%);
+    background: hsl(var(--primary) / 0.85);
   }
   .submit-btn:disabled {
     @apply opacity-50 cursor-not-allowed;
@@ -2443,14 +2444,14 @@
 
   .link-btn {
     @apply inline underline font-semibold;
-    color: hsl(142 50% 42%);
+    color: hsl(var(--primary));
     background: none;
     border: none;
     padding: 0;
     cursor: pointer;
   }
   .link-btn:hover {
-    color: hsl(142 50% 32%);
+    color: hsl(var(--primary) / 0.7);
   }
 
   .submit-spinner {
