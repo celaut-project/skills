@@ -26,10 +26,10 @@ export const EXPLORER_API = 'https://api.ergoplatform.com';
  * 400 Bad Request that the previous hand-rolled box-search payload was
  * producing against the Ergo Explorer API.
  */
-export const SKILL_TYPE_ID = 'celaut:skill:v1';
-export const BENCHMARK_TYPE_ID = 'celaut:benchmark-schema:v1'; // Defines HOW to measure (was: benchmark schema)
-export const RESULT_TYPE_ID = 'celaut:benchmark:v1';           // Actual measurement result (was: benchmark)
-export const COVERAGE_TYPE_ID = 'celaut:coverage:v1';
+export const SKILL_TYPE_ID = 'ffce59c01b9c0c245005f9c2daf817607e912a3ececd5f61aaba48d30230f60c';
+export const BENCHMARK_TYPE_ID = 'celaut:benchmark-schema:v1';
+export const RESULT_TYPE_ID = 'celaut:benchmark:v1';
+export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 

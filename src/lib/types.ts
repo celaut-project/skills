@@ -73,6 +73,12 @@ export interface CoverageCreationInput {
   mainBox?: unknown;
 }
 
+export interface BenchmarkFeature {
+  name: string;
+  description: string;
+  higherIsBetter: boolean;
+}
+
 /**
  * A Benchmark defines the structure/criteria for how results
  * are evaluated for a given skill — metrics, units, pass thresholds.
@@ -83,8 +89,7 @@ export interface Benchmark {
   skillBoxId: string;
   name: string;
   description: string;
-  metric: string;
-  higherIsBetter: boolean;
+  features: BenchmarkFeature[]; // TODO Reemplaza metric y higherIsBetter en el código por features, que es un array de {name, description, higherIsBetter}. Esto permite tener múltiples métricas por benchmark.
   results: Result[];
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
