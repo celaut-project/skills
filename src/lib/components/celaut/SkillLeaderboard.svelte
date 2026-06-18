@@ -3,6 +3,8 @@
   import type { Benchmark, Result, CaseExecutionData } from '$lib/types';
   import { formatServiceId, formatSourceHash } from '$lib/api';
   import { aggregateMetricForService, bucketByDescriptor, median } from '$lib/scoring';
+  import InfoTip from './InfoTip.svelte';
+  import ExplorerLink from './ExplorerLink.svelte';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
@@ -296,6 +298,14 @@
     <div class="section-header">
       <h2 class="section-title">Benchmarks</h2>
       <span class="section-count">{benchmarks.length}</span>
+      <InfoTip title="What is a Benchmark?">
+        <p>A <strong>Benchmark</strong> defines how a skill is measured. It carries:</p>
+        <ul>
+          <li><strong>Case descriptors</strong> — the dimensions of the problem space (e.g. <code>batch_size</code>, <code>context_tokens</code>). Each case execution provides a value per descriptor.</li>
+          <li><strong>Performance metrics</strong> — the measurement axes (e.g. <code>latency_ms ↓</code>, <code>accuracy ↑</code>). Each metric carries its direction (higher or lower is better).</li>
+        </ul>
+        <p>Submit <strong>Results</strong> against a benchmark — each result is a list of case executions, one row of metric values per case.</p>
+      </InfoTip>
     </div>
 
     <div class="benchmarks-list">
@@ -305,7 +315,13 @@
         <div class="benchmark-card" class:benchmark-card-selected={selectedBenchmarkId === benchmark.id}>
           <button class="benchmark-header" on:click={() => selectBenchmark(benchmark.id)}>
             <div class="benchmark-info">
-              <h3 class="benchmark-name">{benchmark.name}</h3>
+              <h3 class="benchmark-name">
+                {benchmark.name}
+                <!-- The <a> in ExplorerLink must not toggle the outer expand-collapse button. -->
+                <span role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+                  <ExplorerLink boxId={benchmark.id} liveTooltip="View Benchmark box on Ergo Explorer" />
+                </span>
+              </h3>
               <div class="benchmark-meta">
                 {#if metrics.length === 0}
                   <span class="benchmark-metric benchmark-metric-empty">No metrics defined</span>
@@ -496,6 +512,7 @@
                       <div class="raw-result">
                         <div class="raw-result-header">
                           <code class="service-id">{formatServiceId(result.serviceId)}</code>
+                          <ExplorerLink boxId={result.id} liveTooltip="View Result box on Ergo Explorer" />
                           <span class="raw-result-meta">
                             {result.data?.length ?? 0} case{(result.data?.length ?? 0) !== 1 ? 's' : ''}
                             · {relativeTime(result.timestamp)}

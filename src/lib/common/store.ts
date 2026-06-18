@@ -3,7 +3,8 @@ import { browser } from '$app/environment';
 import {
     DEFAULT_EXPLORER_URI_TX,
     DEFAULT_EXPLORER_URI_TOKEN,
-    DEFAULT_EXPLORER_URI_ADDR
+    DEFAULT_EXPLORER_URI_ADDR,
+    DEFAULT_EXPLORER_URI_BOX
 } from './constants';
 import type { ReputationProof } from 'source-application';
 
@@ -70,4 +71,11 @@ export const web_explorer_uri_token = createPersistentStore(
 export const web_explorer_uri_addr = createPersistentStore(
     'web_explorer_uri_addr',
     DEFAULT_EXPLORER_URI_ADDR
+);
+
+// Box explorer URI — used to deep-link to a specific UTXO on the chain so
+// users can verify a Skill / Coverage / Benchmark / Result on-chain.
+export const web_explorer_uri_box = createPersistentStore(
+    'web_explorer_uri_box',
+    DEFAULT_EXPLORER_URI_BOX
 );

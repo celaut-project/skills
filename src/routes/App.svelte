@@ -22,6 +22,8 @@
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
   import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
+  import InfoTip from "$lib/components/celaut/InfoTip.svelte";
+  import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
   import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
@@ -812,6 +814,11 @@
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
               <div class="flex items-center gap-3">
                 <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
+                <InfoTip title="What is a Skill?">
+                  <p>A <strong>Skill</strong> is an on-chain declaration of a capability: a name, a prose description (what an agent must accomplish), an optional formal spec, and tags. Services <em>cover</em> a skill by claiming they can perform it, and <em>benchmarks</em> measure how well.</p>
+                  <p>Each skill is a UTXO of the Skill Type NFT — click the explorer icon next to it to see the box on-chain.</p>
+                </InfoTip>
+                <ExplorerLink boxId={selectedSkill.boxId} liveTooltip="View Skill box on Ergo Explorer" />
                 {#if selectedSkillReputation}
                   <span class="detail-reputation-badge" title="Reputation: {selectedSkillReputation.label}">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -820,6 +827,10 @@
                     {formatReputation(selectedSkillReputation.total)}
                     <span class="detail-reputation-label">{selectedSkillReputation.label}</span>
                   </span>
+                  <InfoTip title="Skill reputation">
+                    <p>Sum of the burn-backed reputation of the Skill's profile plus its coverages, benchmarks, and results. Computed from on-chain <code>create_opinion</code> proofs via the <code>reputation-system</code> library.</p>
+                    <p>Labels (Trusted / Verified / Endorsed) are thresholds, not separate scores.</p>
+                  </InfoTip>
                 {/if}
               </div>
               {#if selectedSkill.domain}
@@ -908,9 +919,13 @@
                     <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
                   {/if}
                 </div>
-                <div class="best-service-score" title="Composite score: per-benchmark winning result weighted by benchmark reputation. Data reputation: aggregate profile reputation of the coverage, contributing benchmarks, and winning results — higher means more reputable profiles vouched for this score.">
+                <div class="best-service-score">
                   <span class="best-service-score-value">{bestCoverage.score}</span>
                   <span class="best-service-score-label">composite score</span>
+                  <InfoTip title="Why this service is the best">
+                    <p><strong>Composite score</strong> — direction-signed per-column z-score, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> averaged across metrics. Highest composite wins.</p>
+                    <p><strong>Data reputation</strong> — sum of the coverage's profile reputation plus the total composite weight (benchmark + result reputations) backing this score. Higher means more reputable on-chain profiles vouched for this service.</p>
+                  </InfoTip>
                   <span class="best-service-rep">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
@@ -1041,6 +1056,13 @@
             >
               Comparative
             </button>
+            <InfoTip title="Three views of the same skill">
+              <ul>
+                <li><strong>Benchmarks</strong> — definitions of <em>how</em> performance is measured (case descriptors + performance metrics). Submit results here.</li>
+                <li><strong>Coverages</strong> — which services claim to perform the skill, and how each scores per benchmark, grouped by descriptor.</li>
+                <li><strong>Comparative</strong> — the full service × (benchmark → metric) tensor with a single composite score.</li>
+              </ul>
+            </InfoTip>
           </div>
 
           <!-- Benchmarks Tab -->
@@ -1060,6 +1082,14 @@
               <div class="detail-section-header">
                 <h2 class="detail-section-title">Services Covering This Skill</h2>
                 <span class="detail-count">{selectedSkill.coverages.length}</span>
+                <InfoTip title="What is a Coverage?">
+                  <p>A <strong>Coverage</strong> is a service's on-chain claim that it can perform the skill. Each coverage is a UTXO pointing back at the Skill box.</p>
+                  <p>Per service, results are grouped per benchmark with two layers:</p>
+                  <ul>
+                    <li><strong>Aggregate row</strong> — median value across every case the service ran on that benchmark.</li>
+                    <li><strong>Per-descriptor rows</strong> — median values at each unique caseMeta tuple, so you can see where a service is strong vs. weak inside the problem space.</li>
+                  </ul>
+                </InfoTip>
               </div>
               {#if selectedSkill.coverages.length === 0}
                 <div class="detail-empty">
@@ -1073,12 +1103,17 @@
                     <div class="coverage-card">
                       <div class="coverage-card-header">
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
-                        <span class="ml-auto coverage-score" title="Composite = direction-signed z-score per metric column, weighted by benchmark × result reputation.">
+                        <ExplorerLink boxId={cov.boxId} liveTooltip="View Coverage box on Ergo Explorer" />
+                        <span class="ml-auto coverage-score">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                           </svg>
                           {formatReputation(compositeScore)}
                         </span>
+                        <InfoTip title="Composite score" placement="bottom">
+                          <p>Cross-benchmark score for this service: direction-signed z-score per metric column, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> and averaged.</p>
+                          <p>Higher = better. A negative score means the service is below the population mean across the metric columns it participated in.</p>
+                        </InfoTip>
                       </div>
                       {#if serviceBlocks.length === 0}
                         <p class="coverage-empty">No results submitted yet for this service.</p>
@@ -1166,6 +1201,16 @@
             <section class="detail-section">
               <div class="detail-section-header">
                 <h2 class="detail-section-title">Service × Benchmark Comparison</h2>
+                <InfoTip title="How the composite is computed">
+                  <p>Each row is a service, each column is a <em>(benchmark → metric)</em> pair. Cells show the <strong>median</strong> across the service's case executions.</p>
+                  <p><strong>Composite</strong> per service:</p>
+                  <ul>
+                    <li>Each cell is normalised to a <code>z-score</code> against the population of services with a value for that column.</li>
+                    <li>Lower-is-better metrics are negated, so higher composite is always better.</li>
+                    <li>Weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> — high-reputation benchmarks and well-vouched results dominate.</li>
+                  </ul>
+                  <p>Highlighted cells = best raw value in that column.</p>
+                </InfoTip>
               </div>
               {#if selectedSkill.coverages.length === 0 || selectedSkill.benchmarks.length === 0}
                 <div class="detail-empty">
