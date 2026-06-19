@@ -245,80 +245,94 @@ export function applySkillInheritance(skills: Skill[]): Skill[] {
 }
 
 /**
- * Lift a legacy single-axis benchmark (`metric` string + `higherIsBetter`)
- * into the new multidimensional shape (`performanceMetrics[]`,
- * `caseDescriptors[]`). The legacy `score` per result becomes a single
- * CaseExecutionData with empty caseMeta and one metricsValue.
- *
- * Once Josemi confirms the demo data should be authored natively in the new
- * shape (with real caseDescriptors and multi-metric benchmarks), this shim
- * can be removed and the rawSkills literal rewritten.
- * TODO Josemi: confirm whether to keep this legacy-lift or rewrite demo
- * data with native multidimensional examples.
+ * Demo authoring shapes — the *input* shapes used inside getDemoSkills().
+ * They omit the bookkeeping fields (`profileId`, `reputation`) that
+ * `enrichDemoSkills` fills in deterministically downstream.
  */
-function liftLegacyBenchmark(benchmark: any): any {
-  if (Array.isArray(benchmark.performanceMetrics)) {
-    return benchmark; // already in new shape
-  }
-  const metricName: string = benchmark.metric || 'score';
-  const higherIsBetter: boolean = benchmark.higherIsBetter ?? true;
-  const liftedResults = (benchmark.results || []).map((r: any) => {
-    if (Array.isArray(r.data)) return r;
-    return {
-      ...r,
-      data: [{
-        caseMeta: [],
-        metricsValues: [Number(r.score ?? 0)]
-      }]
-    };
-  });
-  return {
-    ...benchmark,
-    caseDescriptors: benchmark.caseDescriptors ?? [],
-    performanceMetrics: [{
-      name: metricName,
-      description: benchmark.description || '',
-      higherIsBetter
-    }],
-    results: liftedResults
-  };
-}
+type DemoResult = Omit<Result, 'profileId' | 'reputation'>;
+type DemoBenchmark = Omit<Benchmark, 'profileId' | 'reputation' | 'results'> & {
+  results: DemoResult[];
+};
+type DemoCoverage = Omit<Coverage, 'profileId' | 'reputation'>;
+type DemoSkillInput = Omit<Partial<Skill>, 'coverages' | 'benchmarks'> & {
+  boxId: string;
+  coverages: DemoCoverage[];
+  benchmarks: DemoBenchmark[];
+};
 
-function enrichDemoSkills(rawSkills: any[]): Skill[] {
-  return rawSkills.map((skill: any, skillIndex: number) => {
+/**
+ * Inflate demo skills authored in the current native types.ts shape — assign
+ * deterministic demo profileIds + reputations to every Skill / Coverage /
+ * Benchmark / Result so the UI has stable, deduped on-chain-ish identifiers.
+ *
+ * Demo authoring rules (no legacy compat — Josemi 2026-06-19):
+ *   - Each Benchmark MUST declare `caseDescriptors[]` (may be empty) and
+ *     `performanceMetrics[]` (must be non-empty).
+ *   - Each Result MUST carry `data: CaseExecutionData[]` (one or more cases)
+ *     with `metricsValues.length === performanceMetrics.length` and
+ *     `caseMeta.length === caseDescriptors.length`.
+ *   - `formal` is required on Skill (use "" if no JSON schema yet).
+ */
+function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
+  return rawSkills.map((skill, skillIndex) => {
     const skillProfileId = demoProfileId(`skill-${skillIndex + 1}-${skill.boxId}`);
 
     return {
-      ...skill,
+      boxId: skill.boxId,
       profileId: skillProfileId,
+      name: skill.name ?? 'Unnamed Skill',
+      prose: skill.prose ?? '',
       formal: skill.formal ?? '',
+      tags: skill.tags ?? [],
+      domain: skill.domain ?? '',
+      extendedSkillBoxIds: skill.extendedSkillBoxIds ?? [],
+      sourceHash: skill.sourceHash,
       reputation: demoReputationFor(skillProfileId),
-      coverages: skill.coverages.map((coverage: any) => {
+      resultCount: 0, // computed below
+      coverages: skill.coverages.map((coverage) => {
         const profileId = demoProfileId(`coverage-${coverage.serviceId || coverage.boxId}`);
         return {
-          ...coverage,
+          boxId: coverage.boxId,
           profileId,
+          serviceId: coverage.serviceId,
           reputation: demoReputationFor(profileId)
-        };
+        } as Coverage;
       }),
-      benchmarks: skill.benchmarks.map((benchmarkRaw: any, benchmarkIndex: number) => {
-        const benchmark = liftLegacyBenchmark(benchmarkRaw);
+      benchmarks: skill.benchmarks.map((benchmark, benchmarkIndex) => {
         const benchmarkProfileId = demoProfileId(`benchmark-${skill.boxId}-${benchmark.id}-${benchmarkIndex + 1}`);
         return {
-          ...benchmark,
+          id: benchmark.id,
           profileId: benchmarkProfileId,
+          skillBoxId: skill.boxId,
+          name: benchmark.name,
+          description: benchmark.description,
+          caseDescriptors: benchmark.caseDescriptors,
+          performanceMetrics: benchmark.performanceMetrics,
+          sourceHash: benchmark.sourceHash,
           reputation: demoReputationFor(benchmarkProfileId),
-          results: benchmark.results.map((result: any) => {
+          results: benchmark.results.map((result) => {
             const resultProfileId = demoProfileId(`result-${result.serviceId}-${result.id}`);
             return {
-              ...result,
+              id: result.id,
               profileId: resultProfileId,
+              benchmarkId: benchmark.id,
+              serviceId: result.serviceId,
+              data: result.data.map((c) => ({
+                caseMeta: [...c.caseMeta],
+                metricsValues: [...c.metricsValues]
+              })),
+              notes: result.notes ?? '',
+              timestamp: result.timestamp,
+              sourceHash: result.sourceHash,
               reputation: demoReputationFor(resultProfileId)
-            };
+            } as Result;
           })
-        };
+        } as Benchmark;
       })
     };
+  }).map((skill) => {
+    skill.resultCount = skill.benchmarks.reduce((sum, b) => sum + b.results.length, 0);
+    return skill;
   });
 }
 // ── Box Parsing ──────────────────────────────────────────────────────────────
@@ -465,9 +479,51 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
 
 // ── Demo Data ────────────────────────────────────────────────────────────────
 
+/**
+ * Single-metric, descriptor-less benchmark shape. Used for the demo skills
+ * that semantically measure ONE thing across UNDIFFERENTIATED runs (e.g.
+ * "Sharpe ratio", "F1 score"). Keeps authoring concise while still producing
+ * native multi-case shape — every result lifts to `data: [{ caseMeta: [],
+ * metricsValues: [value] }]`.
+ *
+ * For genuinely multi-dimensional benchmarks (see skill demo-008) author the
+ * caseDescriptors / performanceMetrics / data arrays directly.
+ */
+function singleMetricBenchmark(opts: {
+  id: string;
+  skillBoxId: string;
+  name: string;
+  description: string;
+  metricName: string;
+  higherIsBetter: boolean;
+  sourceHash?: string;
+  results: Array<{ id: string; serviceId: string; value: number; notes?: string; timestamp: number; sourceHash?: string }>;
+}): Benchmark {
+  return {
+    id: opts.id,
+    profileId: '', // filled in by enrichDemoSkills
+    skillBoxId: opts.skillBoxId,
+    name: opts.name,
+    description: opts.description,
+    caseDescriptors: [],
+    performanceMetrics: [{ name: opts.metricName, description: opts.description, higherIsBetter: opts.higherIsBetter }],
+    sourceHash: opts.sourceHash,
+    results: opts.results.map((r) => ({
+      id: r.id,
+      profileId: '', // filled in by enrichDemoSkills
+      benchmarkId: opts.id,
+      serviceId: r.serviceId,
+      data: [{ caseMeta: [], metricsValues: [r.value] }],
+      notes: r.notes ?? '',
+      timestamp: r.timestamp,
+      sourceHash: r.sourceHash
+    }))
+  };
+}
+
 /** Demo skills for local development and fallback when chain is unavailable. */
 export function getDemoSkills(): Skill[] {
-  const rawSkills = [
+  const rawSkills: DemoSkillInput[] = [
     // ── Skill 1a: XAU/BTC by Author A ──
     {
       boxId: 'demo-001',
@@ -478,38 +534,38 @@ export function getDemoSkills(): Skill[] {
       extendedSkillBoxIds: [],
       sourceHash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
       coverages: [
-        { boxId: 'cov-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', label: 'AlphaTrader v2' },
-        { boxId: 'cov-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', label: 'QuantErgo Signals' }
+        { boxId: 'cov-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a' },
+        { boxId: 'cov-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-001',
           skillBoxId: 'demo-001',
           name: 'Sharpe Ratio (30d rolling)',
           description: 'Measures risk-adjusted return over a 30-day rolling window. Higher Sharpe ratios indicate better risk-adjusted performance.',
-          metric: 'sharpe_ratio',
+          metricName: 'sharpe_ratio',
           higherIsBetter: true,
           sourceHash: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
           results: [
-            { id: 'res-001', benchmarkId: 'bench-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', score: 2.41, notes: 'Consistent alpha over 30d window', timestamp: 1734134400 },
-            { id: 'res-002', benchmarkId: 'bench-001', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', score: 1.87, notes: 'Good but higher drawdowns', timestamp: 1733529600 },
-            { id: 'res-003', benchmarkId: 'bench-001', serviceId: 'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1', score: 1.52, notes: '', timestamp: 1732924800 },
-            { id: 'res-004', benchmarkId: 'bench-001', serviceId: 'QmW9xK3pNfD4VyL8tB2mRa6jUc5gYe1h4', score: 0.94, notes: 'Underperformed in bear phase', timestamp: 1732320000 }
+            { id: 'res-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', value: 2.41, notes: 'Consistent alpha over 30d window', timestamp: 1734134400 },
+            { id: 'res-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', value: 1.87, notes: 'Good but higher drawdowns', timestamp: 1733529600 },
+            { id: 'res-003', serviceId: 'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1', value: 1.52, timestamp: 1732924800 },
+            { id: 'res-004', serviceId: 'QmW9xK3pNfD4VyL8tB2mRa6jUc5gYe1h4', value: 0.94, notes: 'Underperformed in bear phase', timestamp: 1732320000 }
           ]
-        },
-        {
+        }),
+        singleMetricBenchmark({
           id: 'bench-002',
           skillBoxId: 'demo-001',
           name: 'Max Drawdown',
           description: 'Maximum observed loss from peak to trough. Lower is better — measures worst-case risk.',
-          metric: 'max_drawdown_pct',
+          metricName: 'max_drawdown_pct',
           higherIsBetter: false,
           results: [
-            { id: 'res-005', benchmarkId: 'bench-002', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', score: 4.2, notes: 'Tight risk management', timestamp: 1734134400 },
-            { id: 'res-006', benchmarkId: 'bench-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', score: 8.7, notes: '', timestamp: 1733529600 },
-            { id: 'res-007', benchmarkId: 'bench-002', serviceId: 'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1', score: 12.3, notes: 'High volatility exposure', timestamp: 1732924800 }
+            { id: 'res-005', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', value: 4.2, notes: 'Tight risk management', timestamp: 1734134400 },
+            { id: 'res-006', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', value: 8.7, timestamp: 1733529600 },
+            { id: 'res-007', serviceId: 'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1', value: 12.3, notes: 'High volatility exposure', timestamp: 1732924800 }
           ]
-        }
+        })
       ],
       resultCount: 7
     },
@@ -522,22 +578,22 @@ export function getDemoSkills(): Skill[] {
       domain: 'finance',
       extendedSkillBoxIds: ['demo-001'],
       coverages: [
-        { boxId: 'cov-010', serviceId: 'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3', label: 'GoldBot Fast' }
+        { boxId: 'cov-010', serviceId: 'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-010',
           skillBoxId: 'demo-001b',
           name: 'Execution Latency',
           description: 'Average order execution latency in milliseconds. Lower is better.',
-          metric: 'latency_ms',
+          metricName: 'latency_ms',
           higherIsBetter: false,
           results: [
-            { id: 'res-020', benchmarkId: 'bench-010', serviceId: 'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3', score: 42, notes: 'Sub-50ms consistently', timestamp: 1734220800 },
-            { id: 'res-021', benchmarkId: 'bench-010', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', score: 187, notes: '', timestamp: 1733616000 },
-            { id: 'res-022', benchmarkId: 'bench-010', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', score: 310, notes: 'Slow bridge delays', timestamp: 1733011200 }
+            { id: 'res-020', serviceId: 'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3', value: 42, notes: 'Sub-50ms consistently', timestamp: 1734220800 },
+            { id: 'res-021', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', value: 187, timestamp: 1733616000 },
+            { id: 'res-022', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', value: 310, notes: 'Slow bridge delays', timestamp: 1733011200 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -551,22 +607,22 @@ export function getDemoSkills(): Skill[] {
       extendedSkillBoxIds: [],
       sourceHash: '7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b',
       coverages: [
-        { boxId: 'cov-003', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2', label: 'UTXOptimizer' }
+        { boxId: 'cov-003', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-003',
           skillBoxId: 'demo-002',
           name: 'Fee Savings (%)',
           description: 'Percentage of fees saved compared to naive UTXO selection. Higher is better.',
-          metric: 'fee_savings_pct',
+          metricName: 'fee_savings_pct',
           higherIsBetter: true,
           results: [
-            { id: 'res-008', benchmarkId: 'bench-003', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2', score: 34.2, notes: 'Optimal for large UTXO sets', timestamp: 1734307200 },
-            { id: 'res-009', benchmarkId: 'bench-003', serviceId: 'QmL8tK4pMfE3VxR6sB7nWq2eDc9jYa5h1', score: 28.7, notes: '', timestamp: 1733702400 },
-            { id: 'res-010', benchmarkId: 'bench-003', serviceId: 'QmN6wR3pLdG9VyT5tC4mXs8eHf2bZa7k4', score: 19.1, notes: 'Simple greedy approach', timestamp: 1733097600 }
+            { id: 'res-008', serviceId: 'QmP2rV6nKdF8WxL4tA9mYq3eBs5jUc7g2', value: 34.2, notes: 'Optimal for large UTXO sets', timestamp: 1734307200 },
+            { id: 'res-009', serviceId: 'QmL8tK4pMfE3VxR6sB7nWq2eDc9jYa5h1', value: 28.7, timestamp: 1733702400 },
+            { id: 'res-010', serviceId: 'QmN6wR3pLdG9VyT5tC4mXs8eHf2bZa7k4', value: 19.1, notes: 'Simple greedy approach', timestamp: 1733097600 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -581,19 +637,19 @@ export function getDemoSkills(): Skill[] {
       sourceHash: '1122334455667788990011223344556677889900aabbccddeeff00112233445566',
       coverages: [],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-004',
           skillBoxId: 'demo-003',
           name: 'Classification Accuracy',
           description: 'Accuracy on the Celaut Sentiment Corpus v2 test set. Higher is better.',
-          metric: 'accuracy',
+          metricName: 'accuracy',
           higherIsBetter: true,
           results: [
-            { id: 'res-011', benchmarkId: 'bench-004', serviceId: 'QmV3xK7pNdF2WyL9tB6mRa4jUc8eHb1g5', score: 0.891, notes: 'Fine-tuned on crypto corpus', timestamp: 1734048000 },
-            { id: 'res-012', benchmarkId: 'bench-004', serviceId: 'QmU8wP4pMfE6VxR3sC9nYq5eDf7bZa2h8', score: 0.834, notes: '', timestamp: 1733443200 },
-            { id: 'res-013', benchmarkId: 'bench-004', serviceId: 'QmS5tL2pKdG4VyT8tA7mWq6eHc3jYa9k1', score: 0.762, notes: 'Base model, no fine-tuning', timestamp: 1732838400 }
+            { id: 'res-011', serviceId: 'QmV3xK7pNdF2WyL9tB6mRa4jUc8eHb1g5', value: 0.891, notes: 'Fine-tuned on crypto corpus', timestamp: 1734048000 },
+            { id: 'res-012', serviceId: 'QmU8wP4pMfE6VxR3sC9nYq5eDf7bZa2h8', value: 0.834, timestamp: 1733443200 },
+            { id: 'res-013', serviceId: 'QmS5tL2pKdG4VyT8tA7mWq6eHc3jYa9k1', value: 0.762, notes: 'Base model, no fine-tuning', timestamp: 1732838400 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -606,26 +662,26 @@ export function getDemoSkills(): Skill[] {
       domain: 'security',
       extendedSkillBoxIds: ['demo-003'],
       coverages: [
-        { boxId: 'cov-004', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', label: 'MEVShield Pro' },
-        { boxId: 'cov-005', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', label: 'FlashGuard' },
-        { boxId: 'cov-006', serviceId: 'QmC2tL9pKdG6VyT4tA1mWq3eHc7jYa5k8', label: 'DarkForest Monitor' }
+        { boxId: 'cov-004', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1' },
+        { boxId: 'cov-005', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6' },
+        { boxId: 'cov-006', serviceId: 'QmC2tL9pKdG6VyT4tA1mWq3eHc7jYa5k8' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-005',
           skillBoxId: 'demo-004',
           name: 'Detection Rate',
           description: 'Percentage of MEV attacks correctly detected in test mempool. Higher is better.',
-          metric: 'detection_rate_pct',
+          metricName: 'detection_rate_pct',
           higherIsBetter: true,
           results: [
-            { id: 'res-014', benchmarkId: 'bench-005', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', score: 96.8, notes: 'Near-perfect detection', timestamp: 1734220800, sourceHash: 'deadbeef01234567890abcdef01234567890abcdef01234567890abcdef012345' },
-            { id: 'res-015', benchmarkId: 'bench-005', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', score: 93.1, notes: '', timestamp: 1733616000 },
-            { id: 'res-016', benchmarkId: 'bench-005', serviceId: 'QmC2tL9pKdG6VyT4tA1mWq3eHc7jYa5k8', score: 89.4, notes: 'Misses some subtle sandwich attacks', timestamp: 1733011200 },
-            { id: 'res-023', benchmarkId: 'bench-005', serviceId: 'QmD9xR6pLfE5WyT3tB8mYq2eDf1bZa7h9', score: 84.7, notes: '', timestamp: 1732406400 },
-            { id: 'res-024', benchmarkId: 'bench-005', serviceId: 'QmE4wK1pMdG8VxR7sC6nWq5eHc3jYa2k5', score: 79.2, notes: 'Rule-based only', timestamp: 1731801600 }
+            { id: 'res-014', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', value: 96.8, notes: 'Near-perfect detection', timestamp: 1734220800, sourceHash: 'deadbeef01234567890abcdef01234567890abcdef01234567890abcdef012345' },
+            { id: 'res-015', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', value: 93.1, timestamp: 1733616000 },
+            { id: 'res-016', serviceId: 'QmC2tL9pKdG6VyT4tA1mWq3eHc7jYa5k8', value: 89.4, notes: 'Misses some subtle sandwich attacks', timestamp: 1733011200 },
+            { id: 'res-023', serviceId: 'QmD9xR6pLfE5WyT3tB8mYq2eDf1bZa7h9', value: 84.7, timestamp: 1732406400 },
+            { id: 'res-024', serviceId: 'QmE4wK1pMdG8VxR7sC6nWq5eHc3jYa2k5', value: 79.2, notes: 'Rule-based only', timestamp: 1731801600 }
           ]
-        }
+        })
       ],
       resultCount: 5
     },
@@ -641,19 +697,19 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-011', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-011',
           skillBoxId: 'demo-004b',
           name: 'False Positive Rate',
           description: 'Percentage of legitimate transactions incorrectly flagged as MEV. Lower is better.',
-          metric: 'false_positive_pct',
+          metricName: 'false_positive_pct',
           higherIsBetter: false,
           results: [
-            { id: 'res-025', benchmarkId: 'bench-011', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1', score: 0.3, notes: 'Very low false positives', timestamp: 1734307200 },
-            { id: 'res-026', benchmarkId: 'bench-011', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', score: 1.2, notes: '', timestamp: 1733702400 },
-            { id: 'res-027', benchmarkId: 'bench-011', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', score: 2.8, notes: 'Aggressive detection settings', timestamp: 1733097600 }
+            { id: 'res-025', serviceId: 'QmF8tN3pKfD2WxL5tA4mRq7eBs6jUc9g1', value: 0.3, notes: 'Very low false positives', timestamp: 1734307200 },
+            { id: 'res-026', serviceId: 'QmA3xK8pNfD7WyL2tB5mRa9jUc4eHb6g1', value: 1.2, timestamp: 1733702400 },
+            { id: 'res-027', serviceId: 'QmB7wP5pMdE9VxR1sC3nYq8eDf2bZa4h6', value: 2.8, notes: 'Aggressive detection settings', timestamp: 1733097600 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -669,19 +725,19 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-007', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-006',
           skillBoxId: 'demo-005',
           name: 'Routing Efficiency',
           description: 'Percentage of optimal output achieved on standard test routes. Higher is better.',
-          metric: 'efficiency_pct',
+          metricName: 'efficiency_pct',
           higherIsBetter: true,
           results: [
-            { id: 'res-017', benchmarkId: 'bench-006', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8', score: 97.1, notes: '', timestamp: 1734134400 },
-            { id: 'res-018', benchmarkId: 'bench-006', serviceId: 'QmH9wP6pMdE3VxR5sC8nYq4eDf9bZa1h2', score: 91.4, notes: 'Misses some multi-hop paths', timestamp: 1733529600 },
-            { id: 'res-019', benchmarkId: 'bench-006', serviceId: 'QmI4tL7pKdG1VyT2tA6mWq9eHc5jYa3k7', score: 84.8, notes: 'Single-chain only', timestamp: 1732924800 }
+            { id: 'res-017', serviceId: 'QmG5xK2pNdF9WyL7tB3mRa1jUc6eHb4g8', value: 97.1, timestamp: 1734134400 },
+            { id: 'res-018', serviceId: 'QmH9wP6pMdE3VxR5sC8nYq4eDf9bZa1h2', value: 91.4, notes: 'Misses some multi-hop paths', timestamp: 1733529600 },
+            { id: 'res-019', serviceId: 'QmI4tL7pKdG1VyT2tA6mWq9eHc5jYa3k7', value: 84.8, notes: 'Single-chain only', timestamp: 1732924800 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -699,20 +755,20 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-009', serviceId: 'QmL6wP9pMdE7VxR4sC1nYq6eDf5bZa8h3' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-007',
           skillBoxId: 'demo-006',
           name: 'Vulnerability Detection F1',
           description: 'F1 score on the Celaut Contract Vulnerability Corpus. Higher is better.',
-          metric: 'f1_score',
+          metricName: 'f1_score',
           higherIsBetter: true,
           sourceHash: 'd4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5',
           results: [
-            { id: 'res-028', benchmarkId: 'bench-007', serviceId: 'QmK1xK5pNfD4WyL9tB2mRa8jUc3eHb7g6', score: 0.923, notes: 'Strong on ErgoScript patterns', timestamp: 1734134400, sourceHash: 'e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6' },
-            { id: 'res-029', benchmarkId: 'bench-007', serviceId: 'QmL6wP9pMdE7VxR4sC1nYq6eDf5bZa8h3', score: 0.889, notes: '', timestamp: 1733529600 },
-            { id: 'res-030', benchmarkId: 'bench-007', serviceId: 'QmM3tL4pKdG9VyT6tA5mWq1eHc8jYa2k9', score: 0.831, notes: 'Misses register injection', timestamp: 1732924800 }
+            { id: 'res-028', serviceId: 'QmK1xK5pNfD4WyL9tB2mRa8jUc3eHb7g6', value: 0.923, notes: 'Strong on ErgoScript patterns', timestamp: 1734134400, sourceHash: 'e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6' },
+            { id: 'res-029', serviceId: 'QmL6wP9pMdE7VxR4sC1nYq6eDf5bZa8h3', value: 0.889, timestamp: 1733529600 },
+            { id: 'res-030', serviceId: 'QmM3tL4pKdG9VyT6tA5mWq1eHc8jYa2k9', value: 0.831, notes: 'Misses register injection', timestamp: 1732924800 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -731,36 +787,36 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-img-002', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-img-001',
           skillBoxId: 'demo-img-001',
           name: 'Top-1 Accuracy (ImageNet-1k)',
           description: 'Top-1 classification accuracy on the ImageNet-1k validation set. Higher is better.',
-          metric: 'accuracy_pct',
+          metricName: 'accuracy_pct',
           higherIsBetter: true,
           sourceHash: 'aa11bb22cc33dd44ee55ff66aa77bb88cc99dd00ee11ff22aa33bb44cc55dd66',
           results: [
-            { id: 'res-img-001', benchmarkId: 'bench-img-001', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', score: 88.7, notes: 'ViT-L/14 backbone', timestamp: 1734307200 },
-            { id: 'res-img-002', benchmarkId: 'bench-img-001', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O', score: 85.3, notes: 'EfficientNet-B7', timestamp: 1733702400 },
-            { id: 'res-img-003', benchmarkId: 'bench-img-001', serviceId: 'QmImg3C4D5E6F7G8H9I0J1K2L3M4N5O6P', score: 82.1, notes: 'ResNet-152', timestamp: 1733097600 },
-            { id: 'res-img-004', benchmarkId: 'bench-img-001', serviceId: 'QmImg4D5E6F7G8H9I0J1K2L3M4N5O6P7Q', score: 79.8, notes: 'MobileNetV3 — lightweight', timestamp: 1732492800 },
-            { id: 'res-img-005', benchmarkId: 'bench-img-001', serviceId: 'QmImg5E6F7G8H9I0J1K2L3M4N5O6P7Q8R', score: 76.4, notes: 'Custom CNN', timestamp: 1731888000 }
+            { id: 'res-img-001', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', value: 88.7, notes: 'ViT-L/14 backbone', timestamp: 1734307200 },
+            { id: 'res-img-002', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O', value: 85.3, notes: 'EfficientNet-B7', timestamp: 1733702400 },
+            { id: 'res-img-003', serviceId: 'QmImg3C4D5E6F7G8H9I0J1K2L3M4N5O6P', value: 82.1, notes: 'ResNet-152', timestamp: 1733097600 },
+            { id: 'res-img-004', serviceId: 'QmImg4D5E6F7G8H9I0J1K2L3M4N5O6P7Q', value: 79.8, notes: 'MobileNetV3 — lightweight', timestamp: 1732492800 },
+            { id: 'res-img-005', serviceId: 'QmImg5E6F7G8H9I0J1K2L3M4N5O6P7Q8R', value: 76.4, notes: 'Custom CNN', timestamp: 1731888000 }
           ]
-        },
-        {
+        }),
+        singleMetricBenchmark({
           id: 'bench-img-002',
           skillBoxId: 'demo-img-001',
           name: 'Inference Speed',
           description: 'Average inference time per image in milliseconds on an A100 GPU. Lower is better.',
-          metric: 'latency_ms',
+          metricName: 'latency_ms',
           higherIsBetter: false,
           results: [
-            { id: 'res-img-006', benchmarkId: 'bench-img-002', serviceId: 'QmImg4D5E6F7G8H9I0J1K2L3M4N5O6P7Q', score: 2.1, notes: 'MobileNet — blazing fast', timestamp: 1734307200 },
-            { id: 'res-img-007', benchmarkId: 'bench-img-002', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O', score: 8.4, notes: 'Batch=1', timestamp: 1733702400 },
-            { id: 'res-img-008', benchmarkId: 'bench-img-002', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', score: 15.2, notes: 'ViT-L — larger model', timestamp: 1733097600 },
-            { id: 'res-img-009', benchmarkId: 'bench-img-002', serviceId: 'QmImg3C4D5E6F7G8H9I0J1K2L3M4N5O6P', score: 11.8, notes: '', timestamp: 1732492800 }
+            { id: 'res-img-006', serviceId: 'QmImg4D5E6F7G8H9I0J1K2L3M4N5O6P7Q', value: 2.1, notes: 'MobileNet — blazing fast', timestamp: 1734307200 },
+            { id: 'res-img-007', serviceId: 'QmImg2B3C4D5E6F7G8H9I0J1K2L3M4N5O', value: 8.4, notes: 'Batch=1', timestamp: 1733702400 },
+            { id: 'res-img-008', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', value: 15.2, notes: 'ViT-L — larger model', timestamp: 1733097600 },
+            { id: 'res-img-009', serviceId: 'QmImg3C4D5E6F7G8H9I0J1K2L3M4N5O6P', value: 11.8, timestamp: 1732492800 }
           ]
-        }
+        })
       ],
       resultCount: 9
     },
@@ -777,19 +833,19 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-img-003', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-img-003',
           skillBoxId: 'demo-img-002',
           name: 'F1 Score (Chest X-ray)',
           description: 'F1 score on the CheXpert multi-label classification benchmark. Higher is better.',
-          metric: 'f1_score',
+          metricName: 'f1_score',
           higherIsBetter: true,
           results: [
-            { id: 'res-img-010', benchmarkId: 'bench-img-003', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S', score: 0.912, notes: 'DenseNet-121 fine-tuned on CheXpert', timestamp: 1734307200 },
-            { id: 'res-img-011', benchmarkId: 'bench-img-003', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', score: 0.847, notes: 'General ViT, not domain-tuned', timestamp: 1733702400 },
-            { id: 'res-img-012', benchmarkId: 'bench-img-003', serviceId: 'QmImg5E6F7G8H9I0J1K2L3M4N5O6P7Q8R', score: 0.791, notes: 'Custom lightweight model', timestamp: 1733097600 }
+            { id: 'res-img-010', serviceId: 'QmMed1F7G8H9I0J1K2L3M4N5O6P7Q8R9S', value: 0.912, notes: 'DenseNet-121 fine-tuned on CheXpert', timestamp: 1734307200 },
+            { id: 'res-img-011', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', value: 0.847, notes: 'General ViT, not domain-tuned', timestamp: 1733702400 },
+            { id: 'res-img-012', serviceId: 'QmImg5E6F7G8H9I0J1K2L3M4N5O6P7Q8R', value: 0.791, notes: 'Custom lightweight model', timestamp: 1733097600 }
           ]
-        }
+        })
       ],
       resultCount: 3
     },
@@ -807,33 +863,33 @@ export function getDemoSkills(): Skill[] {
         { boxId: 'cov-img-006', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2' }
       ],
       benchmarks: [
-        {
+        singleMetricBenchmark({
           id: 'bench-img-004',
           skillBoxId: 'demo-img-003',
           name: 'Accuracy (MVTec AD)',
           description: 'Classification accuracy on the MVTec Anomaly Detection dataset. Higher is better.',
-          metric: 'accuracy_pct',
+          metricName: 'accuracy_pct',
           higherIsBetter: true,
           results: [
-            { id: 'res-img-013', benchmarkId: 'bench-img-004', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1', score: 94.2, notes: 'PatchCore-based approach', timestamp: 1734307200 },
-            { id: 'res-img-014', benchmarkId: 'bench-img-004', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0', score: 91.7, notes: 'INT8 quantized', timestamp: 1733702400 },
-            { id: 'res-img-015', benchmarkId: 'bench-img-004', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2', score: 87.5, notes: 'TinyML model, very fast', timestamp: 1733097600 },
-            { id: 'res-img-016', benchmarkId: 'bench-img-004', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', score: 96.8, notes: 'Cloud model — not edge-optimized', timestamp: 1732492800 }
+            { id: 'res-img-013', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1', value: 94.2, notes: 'PatchCore-based approach', timestamp: 1734307200 },
+            { id: 'res-img-014', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0', value: 91.7, notes: 'INT8 quantized', timestamp: 1733702400 },
+            { id: 'res-img-015', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2', value: 87.5, notes: 'TinyML model, very fast', timestamp: 1733097600 },
+            { id: 'res-img-016', serviceId: 'QmImg1A2B3C4D5E6F7G8H9I0J1K2L3M4N', value: 96.8, notes: 'Cloud model — not edge-optimized', timestamp: 1732492800 }
           ]
-        },
-        {
+        }),
+        singleMetricBenchmark({
           id: 'bench-img-005',
           skillBoxId: 'demo-img-003',
           name: 'Edge Inference Latency',
           description: 'Inference time per image in milliseconds on ARM Cortex-M7 (STM32H7). Lower is better.',
-          metric: 'latency_ms',
+          metricName: 'latency_ms',
           higherIsBetter: false,
           results: [
-            { id: 'res-img-017', benchmarkId: 'bench-img-005', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0', score: 3.2, notes: 'INT8, fully optimized', timestamp: 1734307200 },
-            { id: 'res-img-018', benchmarkId: 'bench-img-005', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2', score: 4.8, notes: 'NanoNet architecture', timestamp: 1733702400 },
-            { id: 'res-img-019', benchmarkId: 'bench-img-005', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1', score: 12.4, notes: 'FP32 — not quantized', timestamp: 1733097600 }
+            { id: 'res-img-017', serviceId: 'QmEdge1G8H9I0J1K2L3M4N5O6P7Q8R9S0', value: 3.2, notes: 'INT8, fully optimized', timestamp: 1734307200 },
+            { id: 'res-img-018', serviceId: 'QmEdge3I0J1K2L3M4N5O6P7Q8R9S0T1U2', value: 4.8, notes: 'NanoNet architecture', timestamp: 1733702400 },
+            { id: 'res-img-019', serviceId: 'QmEdge2H9I0J1K2L3M4N5O6P7Q8R9S0T1', value: 12.4, notes: 'FP32 — not quantized', timestamp: 1733097600 }
           ]
-        }
+        })
       ],
       resultCount: 7
     },
@@ -851,9 +907,9 @@ export function getDemoSkills(): Skill[] {
       extendedSkillBoxIds: [],
       sourceHash: '8a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7008',
       coverages: [
-        { boxId: 'cov-llm-a', serviceId: 'QmLLM-A-fast-gpu', label: 'BlazeServe (A100)' },
-        { boxId: 'cov-llm-b', serviceId: 'QmLLM-B-cheap-cpu', label: 'CheapCPU' },
-        { boxId: 'cov-llm-c', serviceId: 'QmLLM-C-balanced', label: 'Balanced-H100' }
+        { boxId: 'cov-llm-a', serviceId: 'QmLLM-A-fast-gpu' },
+        { boxId: 'cov-llm-b', serviceId: 'QmLLM-B-cheap-cpu' },
+        { boxId: 'cov-llm-c', serviceId: 'QmLLM-C-balanced' }
       ],
       benchmarks: [
         {
