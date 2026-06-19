@@ -24,7 +24,7 @@ export interface Skill {
   profileId: string;
   name: string;
   prose: string;
-  formal: string;  // TODO Agregar formal en el resto del código.
+  formal: string;
   tags: string[];
   domain: string;
   extendedSkillBoxIds: string[];
@@ -40,7 +40,7 @@ export interface Skill {
 export interface SkillCreationInput {
   name: string;
   prose: string;
-  formal: string;  // TODO Agregar formal al resto.
+  formal: string;
   tags: string[];
   domain: string;
   extendedSkillBoxIds: string[];
@@ -105,8 +105,8 @@ export interface Benchmark {
   skillBoxId: string;
   name: string;
   description: string;
-  caseDescriptors: Descriptor[];  // TODO Implement caseDescriptors in the rest of the codebase. They are the "dimensions" of the evaluation space, describing the problem cases.
-  performanceMetrics: PerformanceMetric[];  // TODO Implement performanceMetrics in the rest of the codebase. They are the "dimensions" of the evaluation space, describing how to measure performance.
+  caseDescriptors: Descriptor[];
+  performanceMetrics: PerformanceMetric[];
   results: Result[];
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
@@ -140,7 +140,7 @@ export interface Result {
   profileId: string;
   benchmarkId: string;
   serviceId: string;
-  data: CaseExecutionData[];  // TODO Implement data in the rest of the codebase. It is the actual performance tensor, a collection of case executions and their corresponding metrics.
+  data: CaseExecutionData[];
   notes: string;
   timestamp: number;
   reputation?: number;
