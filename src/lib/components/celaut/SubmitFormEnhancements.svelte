@@ -72,7 +72,9 @@
               on:change={() => toggleRelated(skill.boxId)}
               class="related-checkbox"
             />
-            <span class="related-name">{skill.name}</span>
+            <span class="related-name">
+              {skill.name} — rep {skill.reputation ?? 0} — {skill.boxId.slice(0, 4)}
+            </span>
             {#if skill.domain}
               <span class="related-domain">{skill.domain}</span>
             {/if}
