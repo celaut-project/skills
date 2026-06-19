@@ -4,6 +4,7 @@
   import { skills } from '$lib/stores';
   import { toasts } from './toastStore';
   import SubmitFormEnhancements from './SubmitFormEnhancements.svelte';
+  import FormalSpecEditor from './FormalSpecEditor.svelte';
   import { createSkill } from '$lib/data';
   import { demoMode } from '$lib/config';
   import { reputation_proof } from '$lib/common/store';
@@ -125,6 +126,10 @@
       <div>
         <label class="label" for="skill-tags">Tags <span class="text-muted-foreground font-normal">(comma-separated)</span></label>
         <input id="skill-tags" class="input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+      </div>
+      <div>
+        <label class="label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal">(optional, JSON)</span></label>
+        <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
       </div>
 
       <!-- Enhanced form sections -->

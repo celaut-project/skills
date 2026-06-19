@@ -29,6 +29,7 @@
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
+  import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
   import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
@@ -1799,11 +1800,8 @@
               {/if}
             </div>
             <div class="form-group">
-              <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional)</span></label>
-              <textarea id="skill-formal" class="form-input form-textarea" bind:value={newSkillFormal} placeholder="Optional machine-readable problem specification (e.g. type signature, IO schema, formal predicate)."></textarea>
-              <!-- TODO Josemi: confirm whether `formal` should be a free-text field
-                   or a structured editor (e.g. JSON-Schema / typed grammar). For
-                   now it's a plain textarea stored verbatim. -->
+              <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional, JSON)</span></label>
+              <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
             </div>
             <div class="form-group">
               <label class="form-label" for="skill-domain">Domain</label>
