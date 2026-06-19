@@ -31,6 +31,7 @@
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
   import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
+  import GameOfLife from "$lib/components/celaut/GameOfLife.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
 
@@ -65,8 +66,15 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
-  let activeTab: "gallery" | "submit" | "profile" = "gallery";
+  // "" = no tab highlighted (used while the profile-detail view is open).
+  let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
   let detailVisible = false;
+
+  // ── Island header scroll behaviour ───────────────────────────────────────
+  // Hide the floating header when scrolling down, reveal it when scrolling up
+  // (mirrors the game-of-prompts/app navbar). A small delta threshold avoids
+  // jitter on trackpads.
+  let navHidden = false;
 
   // Detail view sub-tab
   let detailTab: "benchmarks" | "coverages" | "compare" = "benchmarks";
@@ -803,7 +811,35 @@
         viewedProfileId.set(next || null);
       };
       window.addEventListener("popstate", popHandler);
-      return () => window.removeEventListener("popstate", popHandler);
+
+      // Island-header scroll behaviour: hide on scroll down, reveal on scroll
+      // up. requestAnimationFrame throttles the work and a small delta
+      // threshold avoids jitter on trackpads.
+      let lastScrollY = window.scrollY;
+      let scrollTicking = false;
+      const scrollDeltaThreshold = 6;
+      const updateNav = () => {
+        const y = window.scrollY;
+        const delta = y - lastScrollY;
+        if (Math.abs(delta) > scrollDeltaThreshold) {
+          // Always show near the top of the page.
+          navHidden = delta > 0 && y > 80;
+          lastScrollY = y;
+        }
+        scrollTicking = false;
+      };
+      const scrollHandler = () => {
+        if (!scrollTicking) {
+          scrollTicking = true;
+          requestAnimationFrame(updateNav);
+        }
+      };
+      window.addEventListener("scroll", scrollHandler, { passive: true });
+
+      return () => {
+        window.removeEventListener("popstate", popHandler);
+        window.removeEventListener("scroll", scrollHandler);
+      };
     }
   });
 
@@ -825,8 +861,16 @@
     lastSyncedProfileId = $viewedProfileId;
   }
 
+  // Clear the tab highlight whenever a profile-detail view is open: the
+  // profile view renders independently of the tabs (it short-circuits the
+  // {#if $viewedProfileId} block), so no tab should appear "active".
+  $: if ($viewedProfileId) activeTab = "";
+
   function closeProfileView(): void {
     viewedProfileId.set(null);
+    // Restore the gallery so the main content isn't left blank (activeTab
+    // was emptied while the profile view was open).
+    activeTab = "gallery";
   }
 
   // ── Profile detail aggregation ─────────────────────────────────────────────
@@ -859,6 +903,9 @@
   })();
 </script>
 
+<!-- Ambient Conway's Game of Life in the page side gutters (decorative). -->
+<GameOfLife />
+
 <!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
 {#if $demoMode}
   <div class="demo-bar">
@@ -867,14 +914,13 @@
 {/if}
 
 <!-- ── Header ─────────────────────────────────────────────────────────────── -->
-<header class="navbar-container" class:navbar-with-demo-bar={$demoMode}>
+<header
+  class="navbar-container"
+  class:navbar-with-demo-bar={$demoMode}
+  class:navbar-hidden={navHidden}
+>
   <div class="navbar-content">
-    <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; }}>
-      <div class="logo-icon">
-        <svg width="18" height="18" viewBox="0 0 12 12" fill="none">
-          <path d="M0.502 2.999L6 0L11.495 3.03L6.0025 5.96L0.502 2.999V2.999ZM6.5 6.8365V12L11.5 9.319V4.156L6.5 6.8365V6.8365ZM5.5 6.8365L0.5 4.131V9.319L5.5 12V6.8365Z" fill="currentColor"/>
-        </svg>
-      </div>
+    <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
       <span class="logo-text">Unstoppable Skills</span>
     </a>
 
@@ -905,7 +951,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === "gallery"}
-      on:click={() => { activeTab = "gallery"; selectedSkill = null; }}
+      on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
@@ -915,7 +961,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === "submit"}
-      on:click={() => activeTab = "submit"}
+      on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -925,7 +971,7 @@
     <button
       class="tab-btn"
       class:active={activeTab === "profile"}
-      on:click={() => activeTab = "profile"}
+      on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
@@ -1758,7 +1804,7 @@
   {:else if activeTab === "submit"}
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
     <div class="container mx-auto px-8 py-8">
-      <div class="mx-auto" style="max-width: 1200px;">
+      <div class="w-full">
         <div class="submit-header">
           <div class="submit-header-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1866,7 +1912,7 @@
   {:else if activeTab === "profile"}
     <!-- ── Profile ──────────────────────────────────────────────────────── -->
     <div class="container mx-auto px-8 py-8">
-      <div class="mx-auto" style="max-width: 720px;">
+      <div class="w-full">
         <div class="submit-header">
           <div class="submit-header-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1970,28 +2016,34 @@
     background-color: hsl(var(--background));
   }
 
-  /* ── Navbar ─────────────────────────────────────────────────────────── */
+  /* ── Navbar (floating island) ───────────────────────────────────────── */
+  /* The header floats as a centred pill that hides on scroll-down and reveals
+     on scroll-up (see the scroll handler in onMount). */
   .navbar-container {
-    @apply sticky top-0 z-50 w-full border-b;
-    background-color: hsl(var(--background));
-    border-bottom-color: hsl(var(--border));
+    @apply sticky z-50 w-full px-4 pointer-events-none;
+    top: 0.75rem;
+    transition: transform 200ms ease, opacity 200ms ease;
+  }
+
+  .navbar-hidden {
+    transform: translateY(calc(-100% - 1.5rem));
+    opacity: 0;
   }
 
   .navbar-content {
-    @apply flex h-16 items-center px-8;
-    max-width: 1440px;
+    @apply flex h-14 items-center gap-4 px-6 pointer-events-auto;
+    max-width: 1100px;
     margin: 0 auto;
     width: 100%;
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--background) / 0.8);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 30px hsl(0 0% 0% / 0.08);
   }
 
   .logo-container {
     @apply flex items-center gap-2.5 text-foreground no-underline whitespace-nowrap;
-  }
-
-  .logo-icon {
-    @apply flex items-center justify-center w-8 h-8 rounded-lg;
-    background: hsl(var(--foreground));
-    color: hsl(var(--background));
   }
 
   .logo-text {
@@ -2092,10 +2144,11 @@
   }
 
   /* ── Detail view ────────────────────────────────────────────────────── */
+  /* Match the Skills Gallery width: use the same Tailwind `container` so the
+     skill- and profile-detail views span exactly as wide as the gallery
+     across every breakpoint. */
   .detail-view {
-    @apply px-8 py-8;
-    max-width: 1440px;
-    margin: 0 auto;
+    @apply container mx-auto px-8 py-8;
     opacity: 0;
     transform: translateX(12px);
     transition: opacity 0.4s ease, transform 0.4s ease;
@@ -2107,8 +2160,7 @@
   }
 
   .detail-container {
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 100%;
   }
 
   .back-button {

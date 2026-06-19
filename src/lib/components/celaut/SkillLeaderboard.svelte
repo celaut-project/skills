@@ -54,21 +54,37 @@
     });
   }
 
-  // Submit result form state — see TODO at handleSubmitResult.
+  // Submit result form state. A single Result carries one or more case
+  // executions (a mini-tensor), so the form holds an array of draft cases.
   let showSubmitForm = false;
   let submitServiceId = '';
-  // Strings keyed by metric/descriptor index so partial typing stays valid.
-  let submitMetricValues: Record<number, string> = {};
-  let submitCaseMeta: Record<number, string> = {};
+  // Each draft case keeps strings keyed by metric/descriptor index so partial
+  // typing stays valid; they're coerced to numbers on submit.
+  interface DraftCase {
+    caseMeta: Record<number, string>;
+    metricsValues: Record<number, string>;
+  }
+  const emptyCase = (): DraftCase => ({ caseMeta: {}, metricsValues: {} });
+  let submitCases: DraftCase[] = [emptyCase()];
   let submitNotes = '';
   let submitSourceHash = '';
   let submitting = false;
 
+  function addCase() {
+    submitCases = [...submitCases, emptyCase()];
+  }
+  function removeCase(idx: number) {
+    submitCases = submitCases.filter((_, i) => i !== idx);
+    if (submitCases.length === 0) submitCases = [emptyCase()];
+  }
+  function resetSubmitCases() {
+    submitCases = [emptyCase()];
+  }
+
   function selectBenchmark(id: string) {
     selectedBenchmarkId = selectedBenchmarkId === id ? null : id;
     showSubmitForm = false;
-    submitMetricValues = {};
-    submitCaseMeta = {};
+    resetSubmitCases();
     submitSourceHash = '';
   }
 
@@ -204,16 +220,10 @@
   /**
    * Submit a result for `benchmarkId` as a Result opinion.
    *
-   * Builds a single CaseExecutionData from the form inputs:
-   *   - caseMeta[i]      ← submitCaseMeta[i]
-   *   - metricsValues[i] ← submitMetricValues[i]
-   *
-   * TODO Josemi: this only supports submitting ONE case execution per Result.
-   * The on-chain Result entity already supports many cases per submission;
-   * the UI should grow a "+ Add case" affordance so a single Result can
-   * carry a full mini-tensor. Please confirm whether one-case-per-submission
-   * is acceptable as a first step or whether we should block on multi-case
-   * UX from the start.
+   * Builds one CaseExecutionData per draft case in `submitCases`, so a single
+   * Result can carry a full mini-tensor:
+   *   - caseMeta[i]      ← case.caseMeta[i]
+   *   - metricsValues[i] ← case.metricsValues[i]
    */
   async function handleSubmitResult(benchmark: Benchmark) {
     if (!submitServiceId.trim()) {
@@ -223,35 +233,43 @@
     const metrics = benchmark.performanceMetrics ?? [];
     const descriptors = benchmark.caseDescriptors ?? [];
 
-    // Validate every metric has a numeric value.
-    const metricsValues: number[] = [];
-    for (let i = 0; i < metrics.length; i += 1) {
-      const raw = String(submitMetricValues[i] ?? '').trim();
-      if (!raw) {
-        toasts.error(`Metric "${metrics[i].name}" is required.`);
-        return;
-      }
-      const n = Number(raw);
-      if (!Number.isFinite(n)) {
-        toasts.error(`Metric "${metrics[i].name}" must be a number.`);
-        return;
-      }
-      metricsValues.push(n);
-    }
+    // Validate + coerce every case into a CaseExecutionData.
+    const data: CaseExecutionData[] = [];
+    for (let c = 0; c < submitCases.length; c += 1) {
+      const draft = submitCases[c];
+      const caseLabel = submitCases.length > 1 ? `Case ${c + 1}: ` : '';
 
-    const caseMeta: number[] = [];
-    for (let i = 0; i < descriptors.length; i += 1) {
-      const raw = String(submitCaseMeta[i] ?? '').trim();
-      if (!raw) {
-        toasts.error(`Case descriptor "${descriptors[i].name}" is required.`);
-        return;
+      const metricsValues: number[] = [];
+      for (let i = 0; i < metrics.length; i += 1) {
+        const raw = String(draft.metricsValues[i] ?? '').trim();
+        if (!raw) {
+          toasts.error(`${caseLabel}Metric "${metrics[i].name}" is required.`);
+          return;
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n)) {
+          toasts.error(`${caseLabel}Metric "${metrics[i].name}" must be a number.`);
+          return;
+        }
+        metricsValues.push(n);
       }
-      const n = Number(raw);
-      if (!Number.isFinite(n)) {
-        toasts.error(`Case descriptor "${descriptors[i].name}" must be a number.`);
-        return;
+
+      const caseMeta: number[] = [];
+      for (let i = 0; i < descriptors.length; i += 1) {
+        const raw = String(draft.caseMeta[i] ?? '').trim();
+        if (!raw) {
+          toasts.error(`${caseLabel}Case descriptor "${descriptors[i].name}" is required.`);
+          return;
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n)) {
+          toasts.error(`${caseLabel}Case descriptor "${descriptors[i].name}" must be a number.`);
+          return;
+        }
+        caseMeta.push(n);
       }
-      caseMeta.push(n);
+
+      data.push({ caseMeta, metricsValues });
     }
 
     // Live mode requires both a connected wallet (to sign the tx) and a
@@ -270,7 +288,6 @@
 
     submitting = true;
     try {
-      const data: CaseExecutionData[] = [{ caseMeta, metricsValues }];
       const txId = await createResult({
         benchmarkId: benchmark.id,
         serviceId: submitServiceId.trim(),
@@ -286,8 +303,7 @@
       dispatch('created', { txId });
       showSubmitForm = false;
       submitServiceId = '';
-      submitMetricValues = {};
-      submitCaseMeta = {};
+      resetSubmitCases();
       submitNotes = '';
       submitSourceHash = '';
     } catch (error: any) {
@@ -626,48 +642,75 @@
                   <form class="submit-result-form" on:submit|preventDefault={() => handleSubmitResult(benchmark)}>
                     <h4 class="form-title">Submit Result</h4>
                     <p class="form-hint">
-                      One case execution per submission for now —
-                      multi-case entry coming soon (see TODO in <code>SkillLeaderboard.svelte</code>).
+                      A Result is a list of case executions — one row of metric
+                      values per case. Add as many cases as you measured.
                     </p>
                     <div class="form-row">
                       <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
                       <input id="result-service-{benchmark.id}" class="form-input" bind:value={submitServiceId} placeholder="e.g. QmXf39bC4F7dNK2Pw..." required />
                     </div>
-                    {#each descriptors as d, i}
-                      <div class="form-row">
-                        <label class="form-label" for="result-case-{benchmark.id}-{i}">
-                          Case · <code>{d.name}</code>
-                          {#if d.description}<span class="form-hint-inline">— {d.description}</span>{/if}
-                          <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                          id="result-case-{benchmark.id}-{i}"
-                          class="form-input"
-                          type="number"
-                          step="any"
-                          bind:value={submitCaseMeta[i]}
-                          placeholder="numeric value"
-                          required
-                        />
+
+                    {#each submitCases as draftCase, c (c)}
+                      <div class="case-block">
+                        <div class="case-block-header">
+                          <span class="case-block-title">Case {c + 1}</span>
+                          {#if submitCases.length > 1}
+                            <button
+                              type="button"
+                              class="case-remove-btn"
+                              on:click={() => removeCase(c)}
+                              disabled={submitting}
+                              aria-label={`Remove case ${c + 1}`}
+                            >
+                              Remove
+                            </button>
+                          {/if}
+                        </div>
+                        {#each descriptors as d, i}
+                          <div class="form-row">
+                            <label class="form-label" for="result-case-{benchmark.id}-{c}-{i}">
+                              Case · <code>{d.name}</code>
+                              {#if d.description}<span class="form-hint-inline">— {d.description}</span>{/if}
+                              <span class="text-red-500">*</span>
+                            </label>
+                            <input
+                              id="result-case-{benchmark.id}-{c}-{i}"
+                              class="form-input"
+                              type="number"
+                              step="any"
+                              bind:value={draftCase.caseMeta[i]}
+                              placeholder="numeric value"
+                              required
+                            />
+                          </div>
+                        {/each}
+                        {#each metrics as m, i}
+                          <div class="form-row">
+                            <label class="form-label" for="result-metric-{benchmark.id}-{c}-{i}">
+                              Metric · <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
+                              <span class="text-red-500">*</span>
+                            </label>
+                            <input
+                              id="result-metric-{benchmark.id}-{c}-{i}"
+                              class="form-input"
+                              type="number"
+                              step="any"
+                              bind:value={draftCase.metricsValues[i]}
+                              placeholder={m.description || 'numeric value'}
+                              required
+                            />
+                          </div>
+                        {/each}
                       </div>
                     {/each}
-                    {#each metrics as m, i}
-                      <div class="form-row">
-                        <label class="form-label" for="result-metric-{benchmark.id}-{i}">
-                          Metric · <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
-                          <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                          id="result-metric-{benchmark.id}-{i}"
-                          class="form-input"
-                          type="number"
-                          step="any"
-                          bind:value={submitMetricValues[i]}
-                          placeholder={m.description || 'numeric value'}
-                          required
-                        />
-                      </div>
-                    {/each}
+
+                    <button type="button" class="add-case-btn" on:click={addCase} disabled={submitting}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                      </svg>
+                      Add case
+                    </button>
+
                     <div class="form-row">
                       <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
                       <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
@@ -1293,6 +1336,74 @@
 
   .form-row {
     margin-bottom: 0.625rem;
+  }
+
+  .case-block {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--background) / 0.4);
+  }
+
+  .case-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .case-block-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .case-remove-btn {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: hsl(var(--destructive, 0 72% 51%));
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+  }
+
+  .case-remove-btn:hover:not(:disabled) {
+    background: hsl(var(--destructive, 0 72% 51%) / 0.1);
+  }
+
+  .case-remove-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .add-case-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    margin-bottom: 0.625rem;
+    border-radius: 0.375rem;
+    border: 1px dashed hsl(var(--border));
+    background: none;
+    color: hsl(var(--foreground));
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .add-case-btn:hover:not(:disabled) {
+    background: hsl(var(--muted) / 0.4);
+    border-color: hsl(var(--foreground) / 0.3);
+  }
+
+  .add-case-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .form-label {
