@@ -132,7 +132,7 @@
        Tailwind container caps at 1400px — see tailwind.config.ts), so the
        simulation never renders behind readable content. */
     width: max(0px, calc((100vw - 1400px) / 2));
-    opacity: 0.12;
+    opacity: 0.04;
   }
 
   .gol-left {

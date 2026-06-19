@@ -904,7 +904,7 @@
 </script>
 
 <!-- Ambient Conway's Game of Life in the page side gutters (decorative). -->
-<GameOfLife />
+<!-- <GameOfLife /> -->
 
 <!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
 {#if $demoMode}
