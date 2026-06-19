@@ -2538,7 +2538,10 @@
   }
   .best-service-score-value {
     @apply text-2xl font-extrabold leading-none;
-    color: hsl(var(--primary));
+    /* Use --foreground (not --primary) so the value stays legible against the
+       card background in light mode — the peach primary (HSL 15 80% 73%) was
+       too close to the surface tone and disappeared. */
+    color: hsl(var(--foreground));
   }
   .best-service-score-label {
     @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
