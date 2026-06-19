@@ -2047,7 +2047,7 @@
   }
 
   .navbar-tabs {
-    @apply flex items-center gap-1 w-full;
+    @apply flex items-center justify-center gap-2 w-full;
     border-top: 1px solid hsl(var(--border) / 0.6);
     padding-top: 0.5rem;
   }
@@ -2057,7 +2057,7 @@
   }
 
   .logo-text {
-    @apply text-base font-bold tracking-tight;
+    @apply text-2xl font-bold tracking-tight leading-none;
     font-family: var(--font-heading);
   }
 

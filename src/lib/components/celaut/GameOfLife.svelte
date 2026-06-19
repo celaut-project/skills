@@ -128,9 +128,10 @@
 
   .gol-canvas {
     @apply absolute top-0 h-full;
-    /* Each strip fills the gutter between the viewport edge and the centred
-       content column (which caps around 1280px). */
-    width: max(0px, calc((100vw - 1280px) / 2));
+    /* Each strip fills the gutter OUTSIDE the centred content column (the
+       Tailwind container caps at 1400px — see tailwind.config.ts), so the
+       simulation never renders behind readable content. */
+    width: max(0px, calc((100vw - 1400px) / 2));
     opacity: 0.12;
   }
 
@@ -143,7 +144,7 @@
   }
 
   /* On narrow viewports there is no gutter, so hide the decoration entirely. */
-  @media (max-width: 1320px) {
+  @media (max-width: 1440px) {
     .gol-layer {
       display: none;
     }
