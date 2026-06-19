@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { walletConnected } from 'wallet-svelte-component';
   import { forumSidebar, closeForum } from './forumSidebar';
 
   /**
@@ -69,7 +70,11 @@
           a plain re-render would leave the previous topic's draft visible.
         -->
         {#key $forumSidebar.topicId}
-          <svelte:component this={ForumComponent} topic_id={$forumSidebar.topicId} />
+          <svelte:component
+            this={ForumComponent}
+            topic_id={$forumSidebar.topicId}
+            connected={$walletConnected}
+          />
         {/key}
       {:else}
         <div class="forum-rail-loading">Loading discussion…</div>
