@@ -4,12 +4,22 @@
   import { skills } from '$lib/stores';
   import { toasts } from './toastStore';
   import SubmitFormEnhancements from './SubmitFormEnhancements.svelte';
+  import { createSkill } from '$lib/data';
+  import { demoMode } from '$lib/config';
+  import { reputation_proof } from '$lib/common/store';
+  import { getMainReputationBox } from '$lib/reputationContext';
+
+  function currentMainBox() {
+    return getMainReputationBox($reputation_proof);
+  }
 
   // Submit form state
   let newSkillName = '';
   let newSkillProse = '';
+  let newSkillFormal = '';
   let newSkillTags = '';
   let newSkillDomain = '';
+  let relatedSkillBoxIds: string[] = [];
   let submitting = false;
   let submitTx: string | null = null;
   let submitError: string | null = null;
@@ -41,17 +51,29 @@
     submitError = null;
     submitTx = null;
     try {
-      const payload = JSON.stringify({
+      // Routes to ergoProvider.createSkill in chain mode (mints a Skill Type
+      // NFT via reputation-system's create_opinion against SKILL_TYPE_ID) or
+      // to mockDb.createSkill in demo mode. Mirrors handleSubmitSkill in
+      // App.svelte / handleCreateBenchmark / etc.
+      const txId = await createSkill({
         name: newSkillName.trim(),
         prose: newSkillProse.trim(),
+        formal: newSkillFormal.trim(),
         tags: newSkillTags.split(',').map((t) => t.trim()).filter(Boolean),
         domain: newSkillDomain.trim(),
-        extended_skill_boxes: []
+        extendedSkillBoxIds: [...relatedSkillBoxIds],
+        sourceHash: '',
+        tokenAmount: 1,
+        mainBox: currentMainBox()
       });
-      // TODO: swap for real createReputationBox call once Type NFT is deployed
-      submitTx = null;
-      submitError = 'On-chain submission is ready — awaiting Type NFT deployment from Josemi. Your skill data is valid.';
-      toasts.info('Skill data validated. Awaiting Type NFT deployment.');
+      submitTx = txId;
+      toasts.success($demoMode ? 'Skill submitted successfully (demo mode).' : 'Skill published on-chain.');
+      newSkillName = '';
+      newSkillProse = '';
+      newSkillFormal = '';
+      newSkillDomain = '';
+      newSkillTags = '';
+      relatedSkillBoxIds = [];
     } catch (e: any) {
       submitError = e.message || 'Submission failed.';
       toasts.error(submitError || 'Submission failed.');
@@ -114,6 +136,7 @@
         domain={newSkillDomain}
         tags={newSkillTags}
         errors={validationErrors}
+        on:relatedChange={(event) => (relatedSkillBoxIds = event.detail)}
       />
 
       <button type="submit" class="btn-primary w-full" disabled={submitting}>
