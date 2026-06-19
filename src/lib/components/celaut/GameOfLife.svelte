@@ -131,7 +131,7 @@
     /* Each strip fills the gutter between the viewport edge and the centred
        content column (which caps around 1280px). */
     width: max(0px, calc((100vw - 1280px) / 2));
-    opacity: 0.5;
+    opacity: 0.12;
   }
 
   .gol-left {

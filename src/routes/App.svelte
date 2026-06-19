@@ -920,66 +920,66 @@
   class:navbar-hidden={navHidden}
 >
   <div class="navbar-content">
-    <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
-      <span class="logo-text">Unstoppable Skills</span>
-    </a>
+    <div class="navbar-top">
+      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
+        <span class="logo-text">Unstoppable Skills</span>
+      </a>
 
-    <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
-      <div class="relative w-full">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-        <input
-          type="text"
-          bind:value={searchQuery}
-          placeholder="Search skills, tags, domains..."
-          class="search-input"
-        />
+      <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
+        <div class="relative w-full">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            bind:value={searchQuery}
+            placeholder="Search skills, tags, domains..."
+            class="search-input"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <WalletButton explorerUrl={$web_explorer_uri_addr} />
+        <Theme />
       </div>
     </div>
 
-    <div class="flex items-center gap-3">
-      <WalletButton explorerUrl={$web_explorer_uri_addr} />
-      <Theme />
-    </div>
+    <!-- Tabs live inside the island header. -->
+    <nav class="navbar-tabs">
+      <button
+        class="tab-btn"
+        class:active={activeTab === "gallery"}
+        on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Skills Gallery
+      </button>
+      <button
+        class="tab-btn"
+        class:active={activeTab === "submit"}
+        on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        Submit Skill
+      </button>
+      <button
+        class="tab-btn"
+        class:active={activeTab === "profile"}
+        on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+        Profile
+      </button>
+    </nav>
   </div>
 </header>
-
-<!-- ── Tab bar ─────────────────────────────────────────────────────────────── -->
-<div class="tab-bar">
-  <div class="container flex gap-1 px-4">
-    <button
-      class="tab-btn"
-      class:active={activeTab === "gallery"}
-      on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-      </svg>
-      Skills Gallery
-    </button>
-    <button
-      class="tab-btn"
-      class:active={activeTab === "submit"}
-      on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-      </svg>
-      Submit Skill
-    </button>
-    <button
-      class="tab-btn"
-      class:active={activeTab === "profile"}
-      on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-      </svg>
-      Profile
-    </button>
-  </div>
-</div>
 
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
 <main class="main-content">
@@ -2031,15 +2031,25 @@
   }
 
   .navbar-content {
-    @apply flex h-14 items-center gap-4 px-6 pointer-events-auto;
-    max-width: 1100px;
+    @apply flex flex-col gap-3 px-10 py-4 pointer-events-auto;
+    max-width: 1200px;
     margin: 0 auto;
     width: 100%;
-    border-radius: 9999px;
+    border-radius: 1.5rem;
     border: 1px solid hsl(var(--border));
     background-color: hsl(var(--background) / 0.8);
     backdrop-filter: blur(14px);
     box-shadow: 0 8px 30px hsl(0 0% 0% / 0.08);
+  }
+
+  .navbar-top {
+    @apply flex items-center gap-4 w-full;
+  }
+
+  .navbar-tabs {
+    @apply flex items-center gap-1 w-full;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    padding-top: 0.5rem;
   }
 
   .logo-container {
@@ -2078,13 +2088,7 @@
     box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
   }
 
-  /* ── Tab bar ────────────────────────────────────────────────────────── */
-  .tab-bar {
-    @apply border-b;
-    border-bottom-color: hsl(var(--border));
-    background-color: hsl(var(--background));
-  }
-
+  /* ── Tabs (inside island header) ────────────────────────────────────── */
   .tab-btn {
     @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
