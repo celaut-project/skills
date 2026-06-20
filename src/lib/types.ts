@@ -34,6 +34,13 @@ export interface Skill {
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
+  /**
+   * Block height at which the skill box was created. Used to canonically order
+   * a skill pair (newer vs older) when building a relationship topic id, so the
+   * same pair always resolves to the same `{skill_nueva}_{skill_antigua}` topic
+   * regardless of which side you open the discussion from.
+   */
+  creationHeight?: number;
 }
 
 /** Payload used to create a new Skill. */
