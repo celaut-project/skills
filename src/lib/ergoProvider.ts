@@ -59,7 +59,7 @@ class ErgoDataProvider implements DataProvider {
     // Nota: create_opinion suele requerir un tokenAmount (usamos reputationSupply o 1 por defecto)
     // y, opcionalmente, un objeto al que hace referencia. Si es una habilidad raíz, se suele apuntar a sí misma o usar un ID vacío.
     const txId = await create_opinion(
-      'https://ergoplatform.com',
+      'https://api.ergoplatform.com',
       input.tokenAmount ?? 1,
       SKILL_TYPE_ID,
       '', // ID del objetivo. Una skill no apunta a nada en concreto.
