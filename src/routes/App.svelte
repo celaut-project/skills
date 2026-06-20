@@ -504,7 +504,7 @@
     if (!selectedSkill) return;
     openForum(
       relationshipTopicId(selectedSkill, sibling),
-      `Relation: ${selectedSkill.name} ↔ ${sibling.name}`
+      `Relation: ${selectedSkill.boxId} ↔ ${sibling.boxId}`
     );
   }
 
