@@ -78,7 +78,7 @@
       <Globe class="h-4 w-4" />
     </a>
     <a
-      href="https://t.me/celaut_project"
+      href="https://t.me/unstopbots"
       target="_blank"
       rel="noopener noreferrer"
       class="footer-link"

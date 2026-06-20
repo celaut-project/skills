@@ -360,7 +360,12 @@ export function parseSkillBox(box: any): Skill | null {
       coverages: [],
       benchmarks: [],
       resultCount: 0,
-      reputation: 0
+      reputation: 0,
+      // Ergo boxes expose creationHeight; settlement/inclusion are fallbacks
+      // when an explorer payload omits it. Drives canonical relationship topic
+      // ordering (newer skill first in `{skill_nueva}_{skill_antigua}`).
+      creationHeight:
+        box.creationHeight ?? box.settlementHeight ?? box.inclusionHeight ?? 0
     };
   } catch {
     return null;

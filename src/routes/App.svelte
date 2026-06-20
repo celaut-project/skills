@@ -484,6 +484,30 @@
     ? skills.filter((s) => s.name === selectedSkill!.name && s.boxId !== selectedSkill!.boxId)
     : [];
 
+  // Canonical topic id for the relationship between two skills. The id is
+  // strictly `{skill_nueva}_{skill_antigua}` — newer box first, older second —
+  // ordered by creation height (tie-broken by boxId for determinism). Ordering
+  // by age means both skills resolve the pair to the SAME topic, so the debate
+  // about how related they are lives in one shared thread rather than two.
+  function relationshipTopicId(a: Skill, b: Skill): string {
+    const aH = a.creationHeight ?? 0;
+    const bH = b.creationHeight ?? 0;
+    const aNewer = aH !== bH ? aH > bH : a.boxId > b.boxId;
+    const [nueva, antigua] = aNewer ? [a, b] : [b, a];
+    return `${nueva.boxId}_${antigua.boxId}`;
+  }
+
+  // Open the shared relationship discussion for the selected skill and a sibling.
+  // Guarded here (not in the template) so the null-narrowing of `selectedSkill`
+  // happens in TS rather than via a non-null assertion in a Svelte handler.
+  function discussRelationship(sibling: Skill): void {
+    if (!selectedSkill) return;
+    openForum(
+      relationshipTopicId(selectedSkill, sibling),
+      `Relation: ${selectedSkill.name} ↔ ${sibling.name}`
+    );
+  }
+
   type RelatedSkillDirection = "outgoing" | "incoming" | "both";
 
   type RelatedSkillLink = {
@@ -1195,7 +1219,7 @@
                 <ul class="duplicate-notice-list">
                   {#each siblingSkills as sibling (sibling.boxId)}
                     {@const sibRep = calculateSkillReputation(sibling).total}
-                    <li>
+                    <li class="duplicate-notice-row">
                       <button type="button" class="duplicate-notice-item" on:click={() => selectSkill(sibling)}>
                         <ProfileAvatar profileId={sibling.profileId} size={16} title={`Submitted by ${sibling.profileId}`} />
                         <span class="duplicate-notice-item-name">{sibling.name}</span>
@@ -1210,6 +1234,19 @@
                         </span>
                         <span class="duplicate-notice-item-box">{formatSourceHash(sibling.boxId)}</span>
                       </button>
+                      {#if selectedSkill}
+                        <button
+                          type="button"
+                          class="duplicate-notice-discuss"
+                          title={`Discuss relationship: ${selectedSkill.name} ↔ ${sibling.name}`}
+                          aria-label={`Discuss relationship between ${selectedSkill.name} and ${sibling.name}`}
+                          on:click|stopPropagation={() => discussRelationship(sibling)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                          </svg>
+                        </button>
+                      {/if}
                     </li>
                   {/each}
                 </ul>
@@ -1721,7 +1758,7 @@
 
     {:else}
       <!-- ── Hero + Skills Gallery ─────────────────────────────────────────── -->
-      <HeroSection skillCount={skills.length} />
+      <HeroSection />
 
       <div id="skills-section" class="container mx-auto px-8 pb-8">
         <!-- How It Works -->
@@ -2688,8 +2725,14 @@
     flex-direction: column;
     gap: 0.125rem;
   }
+  .duplicate-notice-row {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+  }
   .duplicate-notice-item {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -2702,6 +2745,26 @@
     cursor: pointer;
     font-size: 0.75rem;
     transition: background-color 0.12s ease;
+  }
+  .duplicate-notice-discuss {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0.25rem;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+  .duplicate-notice-discuss:hover,
+  .duplicate-notice-discuss:focus-visible {
+    background: hsl(40 90% 50% / 0.12);
+    color: hsl(var(--foreground));
+    outline: none;
   }
   .duplicate-notice-item:hover,
   .duplicate-notice-item:focus-visible {
