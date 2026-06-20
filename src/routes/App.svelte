@@ -1256,7 +1256,7 @@
               </div>
               <div class="best-service-actions">
                 {#if bestCoverage.coverage.serviceId}
-                  <RunServiceButton serviceId={bestCoverage.coverage.serviceId} large={true} label="Run best service" />
+                  <RunServiceButton serviceId={bestCoverage.coverage.serviceId} large={true} label="Run" />
                 {/if}
                 {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
                   {#if bestServiceLoading}

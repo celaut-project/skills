@@ -681,6 +681,28 @@
                       A Result is a list of case executions — one row of metric
                       values per case. Add as many cases as you measured.
                     </p>
+
+                    <div class="form-row">
+                      <label class="form-label" for="result-json-{benchmark.id}">Load result JSON</label>
+                      <input
+                        id="result-json-{benchmark.id}"
+                        class="form-input"
+                        type="file"
+                        accept="application/json,.json"
+                        on:change={(event) => handleResultJsonUpload(event, benchmark)}
+                      />
+                      {#if resultJsonFileName}
+                        <p class="form-hint">Loaded: {resultJsonFileName}</p>
+                      {/if}
+                    </div>
+
+                    <!-- Separador OR -->
+                    <div class="or-divider">
+                      <hr class="or-line" />
+                      <span class="or-text">OR</span>
+                      <hr class="or-line" />
+                    </div>
+
                     <div class="form-row">
                       <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
                       <input id="result-service-{benchmark.id}" class="form-input" bind:value={submitServiceId} placeholder="e.g. QmXf39bC4F7dNK2Pw..." required />
@@ -748,19 +770,6 @@
                     </button>
 
                     <div class="form-row">
-                      <label class="form-label" for="result-json-{benchmark.id}">Load result JSON</label>
-                      <input
-                        id="result-json-{benchmark.id}"
-                        class="form-input"
-                        type="file"
-                        accept="application/json,.json"
-                        on:change={(event) => handleResultJsonUpload(event, benchmark)}
-                      />
-                      {#if resultJsonFileName}
-                        <p class="form-hint">Loaded: {resultJsonFileName}</p>
-                      {/if}
-                    </div>
-                    <div class="form-row">
                       <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
                       <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
                     </div>
@@ -768,6 +777,7 @@
                       <label class="form-label" for="result-source-{benchmark.id}">Source hash (optional)</label>
                       <input id="result-source-{benchmark.id}" class="form-input" bind:value={submitSourceHash} placeholder="Blake2b256 hash of off-chain source file" />
                     </div>
+
                     <div class="form-actions">
                       <button type="submit" class="btn-submit" disabled={submitting}>
                         {submitting ? 'Submitting…' : 'Submit'}
@@ -1513,5 +1523,24 @@
 
   .btn-cancel:hover {
     background: hsl(var(--muted) / 0.8);
+  }
+
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .or-divider .or-line {
+    flex-grow: 1;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 0;
+  }
+  .or-divider .or-text {
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
   }
 </style>
