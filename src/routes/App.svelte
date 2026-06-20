@@ -19,6 +19,8 @@
   import Toast from "$lib/components/celaut/Toast.svelte";
   import StatsBar from "$lib/components/celaut/StatsBar.svelte";
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
+  import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
+  import ServiceSourceCard from "$lib/components/celaut/ServiceSourceCard.svelte";
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
   import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
@@ -1252,25 +1254,30 @@
                   </span>
                 </div>
               </div>
-              {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
-                {#if bestServiceLoading}
-                  <div class="best-service-download best-service-download-muted">Looking up source-application…</div>
-                {:else if bestServiceDownload?.sourceUrl}
-                  <a
-                    class="best-service-download"
-                    href={bestServiceDownload.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Download from source-application
-                  </a>
-                {:else if bestServiceSources.length === 0}
-                  <div class="best-service-download best-service-download-muted">No source registered for this service yet.</div>
+              <div class="best-service-actions">
+                {#if bestCoverage.coverage.serviceId}
+                  <RunServiceButton serviceId={bestCoverage.coverage.serviceId} large={true} label="Run best service" />
                 {/if}
-              {/if}
+                {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
+                  {#if bestServiceLoading}
+                    <div class="best-service-download best-service-download-muted">Looking up source-application…</div>
+                  {:else if bestServiceDownload?.sourceUrl}
+                    <a
+                      class="best-service-download"
+                      href={bestServiceDownload.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Download from source-application
+                    </a>
+                  {:else if bestServiceSources.length === 0}
+                    <div class="best-service-download best-service-download-muted">No source registered for this service yet.</div>
+                  {/if}
+                {/if}
+              </div>
             </section>
           {/if}
 
@@ -1580,7 +1587,13 @@
                           </div>
                         {/each}
                       {/if}
-                      <div class="discussion-section mt-3">
+                      <ServiceSourceCard
+                        serviceId={cov.serviceId || ''}
+                        compact={true}
+                        on:addSource={(event) => openFileSourceModal(event.detail)}
+                      />
+                      <div class="coverage-action-row mt-3">
+                        <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
                         <button
                           class="dialogue-btn"
                           type="button"
@@ -1718,7 +1731,7 @@
         <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
 
         <!-- Category Filter -->
-        <CategoryFilter {activeCategory} on:filter={(e) => { activeCategory = e.detail; }} />
+        <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
 
         <div class="gallery-header">
           <div>
@@ -2616,8 +2629,12 @@
   .best-service-rep-label {
     @apply text-[0.6rem] uppercase tracking-wider;
   }
+  .best-service-actions {
+    @apply flex flex-wrap items-center gap-3 mt-3;
+  }
+
   .best-service-download {
-    @apply inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-md text-sm font-medium no-underline transition-colors;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium no-underline transition-colors;
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
   }
@@ -2878,6 +2895,13 @@
     border-radius: 0.5rem;
     background: hsl(var(--card));
     padding: 0.875rem 1rem;
+  }
+
+  .coverage-action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
   .coverage-card-header {
     display: flex;

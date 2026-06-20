@@ -1,18 +1,40 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import type { Skill } from '$lib/types';
 
   export let activeCategory: string = 'all';
+  export let skills: Skill[] = [];
 
   const dispatch = createEventDispatcher();
+  const seedCategories = ['finance', 'infrastructure', 'analytics', 'security', 'ai/ml'];
 
-  const categories = [
-    { value: 'all', label: 'All' },
-    { value: 'finance', label: 'Finance' },
-    { value: 'infrastructure', label: 'Infrastructure' },
-    { value: 'analytics', label: 'Analytics' },
-    { value: 'security', label: 'Security' },
-    { value: 'ai/ml', label: 'AI/ML' }
-  ];
+  function titleize(value: string): string {
+    return value
+      .split('/')
+      .map((part) => part.split('-').map((word) => word ? word[0].toUpperCase() + word.slice(1) : '').join(' '))
+      .join('/');
+  }
+
+  $: categories = (() => {
+    const counts = new Map<string, number>();
+
+    for (const seed of seedCategories) counts.set(seed, 0);
+    for (const skill of skills) {
+      const key = skill.domain?.trim().toLowerCase();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const ranked = [...counts.entries()]
+      .filter(([value, count]) => value && (count > 0 || seedCategories.includes(value)))
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([value]) => ({ value, label: titleize(value) }));
+
+    return [{ value: 'all', label: 'All' }, ...ranked];
+  })();
 
   function select(value: string) {
     activeCategory = value;

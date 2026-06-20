@@ -58,6 +58,7 @@
   // executions (a mini-tensor), so the form holds an array of draft cases.
   let showSubmitForm = false;
   let submitServiceId = '';
+  let resultJsonFileName = '';
   // Each draft case keeps strings keyed by metric/descriptor index so partial
   // typing stays valid; they're coerced to numbers on submit.
   interface DraftCase {
@@ -79,6 +80,41 @@
   }
   function resetSubmitCases() {
     submitCases = [emptyCase()];
+    resultJsonFileName = '';
+  }
+
+  async function handleResultJsonUpload(event: Event, benchmark: Benchmark) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text());
+      const nextServiceId = String(parsed?.serviceId ?? parsed?.service_id ?? submitServiceId ?? '').trim();
+      const nextNotes = String(parsed?.notes ?? submitNotes ?? '');
+      const nextSourceHash = String(parsed?.sourceHash ?? parsed?.source_hash ?? submitSourceHash ?? '').trim();
+      const rawCases = Array.isArray(parsed?.data)
+        ? parsed.data
+        : Array.isArray(parsed?.cases)
+          ? parsed.cases
+          : [];
+
+      if (!nextServiceId) throw new Error('JSON file must include serviceId.');
+      if (rawCases.length === 0) throw new Error('JSON file must include data[] or cases[].');
+
+      submitServiceId = nextServiceId;
+      submitNotes = nextNotes;
+      submitSourceHash = nextSourceHash;
+      submitCases = rawCases.map((item: any) => ({
+        caseMeta: Object.fromEntries((benchmark.caseDescriptors ?? []).map((_, i) => [i, String(item?.caseMeta?.[i] ?? item?.case_meta?.[i] ?? '')])),
+        metricsValues: Object.fromEntries((benchmark.performanceMetrics ?? []).map((_, i) => [i, String(item?.metricsValues?.[i] ?? item?.metrics_values?.[i] ?? '')]))
+      }));
+      resultJsonFileName = file.name;
+      toasts.success('Result JSON loaded.');
+    } catch (error: any) {
+      toasts.error(error?.message || 'Invalid result JSON file.');
+      input.value = '';
+    }
   }
 
   function selectBenchmark(id: string) {
@@ -711,6 +747,19 @@
                       Add case
                     </button>
 
+                    <div class="form-row">
+                      <label class="form-label" for="result-json-{benchmark.id}">Load result JSON</label>
+                      <input
+                        id="result-json-{benchmark.id}"
+                        class="form-input"
+                        type="file"
+                        accept="application/json,.json"
+                        on:change={(event) => handleResultJsonUpload(event, benchmark)}
+                      />
+                      {#if resultJsonFileName}
+                        <p class="form-hint">Loaded: {resultJsonFileName}</p>
+                      {/if}
+                    </div>
                     <div class="form-row">
                       <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
                       <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
