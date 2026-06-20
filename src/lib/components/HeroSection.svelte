@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  export let skillCount: number = 0;
-
   let visible = false;
   onMount(() => {
     setTimeout(() => { visible = true; }, 50);
@@ -11,29 +9,11 @@
 
 <section class="hero-section" class:hero-visible={visible}>
   <div class="hero-content">
-    <div class="hero-badge">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-        <line x1="2" y1="12" x2="22" y2="12"/>
-      </svg>
-      <span>Powered by Ergo Blockchain</span>
-    </div>
-
-    <h1 class="hero-title">Unstoppable Skills</h1>
+    <h1 class="hero-title">Skills Gallery</h1>
 
     <p class="hero-description">
       A decentralized registry for AI agent capabilities
     </p>
-
-    {#if skillCount > 0}
-      <div class="hero-stats">
-        <div class="hero-stat">
-          <span class="hero-stat-value">{skillCount}</span>
-          <span class="hero-stat-label">Registered Skills</span>
-        </div>
-      </div>
-    {/if}
   </div>
 </section>
 
