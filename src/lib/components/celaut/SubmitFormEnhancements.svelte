@@ -13,7 +13,7 @@
   let selectedRelated: string[] = [];
   let showRelatedList = false;
 
-  // Apply prefill when it changes (e.g. from Fork Skill)
+  // Apply prefill when it changes (e.g. from Modify Skill)
   $: if (prefillRelatedBoxIds.length > 0) {
     selectedRelated = [...prefillRelatedBoxIds];
     showRelatedList = true;
