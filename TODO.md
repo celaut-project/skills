@@ -2,3 +2,5 @@
 
 
 - Actualmente ClaimCoverageButton.svelte obtiene el service id a partir del wallet address, esto es categoricamente erroneo, el service id debe de proporcionarlo el usuario mediante un formulario donde se le proporcione el id del servicio.
+
+- Ademas de los coverages de una skill obtenidos a partir de COVERAGE_TYPE_ID, loadCoverages() de api.ts debe de obtener los service id que referencian indirectamente que cubren el skill mediante results (de aquellos results relacionados con benchmarks relacionados con la skill),los cuales pueden aparecer en coverages o no. deberás de controlar que no se retornen service ids repetidos en loadCoverages.
