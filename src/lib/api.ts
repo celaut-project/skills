@@ -340,7 +340,6 @@ function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
 
 /** Parse a raw Explorer box into a Skill, or null if unparseable. */
 export function parseSkillBox(box: any): Skill | null {
-  console.log("Parsing skill box:", box);
   try {
     const rawValue = box.additionalRegisters?.R9?.renderedValue || '';
     const potentialString = hexToUtf8(rawValue);
@@ -425,6 +424,7 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(BENCHMARK_TYPE_ID, skillBoxId);
+  console.log("Benchmark boxes:", boxes);
   const benchmarks = boxes
     .map((box: any) => {
       try {
