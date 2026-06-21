@@ -21,16 +21,19 @@ export const EXPLORER_API = 'https://api.ergoplatform.com';
 /**
  * Type NFT IDs.
  *
- * These are *placeholder* identifiers — real on-chain Type NFTs have not been
- * minted yet, so the chain query functions below short-circuit to `[]` until
- * each constant is replaced with a real 64-char hex token ID. This avoids the
- * 400 Bad Request that the previous hand-rolled box-search payload was
- * producing against the Ergo Explorer API.
+ * Single source of truth: `src/lib/registry/core.mjs` — the framework-agnostic
+ * registry core shared with the MCP server. We import the ids here (and
+ * re-export them for existing callers) so the app and the MCP server can never
+ * drift. They are *placeholder* identifiers until real on-chain Type NFTs are
+ * minted, so the chain query functions below short-circuit to `[]` meanwhile.
  */
-export const SKILL_TYPE_ID = 'ffce59c01b9c0c245005f9c2daf817607e912a3ececd5f61aaba48d30230f60c';
-export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f57ac451c995a30f54d';
-export const RESULT_TYPE_ID = '49b26dc06b1680769477264d2e8e9bf561005236cde3097630bffcff631b7aef';
-export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
+import {
+  SKILL_TYPE_ID,
+  BENCHMARK_TYPE_ID,
+  RESULT_TYPE_ID,
+  COVERAGE_TYPE_ID
+} from './registry/core.mjs';
+export { SKILL_TYPE_ID, BENCHMARK_TYPE_ID, RESULT_TYPE_ID, COVERAGE_TYPE_ID };
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -395,11 +398,23 @@ export async function loadSkills(): Promise<Skill[]> {
   return applySkillInheritance(skills);
 }
 
-/** Load coverages for a given skill box ID. */
+/**
+ * Load coverages for a given skill box ID.
+ *
+ * A service can cover a skill in two ways:
+ *  1. Directly — a Coverage box (COVERAGE_TYPE_ID) pointing at the skill.
+ *  2. Indirectly — by appearing as the `service_id` of a Result submitted
+ *     against a Benchmark of this skill. Such a service demonstrably addresses
+ *     the skill even when no explicit Coverage box was ever published.
+ *
+ * Both sources are merged here. Direct coverages take precedence; result-
+ * derived coverages are only added for service ids not already present, so the
+ * returned list never repeats a serviceId.
+ */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(COVERAGE_TYPE_ID, skillBoxId);
-  const coverages = boxes
+  const direct = boxes
     .map((box: any) => {
       try {
         const r9 = box.additionalRegisters?.R9?.renderedValue || '';
@@ -416,8 +431,37 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
       }
     })
     .filter(Boolean) as Coverage[];
-  await hydrateReputations(coverages);
-  return coverages;
+  await hydrateReputations(direct);
+
+  // Indirect coverages: results → benchmarks → this skill.
+  const benchmarks = await loadBenchmarks(skillBoxId);
+  const resultLists = await Promise.all(benchmarks.map((b) => loadResults(b.id)));
+  const results = resultLists.flat();
+
+  // Merge, deduping by serviceId. Direct coverages win; coverages without a
+  // serviceId are kept as-is (nothing to dedupe on).
+  const seenServiceIds = new Set<string>();
+  const merged: Coverage[] = [];
+  for (const coverage of direct) {
+    if (coverage.serviceId) {
+      if (seenServiceIds.has(coverage.serviceId)) continue;
+      seenServiceIds.add(coverage.serviceId);
+    }
+    merged.push(coverage);
+  }
+  for (const result of results) {
+    const serviceId = result.serviceId;
+    if (!serviceId || seenServiceIds.has(serviceId)) continue;
+    seenServiceIds.add(serviceId);
+    merged.push({
+      boxId: result.id,
+      profileId: result.profileId,
+      serviceId,
+      reputation: result.reputation ?? 0
+    } as Coverage);
+  }
+
+  return merged;
 }
 
 /** Load benchmarks for a given skill box ID. */

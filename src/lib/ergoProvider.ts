@@ -14,7 +14,7 @@ import type {
   BenchmarkCreationInput,
   ResultCreationInput
 } from './types';
-import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults } from './api';
+import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
 import { ApiError } from './types';
 import { create_profile, create_opinion } from 'reputation-system';
 import type { RPBox } from 'source-application';
@@ -40,7 +40,39 @@ function getMainBox(inputMainBox: unknown, entityName: string): RPBox {
 
 class ErgoDataProvider implements DataProvider {
   async loadSkills(): Promise<Skill[]> {
-    return apiLoadSkills();
+    // `apiLoadSkills()` returns skills with EMPTY coverages/benchmarks — the
+    // explorer query only yields the skill boxes themselves. mockDb, by
+    // contrast, ships fully-populated skills (getDemoSkills). To reach parity
+    // we hydrate each skill's direct relations (coverages, benchmarks, and the
+    // results under each benchmark) before applying inheritance — otherwise
+    // applySkillInheritance has nothing to merge and the UI sees empty skills.
+    const skills = await apiLoadSkills();
+
+    await Promise.all(
+      skills.map(async (skill) => {
+        const [coverages, benchmarks] = await Promise.all([
+          apiLoadCoverages(skill.boxId),
+          apiLoadBenchmarks(skill.boxId)
+        ]);
+
+        await Promise.all(
+          benchmarks.map(async (benchmark) => {
+            benchmark.results = await apiLoadResults(benchmark.id);
+          })
+        );
+
+        skill.coverages = coverages;
+        skill.benchmarks = benchmarks;
+        skill.resultCount = benchmarks.reduce(
+          (sum, benchmark) => sum + benchmark.results.length,
+          0
+        );
+      })
+    );
+
+    // Now that direct relations are loaded, merge inherited coverages/benchmarks
+    // from extended skills (same logic mockDb relies on).
+    return applySkillInheritance(skills);
   }
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {

@@ -183,8 +183,9 @@
     skillSources = [];
   }
 
-  // Compute reputation for selected skill
-  $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
+  // Compute reputation for selected skill — label is RELATIVE to all sibling
+  // skills, so we pass the full population (thresholds built once inside).
+  $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill, skills) : null;
 
   // ── Best service highlight ────────────────────────────────────────────────
   // Surfaces the "best" service for a skill as a prominent card with a download

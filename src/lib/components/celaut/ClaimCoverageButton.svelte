@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { walletConnected, walletAddress } from 'wallet-svelte-component';
+  import { walletConnected } from 'wallet-svelte-component';
   import { toasts } from './toastStore';
   import { createCoverage } from '$lib/data';
   import { demoMode } from '$lib/config';
@@ -13,6 +13,11 @@
   let showTooltip = false;
   let submitting = false;
 
+  // The coverage's service id is provided by the user, NOT derived from the
+  // wallet address. A coverage asserts that a specific service (by its id)
+  // covers the skill — that id belongs to the service, not to the claimant.
+  let serviceId = '';
+
   async function handleClaim() {
     if (!$walletConnected) {
       toasts.error('Connect wallet to claim coverage.');
@@ -22,6 +27,11 @@
       toasts.error('Select a skill first.');
       return;
     }
+    const trimmedServiceId = serviceId.trim();
+    if (!trimmedServiceId) {
+      toasts.error('Enter the service id you are claiming coverage for.');
+      return;
+    }
     if (!$reputation_proof || !getMainReputationBox($reputation_proof)) {
       toasts.error('Create a reputation profile first.');
       return;
@@ -29,16 +39,15 @@
 
     submitting = true;
     try {
-      const serviceId = $walletAddress || undefined;
-
       const txId = await createCoverage({
         skillBoxId,
-        serviceId,
+        serviceId: trimmedServiceId,
         tokenAmount: 1,
         mainBox: getMainReputationBox($reputation_proof)
       });
 
       toasts.success($demoMode ? 'Coverage claimed (demo mode).' : 'Coverage published on-chain.');
+      serviceId = '';
       dispatch('created', { txId });
     } catch (error: any) {
       toasts.error(error?.message || 'Coverage submission failed.');
@@ -49,6 +58,16 @@
 </script>
 
 <div class="claim-wrapper">
+  <input
+    class="claim-service-input"
+    type="text"
+    bind:value={serviceId}
+    placeholder="Service id to cover"
+    disabled={!$walletConnected || submitting}
+    spellcheck="false"
+    autocomplete="off"
+    on:keydown={(e) => { if (e.key === 'Enter') handleClaim(); }}
+  />
   <button
     class="claim-btn"
     class:claim-btn-active={$walletConnected}
@@ -77,6 +96,29 @@
   .claim-wrapper {
     position: relative;
     display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .claim-service-input {
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    min-width: 14rem;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .claim-service-input::placeholder {
+    color: hsl(var(--muted-foreground));
+    font-family: inherit;
+  }
+
+  .claim-service-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .claim-btn {
