@@ -3,6 +3,7 @@
  * Handles chain queries, box parsing, and demo data.
  */
 
+import { hexToUtf8 } from './ergo/envs';
 import type { Skill, Coverage, Benchmark, Result } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
 import {
@@ -339,13 +340,17 @@ function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
 
 /** Parse a raw Explorer box into a Skill, or null if unparseable. */
 export function parseSkillBox(box: any): Skill | null {
+  console.log("Parsing skill box:", box);
   try {
-    const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+    const rawValue = box.additionalRegisters?.R9?.renderedValue || '';
+    const potentialString = hexToUtf8(rawValue);
     let parsed: any = {};
-    try {
-      parsed = JSON.parse(r9);
-    } catch {
-      parsed = { name: r9 || box.boxId.slice(0, 8) };
+    if (potentialString) {
+      try {
+          parsed = JSON.parse(potentialString);
+      } catch {
+          parsed = potentialString;
+      }
     }
     const profileId = deriveProfileId(box, parsed, box.boxId);
     return {

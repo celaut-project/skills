@@ -1,0 +1,4 @@
+
+Boolean Satisfiability Problem Solver
+
+The Boolean Satisfiability Problem (SAT) solver addresses the challenge of automated propositional reasoning in NP-complete discrete search spaces. It solves the problem of combinatorial explosion by determining if a set of boolean constraints can be simultaneously satisfied. By encoding complex systems into propositional formulas, it replaces brute-force search with systematic deduction. The solver either provides a valid configuration (model) for satisfiable formulas or mathematically proves the existence of logical contradictions for unsatisfiable ones, making it essential for hardware verification, software bug detection, and automated scheduling.
