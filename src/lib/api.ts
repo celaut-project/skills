@@ -76,6 +76,19 @@ async function collectBoxes(
   return all;
 }
 
+/**
+ * Parse a box's R9 JSON payload.
+ *
+ * The Explorer returns R9 (a Coll[Byte]) as a HEX string, so it must be
+ * `hexToUtf8`-decoded before `JSON.parse` — parsing the raw hex throws and was
+ * silently dropping every benchmark/coverage/result (only `parseSkillBox` was
+ * decoding correctly). Throws on malformed JSON; callers wrap in try/catch.
+ */
+function parseBoxR9(box: any): any {
+  const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+  return JSON.parse(hexToUtf8(rendered) || '');
+}
+
 /** Format a service ID for display — show truncated hash in monospace style. */
 export function formatServiceId(serviceId?: string, boxId?: string): string {
   const id = serviceId || boxId || '';
@@ -417,8 +430,7 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   const direct = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         return {
           boxId: box.boxId,
@@ -472,8 +484,7 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   const benchmarks = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         return {
           id: box.boxId,
@@ -503,8 +514,7 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
   const results = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         const rawCases = Array.isArray(parsed.data) ? parsed.data : [];
         const data = rawCases.map((c: any) => ({

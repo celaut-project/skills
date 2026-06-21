@@ -13,12 +13,15 @@
   let showTooltip = false;
   let submitting = false;
 
-  // The coverage's service id is provided by the user, NOT derived from the
-  // wallet address. A coverage asserts that a specific service (by its id)
-  // covers the skill — that id belongs to the service, not to the claimant.
+  // The coverage's service id is provided by the user via the modal form, NOT
+  // derived from the wallet address. A coverage asserts that a specific service
+  // (by its id) covers the skill — that id belongs to the service, not the
+  // claimant.
+  let showModal = false;
   let serviceId = '';
 
-  async function handleClaim() {
+  /** Open the claim modal (after the cheap wallet/skill guards). */
+  function openModal() {
     if (!$walletConnected) {
       toasts.error('Connect wallet to claim coverage.');
       return;
@@ -27,6 +30,17 @@
       toasts.error('Select a skill first.');
       return;
     }
+    serviceId = '';
+    showModal = true;
+  }
+
+  function closeModal() {
+    if (submitting) return;
+    showModal = false;
+    serviceId = '';
+  }
+
+  async function submitClaim() {
     const trimmedServiceId = serviceId.trim();
     if (!trimmedServiceId) {
       toasts.error('Enter the service id you are claiming coverage for.');
@@ -47,32 +61,23 @@
       });
 
       toasts.success($demoMode ? 'Coverage claimed (demo mode).' : 'Coverage published on-chain.');
+      submitting = false;
+      showModal = false;
       serviceId = '';
       dispatch('created', { txId });
     } catch (error: any) {
       toasts.error(error?.message || 'Coverage submission failed.');
-    } finally {
       submitting = false;
     }
   }
 </script>
 
 <div class="claim-wrapper">
-  <input
-    class="claim-service-input"
-    type="text"
-    bind:value={serviceId}
-    placeholder="Service id to cover"
-    disabled={!$walletConnected || submitting}
-    spellcheck="false"
-    autocomplete="off"
-    on:keydown={(e) => { if (e.key === 'Enter') handleClaim(); }}
-  />
   <button
     class="claim-btn"
     class:claim-btn-active={$walletConnected}
     disabled={!$walletConnected || submitting}
-    on:click={handleClaim}
+    on:click={openModal}
     on:mouseenter={() => showTooltip = true}
     on:mouseleave={() => showTooltip = false}
     on:focus={() => showTooltip = true}
@@ -81,30 +86,120 @@
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
-    {#if submitting}
-      Claiming...
-    {:else}
-      Claim Coverage
-    {/if}
+    Claim Coverage
   </button>
   {#if showTooltip && !$walletConnected}
     <div class="claim-tooltip">Connect wallet to claim coverage</div>
   {/if}
 </div>
 
+{#if showModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="claim-modal-backdrop" on:click={closeModal}>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="claim-modal-content" on:click|stopPropagation role="dialog" aria-modal="true" aria-label="Claim coverage">
+      <div class="claim-modal-header">
+        <h3 class="claim-modal-title">Claim Coverage</h3>
+        <button class="claim-modal-close" on:click={closeModal} disabled={submitting} aria-label="Close">✕</button>
+      </div>
+      <p class="claim-modal-desc">
+        Enter the <strong>service id</strong> that covers this skill. The coverage
+        names the service — not your wallet.
+      </p>
+      <!-- svelte-ignore a11y-autofocus -->
+      <input
+        class="claim-service-input"
+        type="text"
+        bind:value={serviceId}
+        placeholder="Service id (hex)"
+        disabled={submitting}
+        spellcheck="false"
+        autocomplete="off"
+        autofocus
+        on:keydown={(e) => { if (e.key === 'Enter') submitClaim(); }}
+      />
+      <div class="claim-modal-actions">
+        <button class="claim-modal-cancel" on:click={closeModal} disabled={submitting}>Cancel</button>
+        <button class="claim-modal-submit" on:click={submitClaim} disabled={submitting || !serviceId.trim()}>
+          {#if submitting}Claiming…{:else}Claim Coverage{/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style lang="postcss">
   .claim-wrapper {
     position: relative;
     display: inline-flex;
+  }
+
+  /* ── Claim modal ──────────────────────────────────────────────────────── */
+  .claim-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    padding: 1rem;
+    background-color: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+  }
+
+  .claim-modal-content {
+    width: 100%;
+    max-width: 28rem;
+    border-radius: 0.875rem;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    padding: 1.25rem 1.25rem 1rem;
+  }
+
+  .claim-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .claim-modal-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    margin: 0;
+  }
+
+  .claim-modal-close {
+    border: none;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.25rem;
+  }
+
+  .claim-modal-close:hover:not(:disabled) {
+    color: hsl(var(--foreground));
+  }
+
+  .claim-modal-desc {
+    font-size: 0.85rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0 0 0.875rem;
+    line-height: 1.5;
   }
 
   .claim-service-input {
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.625rem 0.75rem;
     border-radius: 0.5rem;
     font-size: 0.875rem;
-    min-width: 14rem;
     border: 1px solid hsl(var(--border));
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
@@ -118,6 +213,48 @@
 
   .claim-service-input:disabled {
     opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .claim-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .claim-modal-cancel,
+  .claim-modal-submit {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid hsl(var(--border));
+  }
+
+  .claim-modal-cancel {
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .claim-modal-cancel:hover:not(:disabled) {
+    background-color: hsl(var(--muted) / 0.5);
+  }
+
+  .claim-modal-submit {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary) / 0.85);
+  }
+
+  .claim-modal-submit:hover:not(:disabled) {
+    background-color: hsl(var(--primary) / 0.85);
+  }
+
+  .claim-modal-submit:disabled,
+  .claim-modal-cancel:disabled {
+    opacity: 0.55;
     cursor: not-allowed;
   }
 

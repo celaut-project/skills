@@ -31,9 +31,33 @@ export const DEFAULT_EXPLORER_API =
   (typeof process !== 'undefined' && process.env && process.env.CELAUT_EXPLORER_API) ||
   'https://api.ergoplatform.com';
 
+/**
+ * Ergo-tree template hash of the reputation-proof contract. The Explorer's
+ * `/boxes/unspent/search` endpoint REQUIRES this filter — omitting it returns
+ * HTTP 400 (which previously made every query silently yield nothing).
+ *
+ * `reputation-system` compiles this at runtime from `reputation_proof.es`; we
+ * bake the computed value here so the core stays browser-safe (no compiler /
+ * `?raw` import). To recompute after a contract change:
+ *   sha256(compile(reputation_proof.es, {version:1}).template)  (hex)
+ */
+export const REPUTATION_TREE_HASH =
+  'e84b95d84a30df33aa258fe2b9d24c3e75e27a67c6453983c19703029112d147';
+
 const LIMIT_PER_PAGE = 100;
 
 export const isHexId = (v) => typeof v === 'string' && /^[0-9a-fA-F]{4,}$/.test(v);
+
+/** Decode a hex string (Explorer Coll[Byte] renderedValue) to UTF-8 text. */
+function hexToUtf8(hex) {
+  if (!hex || typeof hex !== 'string') return '';
+  const bytes = hexToBytes(hex);
+  try {
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return '';
+  }
+}
 
 function hexToBytes(hex) {
   if (!hex || typeof hex !== 'string' || hex.length % 2 !== 0) return new Uint8Array();
@@ -70,7 +94,7 @@ export async function* searchBoxes(explorerUri, typeNftId, objectPointer, limit)
     const fetchLimit =
       limit !== undefined ? Math.min(LIMIT_PER_PAGE, limit - total) : LIMIT_PER_PAGE;
     const url = `${explorerUri}/api/v1/boxes/unspent/search?offset=${offset}&limit=${fetchLimit}`;
-    const body = { ergoTreeTemplateHash: undefined, registers, assets: [] };
+    const body = { ergoTreeTemplateHash: REPUTATION_TREE_HASH, registers, assets: [] };
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -97,8 +121,10 @@ export async function collectBoxes(typeNftId, objectPointer, limit = 100, explor
 
 export function parseR9(box) {
   try {
-    const r9 = box?.additionalRegisters?.R9?.renderedValue || '';
-    return r9 ? JSON.parse(r9) : {};
+    // R9 is a Coll[Byte] rendered as hex — decode to UTF-8 before JSON.parse.
+    const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+    const decoded = hexToUtf8(rendered);
+    return decoded ? JSON.parse(decoded) : {};
   } catch {
     return {};
   }
