@@ -422,13 +422,20 @@ export async function loadSkills(): Promise<Skill[]> {
 }
 
 /**
- * Load coverages for a given skill box ID.
+ * Load *skill* coverages for a given skill box ID.
  *
- * A Coverage is a service suggested to *run* the skill's benchmarks — a
- * benchmark runner, a distinct concept from the *solution* services ranked in
- * Results. Only explicit Coverage boxes (COVERAGE_TYPE_ID) pointing at the
- * skill count: a service that submitted a Result is a skill solution, not a
- * benchmark runner, and must not be conflated into this list.
+ * A skill coverage is a service that addresses/solves the skill. A service can
+ * become a skill coverage in two ways:
+ *  1. Directly — a Coverage box (COVERAGE_TYPE_ID) pointing at the skill.
+ *  2. Indirectly — by appearing as the `service_id` of a Result submitted
+ *     against a Benchmark of this skill. Submitting a result demonstrably
+ *     proves the service solves the skill, so it counts as a skill coverage.
+ *
+ * NOTE: this is deliberately different from `loadBenchmarkCoverages`, which
+ * lists benchmark *runners* — a Result's service is a skill *solution*, never a
+ * benchmark runner, so it is derived here but NOT there.
+ *
+ * Both sources are merged; direct coverages win, deduped by serviceId.
  */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
@@ -451,7 +458,13 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     .filter(Boolean) as Coverage[];
   await hydrateReputations(direct);
 
-  // Dedupe by serviceId; coverages without a serviceId are kept as-is.
+  // Indirect skill coverages: results → benchmarks → this skill.
+  const benchmarks = await loadBenchmarks(skillBoxId);
+  const resultLists = await Promise.all(benchmarks.map((b) => loadResults(b.id)));
+  const results = resultLists.flat();
+
+  // Merge, deduping by serviceId. Direct coverages win; coverages without a
+  // serviceId are kept as-is (nothing to dedupe on).
   const seenServiceIds = new Set<string>();
   const merged: Coverage[] = [];
   for (const coverage of direct) {
@@ -460,6 +473,17 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
       seenServiceIds.add(coverage.serviceId);
     }
     merged.push(coverage);
+  }
+  for (const result of results) {
+    const serviceId = result.serviceId;
+    if (!serviceId || seenServiceIds.has(serviceId)) continue;
+    seenServiceIds.add(serviceId);
+    merged.push({
+      boxId: result.id,
+      profileId: result.profileId,
+      serviceId,
+      reputation: result.reputation ?? 0
+    } as Coverage);
   }
 
   return merged;
