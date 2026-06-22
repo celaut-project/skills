@@ -849,20 +849,14 @@
       };
       window.addEventListener("popstate", popHandler);
 
-      // Island-header scroll behaviour: hide on scroll down, reveal on scroll
-      // up. requestAnimationFrame throttles the work and a small delta
-      // threshold avoids jitter on trackpads.
-      let lastScrollY = window.scrollY;
+      // Island-header scroll behaviour: the header is shown only at the top of
+      // the page. Once the user scrolls past the threshold it stays hidden in
+      // both directions (no scroll-up reveal) — they reach it by returning to
+      // the top. requestAnimationFrame throttles the work.
       let scrollTicking = false;
-      const scrollDeltaThreshold = 6;
       const updateNav = () => {
         const y = window.scrollY;
-        const delta = y - lastScrollY;
-        if (Math.abs(delta) > scrollDeltaThreshold) {
-          // Always show near the top of the page.
-          navHidden = delta > 0 && y > 80;
-          lastScrollY = y;
-        }
+        navHidden = y > 80;
         scrollTicking = false;
       };
       const scrollHandler = () => {

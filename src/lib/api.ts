@@ -424,15 +424,11 @@ export async function loadSkills(): Promise<Skill[]> {
 /**
  * Load coverages for a given skill box ID.
  *
- * A service can cover a skill in two ways:
- *  1. Directly — a Coverage box (COVERAGE_TYPE_ID) pointing at the skill.
- *  2. Indirectly — by appearing as the `service_id` of a Result submitted
- *     against a Benchmark of this skill. Such a service demonstrably addresses
- *     the skill even when no explicit Coverage box was ever published.
- *
- * Both sources are merged here. Direct coverages take precedence; result-
- * derived coverages are only added for service ids not already present, so the
- * returned list never repeats a serviceId.
+ * A Coverage is a service suggested to *run* the skill's benchmarks — a
+ * benchmark runner, a distinct concept from the *solution* services ranked in
+ * Results. Only explicit Coverage boxes (COVERAGE_TYPE_ID) pointing at the
+ * skill count: a service that submitted a Result is a skill solution, not a
+ * benchmark runner, and must not be conflated into this list.
  */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
@@ -455,13 +451,7 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     .filter(Boolean) as Coverage[];
   await hydrateReputations(direct);
 
-  // Indirect coverages: results → benchmarks → this skill.
-  const benchmarks = await loadBenchmarks(skillBoxId);
-  const resultLists = await Promise.all(benchmarks.map((b) => loadResults(b.id)));
-  const results = resultLists.flat();
-
-  // Merge, deduping by serviceId. Direct coverages win; coverages without a
-  // serviceId are kept as-is (nothing to dedupe on).
+  // Dedupe by serviceId; coverages without a serviceId are kept as-is.
   const seenServiceIds = new Set<string>();
   const merged: Coverage[] = [];
   for (const coverage of direct) {
@@ -471,17 +461,6 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     }
     merged.push(coverage);
   }
-  for (const result of results) {
-    const serviceId = result.serviceId;
-    if (!serviceId || seenServiceIds.has(serviceId)) continue;
-    seenServiceIds.add(serviceId);
-    merged.push({
-      boxId: result.id,
-      profileId: result.profileId,
-      serviceId,
-      reputation: result.reputation ?? 0
-    } as Coverage);
-  }
 
   return merged;
 }
@@ -489,11 +468,10 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
 /**
  * Load coverages that target a Benchmark (object pointer = benchmarkId).
  *
- * Two sources, same merge strategy as `loadCoverages`:
- *  1. Direct  — Coverage boxes published against the benchmark id.
- *  2. Indirect — services that submitted a Result to this benchmark
- *     demonstrably tested it, so each distinct result serviceId becomes a
- *     coverage. Direct coverages win; deduped by serviceId.
+ * Only explicit Coverage boxes published against the benchmark id count. A
+ * service that submitted a Result to this benchmark is a skill *solution*
+ * (ranked in Results), not a benchmark *runner*, so it is deliberately NOT
+ * derived into the coverage list — the two are different purposes.
  */
 export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(benchmarkId)) return [];
@@ -517,7 +495,6 @@ export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Cover
     .filter(Boolean) as Coverage[];
   await hydrateReputations(direct);
 
-  const results = await loadResults(benchmarkId);
   const seenServiceIds = new Set<string>();
   const merged: Coverage[] = [];
   for (const coverage of direct) {
@@ -526,18 +503,6 @@ export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Cover
       seenServiceIds.add(coverage.serviceId);
     }
     merged.push(coverage);
-  }
-  for (const result of results) {
-    const serviceId = result.serviceId;
-    if (!serviceId || seenServiceIds.has(serviceId)) continue;
-    seenServiceIds.add(serviceId);
-    merged.push({
-      boxId: result.id,
-      profileId: result.profileId,
-      serviceId,
-      benchmarkId,
-      reputation: result.reputation ?? 0
-    } as Coverage);
   }
 
   return merged;
