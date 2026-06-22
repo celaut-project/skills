@@ -1201,10 +1201,14 @@
     white-space: nowrap;
   }
 
-  .th-rank { width: 3.5rem; text-align: center; }
-  .th-metric { text-align: right; }
-  .th-runs { width: 3rem; text-align: right; }
-  .th-date { width: 6rem; text-align: right; }
+  /* Scoped under .leaderboard-table so these beat the base
+     `.leaderboard-table th { text-align: left }` on specificity — otherwise
+     the metric/runs/date headers stay left-aligned while their values are
+     right-aligned, leaving labels and numbers misaligned. */
+  .leaderboard-table .th-rank { width: 3.5rem; text-align: center; }
+  .leaderboard-table .th-metric { text-align: right; }
+  .leaderboard-table .th-runs { width: 3rem; text-align: right; }
+  .leaderboard-table .th-date { width: 6rem; text-align: right; }
 
   .leaderboard-row {
     border-top: 1px solid hsl(var(--border));
