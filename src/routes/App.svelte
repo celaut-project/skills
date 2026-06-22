@@ -1040,7 +1040,7 @@
               <span class="profile-summary-value">{profileContributions.submittedSkills.length}</span>
             </div>
             <div class="profile-summary-cell">
-              <span class="profile-summary-label">Coverages</span>
+              <span class="profile-summary-label">Service solutions</span>
               <span class="profile-summary-value">{profileContributions.coverages.length}</span>
             </div>
             <div class="profile-summary-cell">
@@ -1074,7 +1074,7 @@
         {#if profileContributions.coverages.length > 0}
           <section class="detail-section">
             <div class="detail-section-header">
-              <h2 class="detail-section-title">Coverages</h2>
+              <h2 class="detail-section-title">Service solutions</h2>
               <span class="detail-count">{profileContributions.coverages.length}</span>
             </div>
             <div class="space-y-2">
@@ -1349,7 +1349,7 @@
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
               <div class="submit-connect-card">
-                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button> before claiming coverage or publishing benchmarks.</p>
+                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button> before adding a service solution or publishing benchmarks.</p>
               </div>
             </section>
           {/if}
@@ -1494,7 +1494,7 @@
               class:detail-tab-active={detailTab === "coverages"}
               on:click={() => detailTab = "coverages"}
             >
-              Coverages
+              Service solutions
               <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
             </button>
             <button
@@ -1507,7 +1507,7 @@
             <InfoTip title="Three views of the same skill">
               <ul>
                 <li><strong>Benchmarks</strong> — definitions of <em>how</em> performance is measured (case descriptors + performance metrics). Submit results here.</li>
-                <li><strong>Coverages</strong> — which services claim to perform the skill, and how each scores per benchmark, grouped by descriptor.</li>
+                <li><strong>Service solutions</strong> — services that implement (solve) the skill, and how each scores per benchmark, grouped by descriptor. Not to be confused with a benchmark's <em>runner</em> services.</li>
                 <li><strong>Comparative</strong> — the full service × (benchmark → metric) tensor with a single composite score.</li>
               </ul>
             </InfoTip>
@@ -1528,10 +1528,11 @@
           {#if detailTab === "coverages"}
             <section class="detail-section">
               <div class="detail-section-header">
-                <h2 class="detail-section-title">Services Covering This Skill</h2>
+                <h2 class="detail-section-title">Service solutions</h2>
                 <span class="detail-count">{selectedSkill.coverages.length}</span>
-                <InfoTip title="What is a Coverage?">
-                  <p>A <strong>Coverage</strong> is a service's on-chain claim that it can perform the skill. Each coverage is a UTXO pointing back at the Skill box.</p>
+                <InfoTip title="What is a service solution?">
+                  <p>A <strong>service solution</strong> is a service that implements (solves) this skill — its on-chain claim that it can perform the skill, recorded as a Coverage UTXO pointing back at the Skill box. (A service that has submitted a Result counts too.)</p>
+                  <p>These are distinct from a benchmark's <strong>runner</strong> services, which only execute the benchmark.</p>
                   <p>Per service, results are grouped per benchmark with two layers:</p>
                   <ul>
                     <li><strong>Aggregate row</strong> — median value across every case the service ran on that benchmark.</li>
@@ -1541,7 +1542,7 @@
               </div>
               {#if selectedSkill.coverages.length === 0}
                 <div class="detail-empty">
-                  <p>No services registered yet. Be the first to cover this skill.</p>
+                  <p>No service solutions yet. Be the first to solve this skill.</p>
                 </div>
               {:else}
                 <div class="space-y-3">
@@ -1550,7 +1551,7 @@
                     {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
                     <div class="coverage-card">
                       <div class="coverage-card-header">
-                        <ProfileAvatar profileId={cov.profileId} size={18} title={`Coverage submitted by ${cov.profileId}`} />
+                        <ProfileAvatar profileId={cov.profileId} size={18} title={`Service solution submitted by ${cov.profileId}`} />
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
                         <ExplorerLink boxId={cov.boxId} liveTooltip="View Coverage box on Ergo Explorer" />
                         <span class="ml-auto coverage-score">
@@ -1692,7 +1693,7 @@
               </div>
               {#if selectedSkill.coverages.length === 0 || selectedSkill.benchmarks.length === 0}
                 <div class="detail-empty">
-                  <p>Comparison requires at least one coverage and one benchmark.</p>
+                  <p>Comparison requires at least one service solution and one benchmark.</p>
                 </div>
               {:else}
                 {@const matrix = buildComparisonMatrix(selectedSkill)}
@@ -1996,7 +1997,7 @@
           </div>
           <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
           <p class="text-muted-foreground text-sm">
-            Your on-chain reputation profile. Required before publishing skills, claiming coverage, or submitting benchmarks.
+            Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
           </p>
         </div>
 

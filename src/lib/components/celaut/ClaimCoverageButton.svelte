@@ -19,7 +19,7 @@
   export let label: string = '';
 
   $: benchmarkMode = !!benchmarkId;
-  $: btnLabel = label || (benchmarkMode ? 'Suggest Service' : 'Claim Coverage');
+  $: btnLabel = label || (benchmarkMode ? 'Suggest Service' : 'Add Service Solution');
 
   const dispatch = createEventDispatcher<{ created: { txId: string } }>();
   let showTooltip = false;
@@ -116,9 +116,9 @@
   <div class="claim-modal-backdrop" use:portal on:click={closeModal}>
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="claim-modal-content" on:click|stopPropagation role="dialog" aria-modal="true" aria-label={benchmarkMode ? 'Suggest service for benchmark' : 'Claim coverage'}>
+    <div class="claim-modal-content" on:click|stopPropagation role="dialog" aria-modal="true" aria-label={benchmarkMode ? 'Suggest service for benchmark' : 'Add service solution'}>
       <div class="claim-modal-header">
-        <h3 class="claim-modal-title">{benchmarkMode ? 'Suggest Service for Benchmark' : 'Claim Coverage'}</h3>
+        <h3 class="claim-modal-title">{benchmarkMode ? 'Suggest Service for Benchmark' : 'Add Service Solution'}</h3>
         <button class="claim-modal-close" on:click={closeModal} disabled={submitting} aria-label="Close">✕</button>
       </div>
       <p class="claim-modal-desc">
@@ -127,8 +127,8 @@
           following this benchmark's specification. The coverage names the
           service — not your wallet.
         {:else}
-          Enter the <strong>service id</strong> that covers this skill. The coverage
-          names the service — not your wallet.
+          Enter the <strong>service id</strong> of a service that implements (solves)
+          this skill. The coverage names the service — not your wallet.
         {/if}
       </p>
       <!-- svelte-ignore a11y-autofocus -->
