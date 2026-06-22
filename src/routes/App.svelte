@@ -27,7 +27,6 @@
   import InfoTip from "$lib/components/celaut/InfoTip.svelte";
   import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
   import ProfileAvatar from "$lib/components/celaut/ProfileAvatar.svelte";
-  import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
@@ -36,6 +35,7 @@
   import GameOfLife from "$lib/components/celaut/GameOfLife.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
+  import { portal } from "$lib/actions/portal";
 
   // ── API & Types ────────────────────────────────────────────────────────────
   import { formatServiceId, formatSourceHash } from "$lib/api";
@@ -142,6 +142,16 @@
   function openFileSourceModal(hash: string) {
     modalFileHash = hash;
     showFileSourceModal = true;
+  }
+
+  async function copyToClipboard(value: string, message = 'Copied to clipboard') {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toasts.info(message);
+    } catch {
+      toasts.error('Failed to copy');
+    }
   }
 
   function handleFileSourceAdded(txId: string) {
@@ -1258,6 +1268,29 @@
                 <span class="detail-tag">{tag}</span>
               {/each}
             </div>
+
+            <!-- On-chain identifiers, folded into the main card (no separate box). -->
+            <div class="detail-meta-row">
+              <span class="detail-meta-item">
+                <span class="detail-meta-label">Box ID</span>
+                <code class="detail-meta-value">{selectedSkill.boxId}</code>
+              </span>
+              {#if selectedSkill.sourceHash}
+                <span class="detail-meta-item">
+                  <span class="detail-meta-label">Source Hash</span>
+                  <code class="detail-meta-value">{formatSourceHash(selectedSkill.sourceHash)}</code>
+                  <button
+                    class="detail-meta-copy"
+                    title="Copy full hash"
+                    on:click={() => copyToClipboard(selectedSkill?.sourceHash || '', 'Hash copied to clipboard')}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  </button>
+                </span>
+              {/if}
+            </div>
           </div>
 
           <!-- Best service highlight (top-reputation Coverage by results) -->
@@ -1318,9 +1351,6 @@
               </div>
             </section>
           {/if}
-
-          <!-- Skill Metadata -->
-          <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
 
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
@@ -2043,7 +2073,7 @@
 {#if showFileSourceModal}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="file-source-modal-backdrop" on:click={() => showFileSourceModal = false}>
+  <div class="file-source-modal-backdrop" use:portal on:click={() => showFileSourceModal = false}>
     <div class="file-source-modal-content" on:click|stopPropagation>
       <div class="file-source-modal-header">
         <h3 class="text-lg font-semibold">Register Download Source</h3>
@@ -2269,6 +2299,57 @@
     @apply px-3 py-1 rounded-lg text-xs font-medium;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  /* On-chain identifiers folded into the main card (replaces the old box). */
+  .detail-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1.5rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    font-size: 0.75rem;
+  }
+
+  .detail-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .detail-meta-label {
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .detail-meta-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    color: hsl(var(--foreground));
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-meta-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.25rem;
+    border: none;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .detail-meta-copy:hover {
+    color: hsl(var(--foreground));
   }
 
   /* ── Detail sub-tabs ─────────────────────────────────────────────── */
@@ -2872,7 +2953,8 @@
   .file-source-modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    /* Above the sticky navbar; paired with use:portal so it covers the frame. */
+    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;

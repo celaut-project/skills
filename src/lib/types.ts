@@ -67,12 +67,23 @@ export interface Coverage {
   boxId: string;
   profileId: string;
   serviceId?: string;
+  /**
+   * When set, this coverage targets a Benchmark instead of the skill directly —
+   * a suggestion that the named service tests the skill following that
+   * benchmark's specification. Absent for plain skill-level coverages.
+   */
+  benchmarkId?: string;
   reputation?: number;
 }
 
 /** Payload used to create a new Coverage opinion. */
 export interface CoverageCreationInput {
   skillBoxId: string;
+  /**
+   * Target benchmark id. When provided, the coverage points at the benchmark
+   * (object pointer = benchmarkId) rather than the skill box.
+   */
+  benchmarkId?: string;
   serviceId?: string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
@@ -115,6 +126,11 @@ export interface Benchmark {
   caseDescriptors: Descriptor[];
   performanceMetrics: PerformanceMetric[];
   results: Result[];
+  /**
+   * Coverages that target this benchmark — services suggested to test the
+   * skill following this benchmark's spec. Loaded lazily; defaults to [].
+   */
+  coverages?: Coverage[];
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;

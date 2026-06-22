@@ -22,6 +22,9 @@ export interface DataProvider {
   /** Load coverages for a given skill box ID. */
   loadCoverages(skillBoxId: string): Promise<Coverage[]>;
 
+  /** Load coverages that target a given benchmark ID. */
+  loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]>;
+
   /** Load benchmarks for a given skill box ID. */
   loadBenchmarks(skillBoxId: string): Promise<Benchmark[]>;
 

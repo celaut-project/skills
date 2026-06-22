@@ -34,6 +34,11 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   return getProvider().loadCoverages(skillBoxId);
 }
 
+/** Load coverages that target a given benchmark ID. */
+export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+  return getProvider().loadBenchmarkCoverages(benchmarkId);
+}
+
 /** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   return getProvider().loadBenchmarks(skillBoxId);
