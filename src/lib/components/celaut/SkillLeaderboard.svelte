@@ -686,7 +686,6 @@
                     {/each}
                   </ul>
                 {/if}
-                <p class="bench-coverages-hint">Running a service copies its <code>nodo execute</code> command — use it to generate or verify results for this benchmark.</p>
                 <div class="bench-coverages-claim">
                   <ClaimCoverageButton
                     skillBoxId={benchmark.skillBoxId}

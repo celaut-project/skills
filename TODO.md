@@ -1,9 +1,3 @@
-- Tarea: "Actualmente ClaimCoverageButton.svelte obtiene el service id a partir del wallet address, esto es categoricamente erroneo, el service id debe de proporcionarlo el usuario mediante un formulario donde se le proporcione el id del servicio."
-Estado actual: "Se ha agregado el input junto al boton Claim coverage", esto es un error, el input debe aparecer en un modal cuando el usuario pulse el boton.
-
-
-- Ademas de los coverages de una skill obtenidos a partir de COVERAGE_TYPE_ID, loadCoverages() de api.ts debe de obtener los service id que referencian indirectamente que cubren el skill mediante results (de aquellos results relacionados con benchmarks relacionados con la skill),los cuales pueden aparecer en coverages o no. deberás de controlar que no se retornen service ids repetidos en loadCoverages.
-
 - Debemos asegurarnos que ergoProvider.ts cargue todos los datos relacionados con una skill (benchmarks, coverages, results...) tal y como lo hace mockDb.ts, utilizando applySkillInheritance() para aplicar aquellas relaciones de sus herencias (esto tal vez ya se está haciendo, comprobar).  Ademas, mockDb trae todas las skills con getDemoSkills, de forma que ya poseen sus relaciones directas de benchmarks, coverages y results; por el contrario, loadSkills en ergoProvider no posee estas relaciones al descargar las skills del explorador, por lo que en ningun momento se está ejecutando loadBenchmarks ni el resto para cada skill ... esto debe implementarse.
 
 - Se debe de reimplementar MCP.md para que no repita código con respecto a lo ya escrito en src. Para recordar: se requiere de un servidor mcp en nodejs que sea capaz de obtener todos los datos  del sistema (funciones load_* del código).
