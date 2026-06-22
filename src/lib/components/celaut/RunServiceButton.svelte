@@ -16,7 +16,11 @@
 
     try {
       await navigator.clipboard.writeText(command);
-      toasts.success('Run command copied to clipboard.');
+      toasts.success('Run command copied to clipboard.', {
+        detail: "Don't have the node yet? Download and install it here.",
+        detailHref: 'https://github.com/celaut-project/nodo/blob/stable/README.md#installation',
+        duration: 10000
+      });
     } catch {
       toasts.error('Failed to copy command.');
     }
