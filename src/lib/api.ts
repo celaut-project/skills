@@ -1189,6 +1189,76 @@ export function getDemoSkills(): Skill[] {
         }
       ],
       resultCount: 7
+    },
+    // ── Skill: MoneyMaker (a tasteful little joke) ──
+    // Hand the agent $100 and full autonomy; the only acceptance criterion is
+    // ending with more money than it started with. Demonstrates a benchmark
+    // that carries a real caseDescriptor (starting_capital_usd) alongside two
+    // directional metrics.
+    {
+      boxId: 'demo-moneymaker',
+      name: 'MoneyMaker',
+      prose: 'You hand the agent exactly $100 and step away. It may do literally anything — trade, arbitrage, sell lemonade, write haikus for hire — under one ironclad rule: when the music stops, there must be more money than you started with. No strategy is prescribed; greed is the only spec. Losing the float is an automatic fail (and mildly embarrassing).',
+      formal: '',
+      tags: ['money', 'autonomy', 'trading', 'just-make-number-go-up'],
+      domain: 'finance',
+      extendedSkillBoxIds: [],
+      sourceHash: 'm0n3yc0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7m0n',
+      coverages: [
+        { boxId: 'cov-mm-001', serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a' },
+        { boxId: 'cov-mm-002', serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q' }
+      ],
+      benchmarks: [
+        {
+          id: 'bench-mm-001',
+          skillBoxId: 'demo-moneymaker',
+          name: 'Return on the $100 Float',
+          description: 'Start the agent with a fixed cash float (the case descriptor) and let it run for a day. Net profit in USD is what matters; we also clock how long it took to double the money.',
+          caseDescriptors: [
+            { name: 'starting_capital_usd', description: 'The cash float the agent is handed at t=0, in USD.' }
+          ],
+          performanceMetrics: [
+            { name: 'net_profit_usd', description: 'USD left over the starting float at end of day. Higher is better.', higherIsBetter: true },
+            { name: 'time_to_double_hours', description: 'Hours until the float doubled (capped at 24 if never). Lower is better.', higherIsBetter: false }
+          ],
+          results: [
+            {
+              id: 'res-mm-001',
+              benchmarkId: 'bench-mm-001',
+              serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a',
+              notes: 'Flipped the float into a meme coin at exactly the right minute. Will not replicate.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [100], metricsValues: [248.5, 3.5] },
+                { caseMeta: [1000], metricsValues: [1810.0, 6.0] }
+              ]
+            },
+            {
+              id: 'res-mm-002',
+              benchmarkId: 'bench-mm-001',
+              serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q',
+              notes: 'Sold AI-generated haikus to other agents. Slow but never dipped below break-even.',
+              timestamp: 1733702400,
+              data: [
+                { caseMeta: [100], metricsValues: [12.0, 24.0] }
+              ]
+            }
+          ]
+        },
+        singleMetricBenchmark({
+          id: 'bench-mm-002',
+          skillBoxId: 'demo-moneymaker',
+          name: 'Did Not Lose It All Rate',
+          description: 'Share of runs that ended at or above the starting float. The whole point of the skill, really. Higher is better.',
+          metricName: 'survival_rate_pct',
+          higherIsBetter: true,
+          results: [
+            { id: 'res-mm-003', serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a', value: 82.0, notes: 'Bold, occasionally rugged', timestamp: 1734307200 },
+            { id: 'res-mm-004', serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q', value: 99.0, notes: 'Boring. Profitable. Beloved.', timestamp: 1733702400 }
+          ]
+        })
+      ],
+      resultCount: 5
     }
   ];
 

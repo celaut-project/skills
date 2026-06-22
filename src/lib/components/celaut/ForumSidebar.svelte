@@ -99,8 +99,11 @@
     /* Per Josemi 2026-06-16: bumped from 380px → 520px. Forum threads include
        multi-line prompts and quoted prior posts; the narrower rail was forcing
        awkward word-wrapping and made the embedded composer feel cramped.
-       Capped at 90vw so phones still get a near-full-bleed panel. */
-    width: 520px;
+       2026-06-22: switched to a viewport-relative 40vw so the rail scales with
+       wide screens, with a min-width floor so phones/narrow windows keep a
+       usable composer and a 90vw cap so it never fully covers the page. */
+    width: 40vw;
+    min-width: 320px;
     max-width: 90vw;
     background: hsl(var(--background));
     border-left: 1px solid hsl(var(--border));

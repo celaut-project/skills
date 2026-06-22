@@ -7,21 +7,78 @@
    *   2. Tokens sacrificed (`total_burned_string` from reputation-system)
    */
   import { total_burned_string, type ReputationProof } from 'reputation-system';
+  import { hexToUtf8 } from '$lib/ergo/envs';
 
   export let proof: ReputationProof;
 
-  // Pretty-print the profile's R9/content blob. The shape isn't strictly typed
-  // by the library (it's `object`), so we coerce to string for display.
-  $: r9Display = (() => {
-    const data = (proof as any).data;
-    if (data == null) return '(empty)';
-    if (typeof data === 'string') return data;
-    try {
-      return JSON.stringify(data, null, 2);
-    } catch {
-      return String(data);
+  type Row = { key: string; value: string };
+
+  /**
+   * Normalize the profile's R9/content blob into key/value rows.
+   *
+   * The on-chain R9 payload reaches us in several shapes depending on how the
+   * profile was minted, and the previous card just dumped whichever one it got
+   * as raw JSON (and often showed nothing, because a hex-encoded blob isn't
+   * valid JSON to `JSON.stringify`). We now resolve it defensively:
+   *   - a plain object  → one row per field
+   *   - a JSON string   → parsed, then one row per field
+   *   - a hex-encoded   → UTF-8 decoded first (R9 is a Coll[Byte]), then parsed
+   *   - any leftover    → a single "value" row
+   * Nothing here throws; an unparseable blob degrades to a best-effort string.
+   */
+  function toRows(raw: unknown): Row[] {
+    let data: unknown = raw;
+
+    // Unwrap string payloads: JSON first, then hex→UTF-8→JSON.
+    if (typeof data === 'string') {
+      const s = data.trim();
+      if (!s) return [];
+      try {
+        data = JSON.parse(s);
+      } catch {
+        const decoded = /^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0
+          ? hexToUtf8(s)
+          : null;
+        if (decoded) {
+          try {
+            data = JSON.parse(decoded);
+          } catch {
+            data = decoded;
+          }
+        }
+      }
     }
-  })();
+
+    if (data == null) return [];
+
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      return Object.entries(data as Record<string, unknown>).map(([key, value]) => ({
+        key,
+        value: stringifyValue(value)
+      }));
+    }
+
+    if (Array.isArray(data)) {
+      return data.map((value, i) => ({ key: `[${i}]`, value: stringifyValue(value) }));
+    }
+
+    return [{ key: 'value', value: stringifyValue(data) }];
+  }
+
+  function stringifyValue(value: unknown): string {
+    if (value == null) return '—';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  $: r9Rows = toRows((proof as any).data);
 
   $: burned = total_burned_string(proof);
   $: tokenIdShort = proof.token_id
@@ -40,7 +97,20 @@
   </div>
   <div class="profile-details-row profile-details-row-stack">
     <span class="profile-details-label">R9 data</span>
-    <pre class="profile-details-r9">{r9Display}</pre>
+    {#if r9Rows.length}
+      <table class="profile-details-table">
+        <tbody>
+          {#each r9Rows as row}
+            <tr>
+              <th scope="row">{row.key}</th>
+              <td>{row.value}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {:else}
+      <span class="profile-details-empty">(empty)</span>
+    {/if}
   </div>
 </div>
 
@@ -88,16 +158,38 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-weight: 600;
   }
-  .profile-details-r9 {
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    background: var(--muted, #f3f4f6);
-    border-radius: 0.5rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  .profile-details-table {
+    width: 100%;
+    border-collapse: collapse;
     font-size: 0.75rem;
-    max-height: 12rem;
-    overflow: auto;
-    white-space: pre-wrap;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  .profile-details-table tr {
+    border-bottom: 1px solid var(--border, #e5e7eb);
+  }
+  .profile-details-table tr:last-child {
+    border-bottom: 0;
+  }
+  .profile-details-table th {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.375rem 0.625rem;
+    width: 35%;
+    font-weight: 600;
+    color: var(--muted-foreground, #6b7280);
+    background: var(--muted, #f3f4f6);
+    white-space: nowrap;
+  }
+  .profile-details-table td {
+    padding: 0.375rem 0.625rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     word-break: break-word;
+  }
+  .profile-details-empty {
+    font-size: 0.75rem;
+    color: var(--muted-foreground, #6b7280);
+    font-style: italic;
   }
 </style>

@@ -68,6 +68,9 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
+  // Minimum-reputation gallery filter: hide skills whose aggregate reputation
+  // falls below this threshold. 0 = show everything (default).
+  let minReputation = 0;
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
   let detailVisible = false;
@@ -470,9 +473,18 @@
     return Array.from(byName.values());
   }
 
+  // Apply the minimum-reputation gallery filter on top of search/category.
+  function filterByReputation(list: Skill[], min: number): Skill[] {
+    if (!min || min <= 0) return list;
+    return list.filter(s => calculateSkillReputation(s).total >= min);
+  }
+
   $: displayedSkills = sortSkills(
     pickCanonicalByName(
-      filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId))
+      filterByReputation(
+        filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId)),
+        minReputation
+      )
     ),
     currentSort
   );
@@ -951,64 +963,48 @@
   class:navbar-hidden={navHidden}
 >
   <div class="navbar-content">
+    <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
+         in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
       <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
-      <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
-        <div class="relative w-full">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      <nav class="navbar-tabs">
+        <button
+          class="tab-btn"
+          class:active={activeTab === "gallery"}
+          on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
           </svg>
-          <input
-            type="text"
-            bind:value={searchQuery}
-            placeholder="Search skills, tags, domains..."
-            class="search-input"
-          />
-        </div>
-      </div>
+          Skills Gallery
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "submit"}
+          on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
+        >
+          Submit Skill
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "profile"}
+          on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
+        >
+          <span class="tab-avatar">
+            <ProfileAvatar profileId={$reputation_proof?.token_id} size={18} clickable={false} title="Your profile" />
+          </span>
+          Profile
+        </button>
+      </nav>
 
       <div class="flex items-center gap-3">
         <WalletButton explorerUrl={$web_explorer_uri_addr} />
         <Theme />
       </div>
     </div>
-
-    <!-- Tabs live inside the island header. -->
-    <nav class="navbar-tabs">
-      <button
-        class="tab-btn"
-        class:active={activeTab === "gallery"}
-        on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-        </svg>
-        Skills Gallery
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === "submit"}
-        on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-        </svg>
-        Submit Skill
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === "profile"}
-        on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-        Profile
-      </button>
-    </nav>
   </div>
 </header>
 
@@ -1820,6 +1816,36 @@
           </div>
         </div>
 
+        <!-- Gallery search + min-reputation filter (moved out of the header). -->
+        <div class="gallery-controls">
+          <div class="gallery-search">
+            <svg class="gallery-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              bind:value={searchQuery}
+              placeholder="Search skills, tags, domains..."
+              class="search-input"
+              aria-label="Search skills"
+            />
+            {#if searchQuery}
+              <button class="gallery-search-clear" on:click={() => (searchQuery = "")} aria-label="Clear search" title="Clear search">✕</button>
+            {/if}
+          </div>
+          <label class="gallery-minrep">
+            <span class="gallery-minrep-label">Min reputation</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              bind:value={minReputation}
+              class="gallery-minrep-input"
+              aria-label="Minimum reputation"
+            />
+          </label>
+        </div>
+
         {#if loading}
           <div class="skills-grid">
             {#each [0, 1, 2, 3, 4, 5] as i}
@@ -1848,8 +1874,8 @@
               </svg>
             </div>
             <p class="text-lg font-semibold">No skills found</p>
-            {#if searchQuery || activeCategory !== "all"}
-              <p class="text-sm text-muted-foreground mt-1">Try a different search term or category.</p>
+            {#if searchQuery || activeCategory !== "all" || minReputation > 0}
+              <p class="text-sm text-muted-foreground mt-1">Try a different search term, category, or lower the minimum reputation.</p>
             {:else}
               <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
             {/if}
@@ -2123,9 +2149,12 @@
   }
 
   .navbar-tabs {
-    @apply flex items-center justify-center gap-2 w-full;
-    border-top: 1px solid hsl(var(--border) / 0.6);
-    padding-top: 0.5rem;
+    @apply flex items-center justify-center gap-2 flex-1;
+  }
+
+  /* Profile-tab identicon sits where the old person icon was. */
+  .tab-avatar {
+    @apply inline-flex items-center;
   }
 
   .logo-container {
@@ -2192,6 +2221,46 @@
 
   .gallery-title {
     @apply text-xl font-bold;
+  }
+
+  /* ── Gallery search + min-reputation controls ───────────────────────── */
+  .gallery-controls {
+    @apply flex items-center gap-3 mb-6 flex-wrap;
+  }
+  .gallery-search {
+    @apply relative flex-1;
+    min-width: 220px;
+  }
+  .gallery-search-icon {
+    @apply absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none;
+  }
+  .gallery-search .search-input {
+    @apply pr-9;
+  }
+  .gallery-search-clear {
+    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs leading-none px-1.5 py-1 rounded;
+  }
+  .gallery-search-clear:hover {
+    @apply text-foreground;
+    background: hsl(var(--muted) / 0.5);
+  }
+  .gallery-minrep {
+    @apply flex items-center gap-2 text-sm text-muted-foreground;
+  }
+  .gallery-minrep-label {
+    @apply whitespace-nowrap;
+  }
+  .gallery-minrep-input {
+    @apply w-20 px-2.5 py-2 rounded-lg text-sm;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .gallery-minrep-input:focus {
+    @apply outline-none;
+    background: hsl(var(--background));
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
   }
 
   .refresh-btn {
