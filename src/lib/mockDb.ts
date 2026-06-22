@@ -82,6 +82,12 @@ class MockDatabase implements DataProvider {
     return this.clone(skill.benchmarks);
   }
 
+  async loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+    const match = this.findBenchmark(benchmarkId);
+    if (!match) return [];
+    return this.clone(match.benchmark.coverages ?? []);
+  }
+
   async loadResults(benchmarkId: string): Promise<Result[]> {
     for (const skill of this.skills) {
       for (const bench of skill.benchmarks) {
@@ -117,12 +123,30 @@ class MockDatabase implements DataProvider {
   }
 
   async createCoverage(input: CoverageCreationInput): Promise<string> {
+    const profileId = this.getProfileId(input.mainBox);
+
+    // Benchmark-targeted coverage: attach to the benchmark, not the skill.
+    if (input.benchmarkId) {
+      const match = this.findBenchmark(input.benchmarkId);
+      if (!match) {
+        throw new Error(`Benchmark ${input.benchmarkId} not found.`);
+      }
+      if (!match.benchmark.coverages) match.benchmark.coverages = [];
+      match.benchmark.coverages.push({
+        boxId: this.createId('cov'),
+        profileId,
+        serviceId: input.serviceId,
+        benchmarkId: input.benchmarkId,
+        reputation: 0
+      });
+      return this.createTxId('coverage');
+    }
+
     const skill = this.findSkill(input.skillBoxId);
     if (!skill) {
       throw new Error(`Skill ${input.skillBoxId} not found.`);
     }
 
-    const profileId = this.getProfileId(input.mainBox);
     skill.coverages.push({
       boxId: this.createId('cov'),
       profileId,
@@ -149,6 +173,7 @@ class MockDatabase implements DataProvider {
       caseDescriptors: [...(input.caseDescriptors ?? [])],
       performanceMetrics: [...(input.performanceMetrics ?? [])],
       results: [],
+      coverages: [],
       reputation: 0,
       sourceHash: input.sourceHash
     });

@@ -327,6 +327,16 @@ function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
           performanceMetrics: benchmark.performanceMetrics,
           sourceHash: benchmark.sourceHash,
           reputation: demoReputationFor(benchmarkProfileId),
+          coverages: (benchmark.coverages ?? []).map((coverage) => {
+            const coverageProfileId = demoProfileId(`bench-coverage-${coverage.serviceId || coverage.boxId}`);
+            return {
+              boxId: coverage.boxId,
+              profileId: coverageProfileId,
+              serviceId: coverage.serviceId,
+              benchmarkId: benchmark.id,
+              reputation: demoReputationFor(coverageProfileId)
+            } as Coverage;
+          }),
           results: benchmark.results.map((result) => {
             const resultProfileId = demoProfileId(`result-${result.serviceId}-${result.id}`);
             return {
@@ -476,6 +486,63 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   return merged;
 }
 
+/**
+ * Load coverages that target a Benchmark (object pointer = benchmarkId).
+ *
+ * Two sources, same merge strategy as `loadCoverages`:
+ *  1. Direct  — Coverage boxes published against the benchmark id.
+ *  2. Indirect — services that submitted a Result to this benchmark
+ *     demonstrably tested it, so each distinct result serviceId becomes a
+ *     coverage. Direct coverages win; deduped by serviceId.
+ */
+export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+  if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(benchmarkId)) return [];
+  const boxes = await collectBoxes(COVERAGE_TYPE_ID, benchmarkId);
+  const direct = boxes
+    .map((box: any) => {
+      try {
+        const parsed = parseBoxR9(box);
+        const profileId = deriveProfileId(box, parsed, box.boxId);
+        return {
+          boxId: box.boxId,
+          profileId,
+          serviceId: parsed.service_id || undefined,
+          benchmarkId,
+          reputation: 0
+        } as Coverage;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as Coverage[];
+  await hydrateReputations(direct);
+
+  const results = await loadResults(benchmarkId);
+  const seenServiceIds = new Set<string>();
+  const merged: Coverage[] = [];
+  for (const coverage of direct) {
+    if (coverage.serviceId) {
+      if (seenServiceIds.has(coverage.serviceId)) continue;
+      seenServiceIds.add(coverage.serviceId);
+    }
+    merged.push(coverage);
+  }
+  for (const result of results) {
+    const serviceId = result.serviceId;
+    if (!serviceId || seenServiceIds.has(serviceId)) continue;
+    seenServiceIds.add(serviceId);
+    merged.push({
+      boxId: result.id,
+      profileId: result.profileId,
+      serviceId,
+      benchmarkId,
+      reputation: result.reputation ?? 0
+    } as Coverage);
+  }
+
+  return merged;
+}
+
 /** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
@@ -495,6 +562,7 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
           caseDescriptors: Array.isArray(parsed.case_descriptors) ? parsed.case_descriptors : [],
           performanceMetrics: Array.isArray(parsed.performance_metrics) ? parsed.performance_metrics : [],
           results: [],
+          coverages: [],
           sourceHash: parsed.source_hash,
           reputation: 0
         } as Benchmark;
@@ -561,6 +629,8 @@ function singleMetricBenchmark(opts: {
   metricName: string;
   higherIsBetter: boolean;
   sourceHash?: string;
+  /** Coverages targeting this benchmark (services suggested to test it). */
+  coverages?: Array<{ boxId: string; serviceId: string }>;
   results: Array<{ id: string; serviceId: string; value: number; notes?: string; timestamp: number; sourceHash?: string }>;
 }): Benchmark {
   return {
@@ -572,6 +642,13 @@ function singleMetricBenchmark(opts: {
     caseDescriptors: [],
     performanceMetrics: [{ name: opts.metricName, description: opts.description, higherIsBetter: opts.higherIsBetter }],
     sourceHash: opts.sourceHash,
+    coverages: (opts.coverages ?? []).map((c) => ({
+      boxId: c.boxId,
+      profileId: '', // filled in by enrichDemoSkills
+      serviceId: c.serviceId,
+      benchmarkId: opts.id,
+      reputation: 0
+    })),
     results: opts.results.map((r) => ({
       id: r.id,
       profileId: '', // filled in by enrichDemoSkills
@@ -610,6 +687,10 @@ export function getDemoSkills(): Skill[] {
           metricName: 'sharpe_ratio',
           higherIsBetter: true,
           sourceHash: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
+          coverages: [
+            { boxId: 'bcov-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a' },
+            { boxId: 'bcov-002', serviceId: 'QmP2sV7hWnR9xK4tL6mDc8eFj3bYa5z1q' }
+          ],
           results: [
             { id: 'res-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', value: 2.41, notes: 'Consistent alpha over 30d window', timestamp: 1734134400 },
             { id: 'res-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', value: 1.87, notes: 'Good but higher drawdowns', timestamp: 1733529600 },

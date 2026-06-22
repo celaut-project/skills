@@ -14,7 +14,7 @@ import type {
   BenchmarkCreationInput,
   ResultCreationInput
 } from './types';
-import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
+import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
 import { ApiError } from './types';
 import { create_profile, create_opinion } from 'reputation-system';
 import type { RPBox } from 'source-application';
@@ -57,7 +57,12 @@ class ErgoDataProvider implements DataProvider {
 
         await Promise.all(
           benchmarks.map(async (benchmark) => {
-            benchmark.results = await apiLoadResults(benchmark.id);
+            const [results, benchmarkCoverages] = await Promise.all([
+              apiLoadResults(benchmark.id),
+              apiLoadBenchmarkCoverages(benchmark.id)
+            ]);
+            benchmark.results = results;
+            benchmark.coverages = benchmarkCoverages;
           })
         );
 
@@ -77,6 +82,10 @@ class ErgoDataProvider implements DataProvider {
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     return apiLoadCoverages(skillBoxId);
+  }
+
+  async loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+    return apiLoadBenchmarkCoverages(benchmarkId);
   }
 
   async loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
@@ -118,14 +127,20 @@ class ErgoDataProvider implements DataProvider {
   }
 
   async createCoverage(input: CoverageCreationInput): Promise<string> {
+    // A coverage may target either the skill (default) or one of its
+    // benchmarks. When `benchmarkId` is set, the opinion points at the
+    // benchmark box and records the benchmark id in its payload.
+    const targetBenchmark = !!input.benchmarkId;
+    const objectPointer = targetBenchmark ? input.benchmarkId! : input.skillBoxId;
     const txId = await create_opinion(
       'https://api.ergoplatform.com',
       input.tokenAmount ?? 1,
       COVERAGE_TYPE_ID,
-      input.skillBoxId,
+      objectPointer,
       true,
       {
         skill_box_id: input.skillBoxId,
+        benchmark_id: input.benchmarkId ?? null,
         service_id: input.serviceId ?? null
       },
       LOCKED,
