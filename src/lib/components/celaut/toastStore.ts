@@ -4,19 +4,30 @@ export interface ToastItem {
   id: number;
   message: string;
   type: 'success' | 'error' | 'info';
+  detail?: string;
+  detailHref?: string;
 }
+
+export interface ToastOptions {
+  detail?: string;
+  detailHref?: string;
+  duration?: number;
+}
+
+const DEFAULT_DURATION = 4000;
 
 let nextId = 0;
 
 function createToastStore() {
   const { subscribe, update } = writable<ToastItem[]>([]);
 
-  function add(message: string, type: ToastItem['type'] = 'info') {
+  function add(message: string, type: ToastItem['type'] = 'info', options: ToastOptions = {}) {
     const id = nextId++;
-    update(toasts => [...toasts, { id, message, type }]);
+    const { detail, detailHref, duration = DEFAULT_DURATION } = options;
+    update(toasts => [...toasts, { id, message, type, detail, detailHref }]);
     setTimeout(() => {
       dismiss(id);
-    }, 4000);
+    }, duration);
   }
 
   function dismiss(id: number) {
@@ -25,9 +36,9 @@ function createToastStore() {
 
   return {
     subscribe,
-    success: (msg: string) => add(msg, 'success'),
-    error: (msg: string) => add(msg, 'error'),
-    info: (msg: string) => add(msg, 'info'),
+    success: (msg: string, options?: ToastOptions) => add(msg, 'success', options),
+    error: (msg: string, options?: ToastOptions) => add(msg, 'error', options),
+    info: (msg: string, options?: ToastOptions) => add(msg, 'info', options),
     dismiss
   };
 }
