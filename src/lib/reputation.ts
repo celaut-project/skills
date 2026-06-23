@@ -160,11 +160,27 @@ export function calculateResultReputation(result: Result, siblings?: Result[]): 
   };
 }
 
+/** nanoERG per 1 ERG. Reputation is stored on-chain as burned nanoERG. */
+export const NANOERG_PER_ERG = 1e9;
+
 /**
- * Format a reputation score for display.
+ * Format a reputation score for display, in ERG.
+ *
+ * Stored reputation values are burned ERG amounts in nanoERG (as returned by
+ * the reputation-system `calculate_reputation`). This converts to ERG and
+ * appends an "ERG"/"ERGs" suffix (singular only when the amount is exactly 1).
  */
 export function formatReputation(score: number): string {
-  if (score >= 100) return score.toFixed(0);
-  if (score >= 10) return score.toFixed(1);
-  return score.toFixed(2);
+  const erg = (score ?? 0) / NANOERG_PER_ERG;
+  let num: string;
+  if (erg === 0) num = '0';
+  else if (erg >= 100) num = erg.toFixed(0);
+  else if (erg >= 10) num = erg.toFixed(1);
+  else if (erg >= 1) num = erg.toFixed(2);
+  else {
+    // Sub-1 ERG amounts: a few significant digits, trailing zeros trimmed.
+    num = parseFloat(erg.toPrecision(2)).toString();
+  }
+  const unit = erg === 1 ? 'ERG' : 'ERGs';
+  return `${num} ${unit}`;
 }

@@ -42,7 +42,7 @@
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
-  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
+  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation, NANOERG_PER_ERG } from "$lib/reputation";
   import {
     buildComparisonTensor,
     pickBestService,
@@ -474,9 +474,12 @@
   }
 
   // Apply the minimum-reputation gallery filter on top of search/category.
-  function filterByReputation(list: Skill[], min: number): Skill[] {
-    if (!min || min <= 0) return list;
-    return list.filter(s => calculateSkillReputation(s).total >= min);
+  // `minErg` is entered by the user in ERG; stored reputation is nanoERG, so we
+  // convert before comparing.
+  function filterByReputation(list: Skill[], minErg: number): Skill[] {
+    if (!minErg || minErg <= 0) return list;
+    const minNanoErg = minErg * NANOERG_PER_ERG;
+    return list.filter(s => calculateSkillReputation(s).total >= minNanoErg);
   }
 
   $: displayedSkills = sortSkills(
@@ -1835,14 +1838,17 @@
           </div>
           <label class="gallery-minrep">
             <span class="gallery-minrep-label">Min reputation</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              bind:value={minReputation}
-              class="gallery-minrep-input"
-              aria-label="Minimum reputation"
-            />
+            <span class="gallery-minrep-field">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                bind:value={minReputation}
+                class="gallery-minrep-input"
+                aria-label="Minimum reputation in ERGs"
+              />
+              <span class="gallery-minrep-suffix">ERGs</span>
+            </span>
           </label>
         </div>
 
@@ -2250,8 +2256,11 @@
   .gallery-minrep-label {
     @apply whitespace-nowrap;
   }
+  .gallery-minrep-field {
+    @apply relative inline-flex items-center;
+  }
   .gallery-minrep-input {
-    @apply w-20 px-2.5 py-2 rounded-lg text-sm;
+    @apply w-28 pl-2.5 pr-12 py-2 rounded-lg text-sm;
     background: hsl(var(--muted) / 0.5);
     border: 1px solid hsl(var(--border));
     color: hsl(var(--foreground));
@@ -2261,6 +2270,9 @@
     background: hsl(var(--background));
     border-color: hsl(var(--foreground) / 0.3);
     box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
+  }
+  .gallery-minrep-suffix {
+    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none;
   }
 
   .refresh-btn {
