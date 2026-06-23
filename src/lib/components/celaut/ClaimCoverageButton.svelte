@@ -17,6 +17,12 @@
   export let benchmarkId: string = '';
   /** Button label — defaults differ slightly between skill and benchmark mode. */
   export let label: string = '';
+  /**
+   * Button size. `'default'` is the standalone size; `'compact'` matches the
+   * dimensions/weight of the sibling `.submit-result-btn` so the two read as a
+   * consistent pair inside the benchmark card.
+   */
+  export let size: 'default' | 'compact' = 'default';
 
   $: benchmarkMode = !!benchmarkId;
   $: btnLabel = label || (benchmarkMode ? 'Suggest Service' : 'Add Service Solution');
@@ -93,6 +99,7 @@
   <button
     class="claim-btn"
     class:claim-btn-active={$walletConnected}
+    class:claim-btn-compact={size === 'compact'}
     disabled={!$walletConnected || submitting}
     on:click={openModal}
     on:mouseenter={() => showTooltip = true}
@@ -100,7 +107,7 @@
     on:focus={() => showTooltip = true}
     on:blur={() => showTooltip = false}
   >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width={size === 'compact' ? 14 : 16} height={size === 'compact' ? 14 : 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
     {btnLabel}
@@ -296,6 +303,12 @@
     cursor: not-allowed;
     opacity: 0.6;
     transition: all 0.2s ease;
+  }
+
+  /* Compact size: match the sibling `.submit-result-btn` dimensions/weight. */
+  .claim-btn-compact {
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
   }
 
   .claim-btn-active {
