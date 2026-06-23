@@ -5,11 +5,11 @@
 
 import { hexToUtf8 } from './ergo/envs';
 import type { Skill, Coverage, Benchmark, Result } from './types';
-import { ApiError, NetworkError, ParseError } from './types';
 import {
   searchBoxes,
   fetchAllProfiles,
   fetchTypeNfts,
+  fetchProfileById,
   calculate_reputation,
   type ReputationProof,
 } from 'reputation-system';
@@ -144,10 +144,13 @@ export async function hydrateReputations<T extends { profileId: string; reputati
   entities: T[],
 ): Promise<T[]> {
   if (entities.length === 0) return entities;
-  const profileMap = await loadProfileMap();
   for (const e of entities) {
-    const proof = profileMap.get(e.profileId);
+    const proof = await fetchProfileById(EXPLORER_API, e.profileId);
     e.reputation = proof ? calculate_reputation(proof) : 0;
+    console.log("Hydrated reputation for", e.profileId, ":", e.reputation);
+    if (e.reputation === 0) {
+      console.log(proof);
+    }
   }
   return entities;
 }
