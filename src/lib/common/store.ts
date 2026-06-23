@@ -28,7 +28,7 @@ function createPersistentStore<T>(key: string, defaultValue: T) {
 
     if (browser) {
         const storedValue = localStorage.getItem(key);
-        
+
         // Check if value exists and isn't the string "undefined" which breaks JSON.parse
         if (storedValue && storedValue !== "undefined" && storedValue !== "null") {
             try {
@@ -38,6 +38,16 @@ function createPersistentStore<T>(key: string, defaultValue: T) {
                 // This "heals" the corruption automatically
                 console.warn(`Corrupted storage for ${key}, resetting to default.`);
             }
+        }
+
+        // One-time sanitization: older builds let users persist a sigmaspace.io
+        // explorer base, which is less stable than ergoplatform (spent boxes can
+        // 404 and the host has had outages). Any persisted explorer URL still
+        // pointing at sigmaspace.io is reset to the ergoplatform DEFAULT_*
+        // equivalent. The subscribe() below re-persists the healed value.
+        if (typeof initial === 'string' && initial.includes('sigmaspace.io')) {
+            console.warn(`Resetting stale sigmaspace.io explorer URL for ${key} to default.`);
+            initial = defaultValue;
         }
     }
 

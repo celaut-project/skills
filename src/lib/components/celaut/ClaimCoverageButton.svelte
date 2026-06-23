@@ -124,11 +124,10 @@
       <p class="claim-modal-desc">
         {#if benchmarkMode}
           Enter the <strong>service id</strong> of a service that tests this skill
-          following this benchmark's specification. The coverage names the
-          service — not your wallet.
+          following this benchmark's specification.
         {:else}
           Enter the <strong>service id</strong> of a service that implements (solves)
-          this skill. The coverage names the service — not your wallet.
+          this skill.
         {/if}
       </p>
       <!-- svelte-ignore a11y-autofocus -->
