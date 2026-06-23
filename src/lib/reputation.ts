@@ -169,18 +169,13 @@ export const NANOERG_PER_ERG = 1e9;
  * Stored reputation values are burned ERG amounts in nanoERG (as returned by
  * the reputation-system `calculate_reputation`). This converts to ERG and
  * appends an "ERG"/"ERGs" suffix (singular only when the amount is exactly 1).
+ *
+ * Reputation always renders to exactly 4 decimal places (e.g. `0.0000`) so
+ * small sacrifices stay distinguishable and the column reads consistently.
  */
 export function formatReputation(score: number): string {
   const erg = (score ?? 0) / NANOERG_PER_ERG;
-  let num: string;
-  if (erg === 0) num = '0';
-  else if (erg >= 100) num = erg.toFixed(0);
-  else if (erg >= 10) num = erg.toFixed(1);
-  else if (erg >= 1) num = erg.toFixed(2);
-  else {
-    // Sub-1 ERG amounts: a few significant digits, trailing zeros trimmed.
-    num = parseFloat(erg.toPrecision(2)).toString();
-  }
+  const num = erg.toFixed(4);
   const unit = erg === 1 ? 'ERG' : 'ERGs';
   return `${num} ${unit}`;
 }
