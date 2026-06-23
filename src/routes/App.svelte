@@ -49,6 +49,7 @@
     pickBestService,
     aggregateMetricForService,
     bucketByDescriptor,
+    formatMetricValue,
     type ComparisonTensor,
     type TensorRow
   } from "$lib/scoring";
@@ -1585,7 +1586,7 @@
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                           </svg>
-                          {formatReputation(compositeScore)}
+                          {formatMetricValue(compositeScore)}
                         </span>
                         <InfoTip title="Composite score" placement="bottom">
                           <p>Cross-benchmark score for this service: direction-signed z-score per metric column, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> and averaged.</p>
@@ -1631,7 +1632,7 @@
                                     </td>
                                   {/if}
                                   {#each block.aggregateMetrics as a}
-                                    <td class="num">{a.value !== null ? formatReputation(a.value) : '—'}</td>
+                                    <td class="num">{formatMetricValue(a.value)}</td>
                                   {/each}
                                 </tr>
                                 {#if block.descriptors.length === 0 && (expandedAllCases[allCasesKey(cov.serviceId, block.benchmark.id)] ?? false)}
@@ -1648,7 +1649,7 @@
                                           <code class="font-mono text-xs">{formatHash(c.resultId)}</code>
                                         </td>
                                         {#each c.metricsValues as v}
-                                          <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                          <td class="num">{formatMetricValue(v)}</td>
                                         {/each}
                                       </tr>
                                     {/each}
@@ -1667,7 +1668,7 @@
                                         <td><code class="font-mono text-xs">{r.caseMeta[i] ?? '—'}</code></td>
                                       {/each}
                                       {#each r.perMetric as v}
-                                        <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                        <td class="num">{formatMetricValue(v)}</td>
                                       {/each}
                                     </tr>
                                   {/each}
@@ -1754,10 +1755,10 @@
                             </td>
                             {#each row.cells as cell, i}
                               <td class="num" class:comp-cell-best={cell.value !== null && cell.value === matrix.columnWinners[i]}>
-                                {cell.value !== null ? formatReputation(cell.value) : '—'}
+                                {formatMetricValue(cell.value)}
                               </td>
                             {/each}
-                            <td class="num">{formatReputation(row.composite)}</td>
+                            <td class="num">{formatMetricValue(row.composite)}</td>
                           </tr>
                         {/each}
                       </tbody>
