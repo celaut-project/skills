@@ -10,7 +10,7 @@ import {
   searchBoxes,
   fetchAllProfiles,
   fetchTypeNfts,
-  calculate_reputation,
+  total_burned,
   type ReputationProof,
 } from 'reputation-system';
 
@@ -110,9 +110,11 @@ function deriveProfileId(box: any, parsed: any, fallback: string): string {
 
 // ── Reputation Hydration ─────────────────────────────────────────────────────
 //
-// Reputation is computed from the profile's reputation proof via `calculate_reputation`
-// from `reputation-system` — i.e. the burned value sacrificed against the
-// profile_id (token_id of the reputation proof). We fetch every profile once
+// Reputation is the total burned value of the profile's reputation proof via
+// `total_burned` from `reputation-system` — i.e. the ERG (nanoERG) sacrificed
+// against the profile_id (token_id of the reputation proof). This matches
+// `getProfileReputation` in profileBootstrap.ts, which also delegates to
+// `total_burned`. We fetch every profile once
 // (bulk via `fetchAllProfiles`) and cache the resulting Map<token_id, proof>
 // for fast lookup during hydration. The library doesn't re-export
 // `fetchProfileById` from its package entry, so a bulk-then-cache approach
@@ -147,7 +149,7 @@ export async function hydrateReputations<T extends { profileId: string; reputati
   const profileMap = await loadProfileMap();
   for (const e of entities) {
     const proof = profileMap.get(e.profileId);
-    e.reputation = proof ? calculate_reputation(proof) : 0;
+    e.reputation = proof ? total_burned(proof) : 0;
   }
   return entities;
 }
@@ -164,7 +166,7 @@ function demoProfileId(seed: string): string {
 function demoReputationFor(profileId: string): number {
   let total = 0;
   for (const char of profileId) total = (total + char.charCodeAt(0)) % 29;
-  // Real reputation (calculate_reputation) is burned ERG in nanoERG. Scale the
+  // Real reputation (total_burned) is burned ERG in nanoERG. Scale the
   // demo seed up to the same magnitude so demo numbers render as a sensible
   // handful of ERGs (1–29 ERG) instead of raw nanoERG dust.
   return (total + 1) * 1e9;
