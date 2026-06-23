@@ -164,7 +164,10 @@ function demoProfileId(seed: string): string {
 function demoReputationFor(profileId: string): number {
   let total = 0;
   for (const char of profileId) total = (total + char.charCodeAt(0)) % 29;
-  return total + 1;
+  // Real reputation (calculate_reputation) is burned ERG in nanoERG. Scale the
+  // demo seed up to the same magnitude so demo numbers render as a sensible
+  // handful of ERGs (1–29 ERG) instead of raw nanoERG dust.
+  return (total + 1) * 1e9;
 }
 
 function cloneCoverage(coverage: Coverage): Coverage {

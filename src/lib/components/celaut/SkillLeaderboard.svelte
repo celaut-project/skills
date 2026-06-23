@@ -713,6 +713,7 @@
                       skillBoxId={benchmark.skillBoxId}
                       benchmarkId={benchmark.id}
                       label="Suggest Service"
+                      size="compact"
                       on:created={(e) => dispatch('created', e.detail)}
                     />
                   </div>

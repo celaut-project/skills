@@ -28,6 +28,7 @@
   import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
   import ProfileAvatar from "$lib/components/celaut/ProfileAvatar.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
+  import ShareModal from "$lib/components/celaut/ShareModal.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
@@ -42,7 +43,7 @@
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
-  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
+  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation, NANOERG_PER_ERG } from "$lib/reputation";
   import {
     buildComparisonTensor,
     pickBestService,
@@ -74,6 +75,11 @@
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
   let detailVisible = false;
+  // "Share Skill" modal (opened from the skill detail header).
+  let shareModalOpen = false;
+  // Deep-link target from `?skill=<boxId>`: resolved to a selected skill once
+  // the gallery has loaded (see the reactive block below).
+  let pendingSkillId: string | null = null;
 
   // ── Island header scroll behaviour ───────────────────────────────────────
   // Hide the floating header when scrolling down, reveal it when scrolling up
@@ -474,9 +480,12 @@
   }
 
   // Apply the minimum-reputation gallery filter on top of search/category.
-  function filterByReputation(list: Skill[], min: number): Skill[] {
-    if (!min || min <= 0) return list;
-    return list.filter(s => calculateSkillReputation(s).total >= min);
+  // `minErg` is entered by the user in ERG; stored reputation is nanoERG, so we
+  // convert before comparing.
+  function filterByReputation(list: Skill[], minErg: number): Skill[] {
+    if (!minErg || minErg <= 0) return list;
+    const minNanoErg = minErg * NANOERG_PER_ERG;
+    return list.filter(s => calculateSkillReputation(s).total >= minNanoErg);
   }
 
   $: displayedSkills = sortSkills(
@@ -852,6 +861,8 @@
       if (env === "demo" || env === "dev") demoMode.set(true);
       const initialProfile = url.searchParams.get("profile");
       if (initialProfile) viewedProfileId.set(initialProfile);
+      const initialSkill = url.searchParams.get("skill");
+      if (initialSkill) pendingSkillId = initialSkill;
       loadSkills();
 
       // Back/forward button: keep the profile-detail view in sync with the URL.
@@ -908,6 +919,17 @@
   // profile view renders independently of the tabs (it short-circuits the
   // {#if $viewedProfileId} block), so no tab should appear "active".
   $: if ($viewedProfileId) activeTab = "";
+
+  // Resolve a `?skill=<boxId>` deep link once the gallery has loaded: select the
+  // matching skill so a shared link opens straight to its detail view.
+  $: if (pendingSkillId && skills.length) {
+    const match = skills.find((s) => s.boxId === pendingSkillId);
+    pendingSkillId = null;
+    if (match) {
+      activeTab = "gallery";
+      selectSkill(match);
+    }
+  }
 
   function closeProfileView(): void {
     viewedProfileId.set(null);
@@ -976,26 +998,20 @@
           class:active={activeTab === "gallery"}
           on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Skills Gallery
+          Gallery
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "submit"}
           on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
         >
-          Submit Skill
+          Submit
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "profile"}
           on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
         >
-          <span class="tab-avatar">
-            <ProfileAvatar profileId={$reputation_proof?.token_id} size={18} clickable={false} title="Your profile" />
-          </span>
           Profile
         </button>
       </nav>
@@ -1144,6 +1160,13 @@
             Back to gallery
           </button>
 
+          <ShareModal
+            bind:open={shareModalOpen}
+            skillName={selectedSkill.name}
+            skillBoxId={selectedSkill.boxId}
+            description={selectedSkill.prose}
+          />
+
           <!-- Skill header card -->
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
@@ -1172,12 +1195,20 @@
               {#if selectedSkill.domain}
                 <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
-              <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
-                </svg>
-                Modify Skill
-              </button>
+              <div class="detail-header-actions">
+                <button class="share-skill-btn" on:click={() => (shareModalOpen = true)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                  Share
+                </button>
+                <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
+                  </svg>
+                  Modify Skill
+                </button>
+              </div>
             </div>
             <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
             {#if selectedSkill.sourceHash}
@@ -1835,14 +1866,17 @@
           </div>
           <label class="gallery-minrep">
             <span class="gallery-minrep-label">Min reputation</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              bind:value={minReputation}
-              class="gallery-minrep-input"
-              aria-label="Minimum reputation"
-            />
+            <span class="gallery-minrep-field">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                bind:value={minReputation}
+                class="gallery-minrep-input"
+                aria-label="Minimum reputation in ERGs"
+              />
+              <span class="gallery-minrep-suffix">ERGs</span>
+            </span>
           </label>
         </div>
 
@@ -1908,11 +1942,6 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-          </div>
           <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
           <p class="text-muted-foreground text-sm">
             Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
@@ -2016,10 +2045,8 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-            </svg>
+          <div class="submit-header-avatar">
+            <ProfileAvatar profileId={$reputation_proof?.token_id} size={64} clickable={false} title="Your profile" />
           </div>
           <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
           <p class="text-muted-foreground text-sm">
@@ -2152,11 +2179,6 @@
     @apply flex items-center justify-center gap-2 flex-1;
   }
 
-  /* Profile-tab identicon sits where the old person icon was. */
-  .tab-avatar {
-    @apply inline-flex items-center;
-  }
-
   .logo-container {
     @apply flex items-center gap-2.5 text-foreground no-underline whitespace-nowrap;
   }
@@ -2194,8 +2216,9 @@
   }
 
   /* ── Tabs (inside island header) ────────────────────────────────────── */
+  /* Text-only labels (no icons) at a larger size for prominence. */
   .tab-btn {
-    @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
+    @apply flex items-center py-3 px-4 text-base font-semibold border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
   .tab-btn.active {
     border-bottom-color: hsl(var(--foreground));
@@ -2250,8 +2273,11 @@
   .gallery-minrep-label {
     @apply whitespace-nowrap;
   }
+  .gallery-minrep-field {
+    @apply relative inline-flex items-center;
+  }
   .gallery-minrep-input {
-    @apply w-20 px-2.5 py-2 rounded-lg text-sm;
+    @apply w-28 pl-2.5 pr-12 py-2 rounded-lg text-sm;
     background: hsl(var(--muted) / 0.5);
     border: 1px solid hsl(var(--border));
     color: hsl(var(--foreground));
@@ -2261,6 +2287,9 @@
     background: hsl(var(--background));
     border-color: hsl(var(--foreground) / 0.3);
     box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
+  }
+  .gallery-minrep-suffix {
+    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none;
   }
 
   .refresh-btn {
@@ -2332,14 +2361,19 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .fork-skill-btn {
+  .detail-header-actions {
+    @apply inline-flex items-center gap-2;
+  }
+  .fork-skill-btn,
+  .share-skill-btn {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
     background: hsl(var(--muted) / 0.5);
     border: 1px solid hsl(var(--border));
     color: hsl(var(--muted-foreground));
     cursor: pointer;
   }
-  .fork-skill-btn:hover {
+  .fork-skill-btn:hover,
+  .share-skill-btn:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
     border-color: hsl(var(--foreground) / 0.2);
@@ -2624,9 +2658,9 @@
     @apply text-center mb-8;
   }
 
-  .submit-header-icon {
-    @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
-    background: hsl(var(--foreground));
+  /* Profile page: the user's identicon avatar above the title. */
+  .submit-header-avatar {
+    @apply inline-flex items-center justify-center mb-4;
   }
 
   .submit-connect-card {
