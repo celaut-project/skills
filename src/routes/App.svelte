@@ -979,26 +979,20 @@
           class:active={activeTab === "gallery"}
           on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Skills Gallery
+          Gallery
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "submit"}
           on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
         >
-          Submit Skill
+          Submit
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "profile"}
           on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
         >
-          <span class="tab-avatar">
-            <ProfileAvatar profileId={$reputation_proof?.token_id} size={18} clickable={false} title="Your profile" />
-          </span>
           Profile
         </button>
       </nav>
@@ -1914,11 +1908,6 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-          </div>
           <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
           <p class="text-muted-foreground text-sm">
             Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
@@ -2022,10 +2011,8 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-            </svg>
+          <div class="submit-header-avatar">
+            <ProfileAvatar profileId={$reputation_proof?.token_id} size={64} clickable={false} title="Your profile" />
           </div>
           <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
           <p class="text-muted-foreground text-sm">
@@ -2158,11 +2145,6 @@
     @apply flex items-center justify-center gap-2 flex-1;
   }
 
-  /* Profile-tab identicon sits where the old person icon was. */
-  .tab-avatar {
-    @apply inline-flex items-center;
-  }
-
   .logo-container {
     @apply flex items-center gap-2.5 text-foreground no-underline whitespace-nowrap;
   }
@@ -2200,8 +2182,9 @@
   }
 
   /* ── Tabs (inside island header) ────────────────────────────────────── */
+  /* Text-only labels (no icons) at a larger size for prominence. */
   .tab-btn {
-    @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
+    @apply flex items-center py-3 px-4 text-base font-semibold border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
   .tab-btn.active {
     border-bottom-color: hsl(var(--foreground));
@@ -2639,6 +2622,11 @@
   .submit-header-icon {
     @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
     background: hsl(var(--foreground));
+  }
+
+  /* Profile page: the user's identicon avatar above the title. */
+  .submit-header-avatar {
+    @apply inline-flex items-center justify-center mb-4;
   }
 
   .submit-connect-card {
