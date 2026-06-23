@@ -28,6 +28,7 @@
   import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
   import ProfileAvatar from "$lib/components/celaut/ProfileAvatar.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
+  import ShareModal from "$lib/components/celaut/ShareModal.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
@@ -74,6 +75,11 @@
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
   let detailVisible = false;
+  // "Share Skill" modal (opened from the skill detail header).
+  let shareModalOpen = false;
+  // Deep-link target from `?skill=<boxId>`: resolved to a selected skill once
+  // the gallery has loaded (see the reactive block below).
+  let pendingSkillId: string | null = null;
 
   // ── Island header scroll behaviour ───────────────────────────────────────
   // Hide the floating header when scrolling down, reveal it when scrolling up
@@ -855,6 +861,8 @@
       if (env === "demo" || env === "dev") demoMode.set(true);
       const initialProfile = url.searchParams.get("profile");
       if (initialProfile) viewedProfileId.set(initialProfile);
+      const initialSkill = url.searchParams.get("skill");
+      if (initialSkill) pendingSkillId = initialSkill;
       loadSkills();
 
       // Back/forward button: keep the profile-detail view in sync with the URL.
@@ -911,6 +919,17 @@
   // profile view renders independently of the tabs (it short-circuits the
   // {#if $viewedProfileId} block), so no tab should appear "active".
   $: if ($viewedProfileId) activeTab = "";
+
+  // Resolve a `?skill=<boxId>` deep link once the gallery has loaded: select the
+  // matching skill so a shared link opens straight to its detail view.
+  $: if (pendingSkillId && skills.length) {
+    const match = skills.find((s) => s.boxId === pendingSkillId);
+    pendingSkillId = null;
+    if (match) {
+      activeTab = "gallery";
+      selectSkill(match);
+    }
+  }
 
   function closeProfileView(): void {
     viewedProfileId.set(null);
@@ -1141,6 +1160,13 @@
             Back to gallery
           </button>
 
+          <ShareModal
+            bind:open={shareModalOpen}
+            skillName={selectedSkill.name}
+            skillBoxId={selectedSkill.boxId}
+            description={selectedSkill.prose}
+          />
+
           <!-- Skill header card -->
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
@@ -1169,12 +1195,20 @@
               {#if selectedSkill.domain}
                 <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
-              <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
-                </svg>
-                Modify Skill
-              </button>
+              <div class="detail-header-actions">
+                <button class="share-skill-btn" on:click={() => (shareModalOpen = true)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                  Share
+                </button>
+                <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
+                  </svg>
+                  Modify Skill
+                </button>
+              </div>
             </div>
             <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
             {#if selectedSkill.sourceHash}
@@ -2327,14 +2361,19 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .fork-skill-btn {
+  .detail-header-actions {
+    @apply inline-flex items-center gap-2;
+  }
+  .fork-skill-btn,
+  .share-skill-btn {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
     background: hsl(var(--muted) / 0.5);
     border: 1px solid hsl(var(--border));
     color: hsl(var(--muted-foreground));
     cursor: pointer;
   }
-  .fork-skill-btn:hover {
+  .fork-skill-btn:hover,
+  .share-skill-btn:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
     border-color: hsl(var(--foreground) / 0.2);
@@ -2617,11 +2656,6 @@
   /* ── Submit form ────────────────────────────────────────────────────── */
   .submit-header {
     @apply text-center mb-8;
-  }
-
-  .submit-header-icon {
-    @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
-    background: hsl(var(--foreground));
   }
 
   /* Profile page: the user's identicon avatar above the title. */
