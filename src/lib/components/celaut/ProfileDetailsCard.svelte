@@ -3,15 +3,42 @@
    * Profile details card — shown when the user has a reputation profile.
    *
    * Surfaces the two pieces of information Josemi asked for (TODO.md):
-   *   1. R9 data (the profile's on-chain content — `proof.data`)
+   *   1. R9 data (the profile's on-chain content)
    *   2. Tokens sacrificed (`total_burned_string` from reputation-system)
    */
-  import { total_burned_string, type ReputationProof } from 'reputation-system';
+  import { total_burned_string, type ReputationProof, type RPBox } from 'reputation-system';
   import { hexToUtf8 } from '$lib/ergo/envs';
 
   export let proof: ReputationProof;
 
   type Row = { key: string; value: string };
+
+  /**
+   * Resolve the profile's R9 content blob.
+   *
+   * `ReputationProof.data` is always `{}` in the current reputation-system
+   * library — the real R9 payload lives on the proof's boxes, already decoded
+   * (hex → UTF-8 → JSON) into `RPBox.content`. Matching the reference impl
+   * (reputation-systems/reputation-system `Profile.svelte`), the profile box is
+   * the self-pointing box (`object_pointer === token_id`); we read its content,
+   * falling back to any box that carries content, then to `proof.data`.
+   */
+  function hasContent(content: unknown): boolean {
+    if (content == null) return false;
+    if (typeof content === 'string') return content.trim().length > 0;
+    if (typeof content === 'object') return Object.keys(content as object).length > 0;
+    return true;
+  }
+
+  function resolveR9Content(p: ReputationProof): unknown {
+    const boxes: RPBox[] = p.current_boxes ?? [];
+    const selfBox = boxes.find(
+      (b) => b.object_pointer === p.token_id && hasContent(b.content)
+    );
+    const contentBox = selfBox ?? boxes.find((b) => hasContent(b.content));
+    if (contentBox) return contentBox.content;
+    return (p as any).data;
+  }
 
   /**
    * Normalize the profile's R9/content blob into key/value rows.
@@ -78,7 +105,7 @@
     return String(value);
   }
 
-  $: r9Rows = toRows((proof as any).data);
+  $: r9Rows = toRows(resolveR9Content(proof));
 
   $: burned = total_burned_string(proof);
   $: tokenIdShort = proof.token_id
