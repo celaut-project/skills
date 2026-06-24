@@ -53,6 +53,7 @@
     formatMetricValue,
     type ComparisonTensor
   } from "$lib/scoring";
+  import { computeServiceScores, type ServiceScore } from "$lib/scoreGlobal";
   import { getUserProfiles, ensureUserProfile, boostProfileReputation, createAdditionalProfile, updateProfileContent } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
@@ -257,26 +258,26 @@
     if (!skill) return null;
     const candidates = skill.coverages.filter((c) => c.serviceId);
     if (!candidates.length) return null;
-    // composite per serviceId — 0 for services absent from the tensor or with
-    // no metric data (z-scores are relative, so a lone service scores 0). The
-    // tensor builder can throw on sparse/edge-case benchmark data; if it does,
-    // fall back to reputation-only ranking so the recommended card (and a sole
-    // result-derived service) still surfaces instead of vanishing.
-    let compositeById = new Map<string, number>();
+    // Rank by the SCORE.md global score (verified performance + reputation).
+    // Wrapped defensively so sparse/edge-case data can't make the card vanish —
+    // a sole result-derived service still surfaces (it's simply the top candidate).
+    let scoreById = new Map<string, ServiceScore>();
     try {
-      compositeById = new Map(
-        buildComparisonTensor(skill).rows.map((r) => [r.serviceId, r.composite]),
-      );
+      scoreById = new Map(computeServiceScores(skill).map((s) => [s.serviceId, s]));
     } catch {
-      compositeById = new Map();
+      scoreById = new Map();
     }
     const ranked = candidates
       .map((coverage) => {
-        const composite = compositeById.get(coverage.serviceId!) ?? 0;
-        const reputation = coverage.reputation ?? 0;
-        return { coverage, composite, reputation, score: composite + reputation };
+        const s = scoreById.get(coverage.serviceId!);
+        return {
+          coverage,
+          scoreGlobal: s?.scoreGlobal ?? 0,
+          scorePerf: s?.scorePerf ?? null,
+          reputation: coverage.reputation ?? 0,
+        };
       })
-      .sort((a, b) => b.score - a.score || b.reputation - a.reputation);
+      .sort((a, b) => b.scoreGlobal - a.scoreGlobal || b.reputation - a.reputation);
     return ranked[0] ?? null;
   }
 
@@ -1520,8 +1521,8 @@
                   {/if}
                 </div>
                 <div class="best-service-score">
-                  <span class="best-service-score-value">{recommendedService.composite.toFixed(2)}</span>
-                  <span class="best-service-score-label">composite score</span>
+                  <span class="best-service-score-value">{recommendedService.scoreGlobal.toFixed(2)}</span>
+                  <span class="best-service-score-label">global score</span>
                   <span class="best-service-rep">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
@@ -1530,8 +1531,8 @@
                     <span class="best-service-rep-label">reputation</span>
                   </span>
                   <InfoTip title="Why this service is recommended">
-                    <p>Ranked by its <strong>composite benchmark score plus on-chain reputation</strong> — the highest combined value across this skill's services wins.</p>
-                    <p>A service still shows here when it's the only one or has no comparative benchmark data yet (its composite is simply 0), including services that solve the skill via a submitted result rather than a coverage box.</p>
+                    <p>Ranked by its <strong>global score</strong> (0–1) from the multi-criteria scoring system: <code>β · Score_Perf + (1−β) · W_S</code> with β=0.7 — 70% verified benchmark performance (confidence-weighted by the reputation of each result, its uploader and the benchmark) and 30% the service's own reputation.</p>
+                    <p>A service still shows here when it's the only one or has no benchmark results yet — it's then scored on its reputation alone — including services that solve the skill via a submitted result rather than a coverage box. Full method: see the scoring system on the <em>How it works</em> page.</p>
                   </InfoTip>
                 </div>
               </div>
