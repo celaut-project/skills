@@ -8,10 +8,8 @@
 
   export let proof: ReputationProof;
   export let readOnly = false;
+  /** Full skills list; the card self-computes this profile's contributions. */
   export let skills: Skill[] = [];
-  export let benchmarks: Benchmark[] = [];
-  export let services: Coverage[] = [];
-  export let results: Result[] = [];
   export let profiles: ReputationProof[] = [];
   export let activeProfileId: string | undefined = undefined;
 
@@ -222,14 +220,14 @@
               type="text"
               class="rp-modal-input rp-modal-key"
               value={row.key}
-              on:input={(e) => updateModalRow(i, 'key', (e.target as HTMLInputElement).value)}
+              on:input={(e) => updateModalRow(i, 'key', e.currentTarget.value)}
               placeholder="Key"
             />
             <input
               type="text"
               class="rp-modal-input rp-modal-val"
               value={row.value}
-              on:input={(e) => updateModalRow(i, 'value', (e.target as HTMLInputElement).value)}
+              on:input={(e) => updateModalRow(i, 'value', e.currentTarget.value)}
               placeholder="Value"
             />
             <button type="button" class="rp-modal-remove" on:click={() => removeModalRow(i)} aria-label="Remove field">
