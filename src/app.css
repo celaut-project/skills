@@ -101,6 +101,27 @@
   }
 }
 
+/* ── Ambient background plumbing ─────────────────────────────────────────────
+   The base surface colour lives on the root element so the fixed AmbientBackground
+   layer (z-index:-1) can paint above the root backdrop but behind app content.
+   Body is made transparent so that layer shows through. Unlayered rules so they
+   win over the `@apply bg-background` inside @layer base. */
+html {
+  background-color: hsl(var(--background));
+}
+body {
+  background-color: transparent;
+}
+
+/* ── Always-on-top info tooltips ─────────────────────────────────────────────
+   InfoTip popovers are portalled to <body> (see InfoTip.svelte) and pinned with
+   `position: fixed`; this guarantees they overlay everything and are never
+   clipped by overflow/stacking contexts. (shadcn dialogs get their high z-index
+   directly in dialog-overlay/content.) */
+.info-tip-popover {
+  z-index: 1000;
+}
+
 /* Staggered card entrance animations */
 @keyframes fadeSlideIn {
   from {
