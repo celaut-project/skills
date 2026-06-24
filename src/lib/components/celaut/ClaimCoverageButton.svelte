@@ -301,6 +301,9 @@
     border-radius: 0.5rem;
     font-size: 0.875rem;
     font-weight: 600;
+    /* Pin line-height to the value `.create-benchmark-btn` inherits (Tailwind
+       base = 1.5) so both buttons resolve to the exact same height. */
+    line-height: 1.5;
     border: 1px solid hsl(var(--border));
     background-color: hsl(var(--muted));
     color: hsl(var(--muted-foreground));

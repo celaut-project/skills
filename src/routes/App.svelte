@@ -44,6 +44,7 @@
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
+  import { categoryIcon, categoryColor } from "$lib/categoryIcons";
   import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation, NANOERG_PER_ERG } from "$lib/reputation";
   import {
     buildComparisonTensor,
@@ -211,6 +212,10 @@
   // Compute reputation for selected skill — label is RELATIVE to all sibling
   // skills, so we pass the full population (thresholds built once inside).
   $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill, skills) : null;
+
+  // Category glyph for the detail title — swaps the old profile avatar for the
+  // skill's category icon (with its accent color), mirroring SkillDetail.svelte.
+  $: DetailCategoryIcon = categoryIcon(selectedSkill?.domain);
 
   // ── Best service highlight ────────────────────────────────────────────────
   // Surfaces the "best" service for a skill as a prominent card with a download
@@ -1296,7 +1301,14 @@
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
               <div class="flex items-center gap-3">
-                <ProfileAvatar profileId={selectedSkill.profileId} size={28} title={`Skill submitted by ${selectedSkill.profileId}`} />
+                <span
+                  class="detail-category-icon"
+                  style="color: hsl({categoryColor(selectedSkill.domain)});"
+                  title={`Category: ${selectedSkill.domain || 'Other'}`}
+                  aria-hidden="true"
+                >
+                  <svelte:component this={DetailCategoryIcon} size={26} strokeWidth={1.8} />
+                </span>
                 <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
                 <InfoTip title="What is a Skill?">
                   <p>A <strong>Skill</strong> is an on-chain declaration of a capability: a name, a prose description (what an agent must accomplish), an optional formal spec, and tags. Services <em>cover</em> a skill by claiming they can perform it, and <em>benchmarks</em> measure how well.</p>
@@ -1362,17 +1374,20 @@
                 </div>
               </details>
             {/if}
-            {#if skillNameCounts[selectedSkill.name] > 1}
-              <details class="duplicate-notice">
-                <summary class="duplicate-notice-summary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                  </svg>
-                  <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
-                  <svg class="duplicate-notice-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </summary>
+            <!-- Current submissions — other on-chain submissions of this same
+                 skill (siblings: same name, different boxId). Always rendered,
+                 with an empty state when there are none. -->
+            <div class="submissions-block">
+              <div class="submissions-head">
+                <span class="submissions-label">Current submissions for this skill</span>
+                <InfoTip title="Current submissions">
+                  <p>Other on-chain <strong>submissions</strong> of this same skill — entries published with the same name but a different Box ID (alternative versions or authors).</p>
+                  <p>Each is its own Skill UTXO; select one to view its services, benchmarks and reputation.</p>
+                </InfoTip>
+              </div>
+              {#if siblingSkills.length === 0}
+                <p class="submissions-empty">No other submissions for this skill yet.</p>
+              {:else}
                 <ul class="duplicate-notice-list">
                   {#each siblingSkills as sibling (sibling.boxId)}
                     {@const sibRep = calculateSkillReputation(sibling).total}
@@ -1407,8 +1422,8 @@
                     </li>
                   {/each}
                 </ul>
-              </details>
-            {/if}
+              {/if}
+            </div>
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
                 <span class="detail-tag">{tag}</span>
@@ -1436,6 +1451,12 @@
                   </button>
                 </span>
               {/if}
+              <!-- Skill creator (submitter): icon + profile id, on its own bottom row. -->
+              <span class="detail-meta-item detail-meta-creator">
+                <span class="detail-meta-label">Creator</span>
+                <ProfileAvatar profileId={selectedSkill.profileId} size={20} title={`Skill submitted by ${selectedSkill.profileId}`} />
+                <code class="detail-meta-value">{selectedSkill.profileId}</code>
+              </span>
             </div>
           </div>
 
@@ -1679,9 +1700,7 @@
           <!-- Coverages Tab — per-coverage per-benchmark performance -->
           {#if detailTab === "coverages"}
             <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Service solutions</h2>
-                <span class="detail-count">{selectedSkill.coverages.length}</span>
+              <div class="detail-section-header detail-section-header-bare">
                 <InfoTip title="What is a service solution?">
                   <p>A <strong>service solution</strong> is a service that implements (solves) this skill — its on-chain claim that it can perform the skill, recorded as a Coverage UTXO pointing back at the Skill box. (A service that has submitted a Result counts too.)</p>
                   <p>These are distinct from a benchmark's <strong>runner</strong> services, which only execute the benchmark.</p>
@@ -1830,8 +1849,7 @@
           <!-- Comparative Tab — services × benchmarks matrix (best-reputation result per cell) -->
           {#if detailTab === "compare"}
             <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Service × Benchmark Comparison</h2>
+              <div class="detail-section-header detail-section-header-bare">
                 <InfoTip title="How the composite is computed">
                   <p>Each row is a service, each column is a <em>(benchmark → metric)</em> pair. Cells show the <strong>median</strong> across the service's case executions.</p>
                   <p><strong>Composite</strong> per service:</p>
@@ -2554,6 +2572,19 @@
     min-width: 0;
   }
 
+  /* Creator sits on its own row at the bottom of the meta block. */
+  .detail-meta-creator {
+    flex-basis: 100%;
+  }
+
+  /* Category glyph next to the skill title (replaces the old profile avatar). */
+  .detail-category-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
   .detail-meta-label {
     color: hsl(var(--muted-foreground));
     font-weight: 500;
@@ -2650,6 +2681,15 @@
     @apply inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-xs font-bold;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  /* Tab context with no heading: just a discreet InfoTip, right-aligned,
+     no heavy divider — the sub-tab already names the section. */
+  .detail-section-header-bare {
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0;
+    border-bottom: none;
   }
 
   .detail-empty {
@@ -3011,36 +3051,38 @@
     font-weight: 400;
   }
 
-  /* ── Duplicate Skill Notice ────────────────────────────────────────── */
-  .duplicate-notice {
-    margin-bottom: 0.75rem;
-    border-radius: 0.375rem;
-    background: hsl(40 90% 50% / 0.08);
-    border: 1px solid hsl(40 90% 50% / 0.2);
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    width: fit-content;
-    max-width: 100%;
+  /* ── Current submissions for this skill (siblings) ─────────────────── */
+  .submissions-block {
+    margin-bottom: 0.875rem;
   }
-  .duplicate-notice-summary {
+  .submissions-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.75rem;
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
+    gap: 0.375rem;
+    margin-bottom: 0.5rem;
   }
-  .duplicate-notice-summary::-webkit-details-marker {
-    display: none;
+  .submissions-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
   }
-  .duplicate-notice-caret {
-    transition: transform 0.15s ease;
-    opacity: 0.6;
+  .submissions-empty {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px dashed hsl(var(--border));
   }
-  .duplicate-notice[open] .duplicate-notice-caret {
-    transform: rotate(180deg);
+  /* The sibling list reuses .duplicate-notice-list rows but lives outside the
+     old amber <details> box now, so drop its inner divider/padding. */
+  .submissions-block .duplicate-notice-list {
+    padding: 0;
+    border-top: none;
+    gap: 0.25rem;
   }
+
+  /* ── Sibling submission rows (shared by the submissions block) ───────── */
   .duplicate-notice-list {
     list-style: none;
     margin: 0;
