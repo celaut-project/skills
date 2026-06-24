@@ -354,9 +354,9 @@
 
 {#if benchmarks.length > 0}
   <section class="benchmarks-section">
+    <!-- No section title/count here: the surrounding tab already names this
+         view. A single discreet info icon carries the explanation. -->
     <div class="section-header">
-      <h2 class="section-title">Benchmarks</h2>
-      <span class="section-count">{benchmarks.length}</span>
       <InfoTip title="What is a Benchmark?">
         <p>A <strong>Benchmark</strong> defines how a skill is measured. It carries:</p>
         <ul>
@@ -432,14 +432,25 @@
                   {#if metrics.length > 0}
                     <div class="schema-block">
                       <div class="schema-label">Performance metrics</div>
-                      <ul class="schema-list">
+                      <!-- "Ghost" metric cards: subtle surface + very soft
+                           borders, monospace metric name, muted direction
+                           label — not a raw table row. -->
+                      <div class="metric-ghost-grid">
                         {#each metrics as m}
-                          <li>
-                            <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
-                            {m.description ? `— ${m.description}` : ''}
-                          </li>
+                          <div class="metric-ghost-card">
+                            <span class="metric-ghost-name">{m.name}</span>
+                            <span
+                              class="metric-ghost-dir"
+                              title={m.higherIsBetter ? 'Higher is better' : 'Lower is better'}
+                            >
+                              {m.higherIsBetter ? '↑ higher is better' : '↓ lower is better'}
+                            </span>
+                            {#if m.description}
+                              <span class="metric-ghost-desc">{m.description}</span>
+                            {/if}
+                          </div>
                         {/each}
-                      </ul>
+                      </div>
                     </div>
                   {/if}
                 </div>
@@ -471,14 +482,14 @@
               {/if}
 
               <!-- Results header — disambiguates "Result service" (a skill
-                   solution being ranked) from the "Coverages" services further
-                   down (which only run the benchmark). -->
+                   solution being ranked) from the "Benchmark runner" services
+                   further down (which only run the benchmark). -->
               <div class="results-header">
                 <h4 class="results-title">Results</h4>
                 <span class="results-count">{benchmark.results.length}</span>
                 <InfoTip title="Results — skill implementations">
                   <p>Each <strong>Result</strong> ranks a <strong>service that implements this skill</strong> — a candidate <em>solution</em> measured against the benchmark. Its <strong>Service ID</strong> identifies that solution.</p>
-                  <p>Don't confuse these with <strong>Coverages</strong> below: those are services that <em>run</em> the benchmark, not solutions to the skill.</p>
+                  <p>Don't confuse these with the <strong>Benchmark runner</strong> below: those are services that <em>run</em> the benchmark, not solutions to the skill.</p>
                 </InfoTip>
               </div>
 
@@ -673,9 +684,9 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                   </svg>
-                  Coverages
+                  Benchmark runner
                   <span class="bench-coverages-count">{(benchmark.coverages ?? []).length}</span>
-                  <InfoTip title="Coverages — benchmark runners">
+                  <InfoTip title="Benchmark runner">
                     <p>Services suggested to <strong>run this benchmark</strong> — they execute the test harness to generate or verify results.</p>
                     <p>These are <em>not</em> skill solutions: the services ranked in <strong>Results</strong> above are the ones that implement the skill.</p>
                   </InfoTip>
@@ -867,10 +878,6 @@
   </section>
 {:else}
   <section class="benchmarks-section">
-    <div class="section-header">
-      <h2 class="section-title">Benchmarks</h2>
-      <span class="section-count">0</span>
-    </div>
     <div class="no-benchmarks">
       <p>No benchmarks defined yet. Create one to establish performance standards.</p>
     </div>
@@ -882,32 +889,13 @@
     margin-bottom: 1.5rem;
   }
 
+  /* Title-less: only holds a discreet info icon, so no heavy border/spacing. */
   .section-header {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.75rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.5);
-  }
-
-  .section-title {
-    font-size: 1.125rem;
-    font-weight: 700;
-  }
-
-  .section-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    height: 24px;
-    padding: 0 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.5rem;
   }
 
   .benchmarks-list {
@@ -1062,6 +1050,46 @@
     padding: 0.0625rem 0.25rem;
     border-radius: 0.1875rem;
     background: hsl(var(--muted) / 0.5);
+  }
+
+  /* ── Ghost metric cards ─────────────────────────────────────────────── */
+  .metric-ghost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.375rem;
+  }
+
+  .metric-ghost-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--border) / 0.4);
+    background: hsl(var(--muted) / 0.18);
+  }
+
+  .metric-ghost-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    line-height: 1.2;
+    word-break: break-word;
+  }
+
+  .metric-ghost-dir {
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .metric-ghost-desc {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    line-height: 1.35;
   }
 
   /* ── Source Hash ────────────────────────────────────────────────────── */

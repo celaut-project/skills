@@ -39,7 +39,8 @@
   import { portal } from "$lib/actions/portal";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { formatServiceId, formatSourceHash } from "$lib/api";
+  import { formatServiceId, formatSourceHash, EXPLORER_API } from "$lib/api";
+  import { fetchProfileById, type ReputationProof } from "reputation-system";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
@@ -74,8 +75,12 @@
   // falls below this threshold. 0 = show everything (default).
   let minReputation = 0;
   // "" = no tab highlighted (used while the profile-detail view is open).
-  let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
+  let activeTab: "gallery" | "submit" | "profile" | "howitworks" | "" = "gallery";
   let detailVisible = false;
+  // When the Submit tab is reached via "Modify Skill", remember the skill the
+  // user came from so we can offer a back button to its detail view (mirrors
+  // the back-navigation the profile detail view has).
+  let returnToSkill: Skill | null = null;
   // "Share Skill" modal (opened from the skill detail header).
   let shareModalOpen = false;
   // Deep-link target from `?skill=<boxId>`: resolved to a selected skill once
@@ -610,6 +615,25 @@
     return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
   }
 
+  // ── Skill deep-link sync ─────────────────────────────────────────────────
+  // Keep `?skill=<boxId>` in the URL in sync with the open skill-detail view so
+  // a skill page can be shared or refreshed (mirrors the `?profile=` handling).
+  // Only pushes a history entry when the param actually changes to avoid
+  // duplicate entries (e.g. when resolving an initial deep link).
+  function syncSkillParam(boxId: string | null): void {
+    if (!browser) return;
+    const current = new URL(window.location.href);
+    const currentParam = current.searchParams.get("skill");
+    if (boxId) {
+      if (currentParam === boxId) return;
+      current.searchParams.set("skill", boxId);
+    } else {
+      if (!currentParam) return;
+      current.searchParams.delete("skill");
+    }
+    window.history.pushState({}, "", current);
+  }
+
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
     detailVisible = false;
@@ -617,12 +641,14 @@
     detailTab = "benchmarks";
     selectedBenchmarkId = null;
     showCreateBenchmarkForm = false;
+    syncSkillParam(skill.boxId);
     setTimeout(() => { detailVisible = true; }, 50);
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function backToGallery() {
     detailVisible = false;
+    syncSkillParam(null);
     setTimeout(() => { selectedSkill = null; }, 200);
   }
 
@@ -639,10 +665,25 @@
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
     relatedSkillBoxIds = [skill.boxId, ...skill.extendedSkillBoxIds];
-    // Switch to submit tab
+    // Switch to submit tab, remembering where we came from so the Submit view
+    // can offer a "Back to skill" button (Task: modify-skill back-navigation).
+    returnToSkill = skill;
     selectedSkill = null;
+    syncSkillParam(null);
     activeTab = "submit";
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Return from the Submit ("Modify Skill") view to the skill detail the user
+  // came from. Clears the remembered skill so the button only shows when
+  // relevant.
+  function backToSkillFromSubmit() {
+    const skill = returnToSkill;
+    returnToSkill = null;
+    if (skill) {
+      activeTab = "gallery";
+      selectSkill(skill);
+    }
   }
 
   // ── Submit new skill ───────────────────────────────────────────────────────
@@ -866,10 +907,22 @@
       if (initialSkill) pendingSkillId = initialSkill;
       loadSkills();
 
-      // Back/forward button: keep the profile-detail view in sync with the URL.
+      // Back/forward button: keep the profile- and skill-detail views in sync
+      // with the URL (`?profile=` / `?skill=`).
       const popHandler = () => {
-        const next = new URL(window.location.href).searchParams.get("profile");
-        viewedProfileId.set(next || null);
+        const params = new URL(window.location.href).searchParams;
+        viewedProfileId.set(params.get("profile") || null);
+        const nextSkill = params.get("skill");
+        if (nextSkill) {
+          const match = skills.find((s) => s.boxId === nextSkill);
+          if (match) {
+            selectedSkill = match;
+            detailVisible = true;
+          }
+        } else {
+          selectedSkill = null;
+          detailVisible = false;
+        }
       };
       window.addEventListener("popstate", popHandler);
 
@@ -939,6 +992,51 @@
     activeTab = "gallery";
   }
 
+  // ── Viewed-profile reputation proof ────────────────────────────────────────
+  // Clicking a profile opens the SAME reputation-profile card the connected
+  // user sees for their own profile, but read-only when it isn't theirs. We
+  // need that profile's on-chain ReputationProof to render the card; the user's
+  // own proof is already in the store, so reuse it when ids match and otherwise
+  // fetch by id.
+  let viewedProfileProof: ReputationProof | null = null;
+  let viewedProfileLoading = false;
+  // True when the viewed profile is the connected user's own profile — the only
+  // case where the card stays editable.
+  $: isOwnViewedProfile = !!$viewedProfileId && $reputation_proof?.token_id === $viewedProfileId;
+  // The `readOnly` prop is being added to ProfileDetailsCard by a parallel
+  // cluster; spread it from an untyped object so `svelte-check` doesn't fail on
+  // the not-yet-merged prop. Honoured by ProfileDetailsCard once that lands.
+  $: viewedProfileCardProps = { readOnly: !isOwnViewedProfile } as Record<string, unknown>;
+
+  $: loadViewedProfileProof($viewedProfileId, $reputation_proof);
+
+  async function loadViewedProfileProof(
+    pid: string | null,
+    ownProof: ReputationProof | null,
+  ): Promise<void> {
+    if (!pid) {
+      viewedProfileProof = null;
+      viewedProfileLoading = false;
+      return;
+    }
+    if (ownProof && ownProof.token_id === pid) {
+      viewedProfileProof = ownProof;
+      viewedProfileLoading = false;
+      return;
+    }
+    viewedProfileLoading = true;
+    viewedProfileProof = null;
+    try {
+      const proof = await fetchProfileById(EXPLORER_API, pid);
+      // Guard against a stale response if the user navigated on in the meantime.
+      if (pid === $viewedProfileId) viewedProfileProof = proof ?? null;
+    } catch {
+      if (pid === $viewedProfileId) viewedProfileProof = null;
+    } finally {
+      if (pid === $viewedProfileId) viewedProfileLoading = false;
+    }
+  }
+
   // ── Profile detail aggregation ─────────────────────────────────────────────
   // Roll up every entity in `skills` authored by the viewed profile so the
   // detail view can show the profile's full footprint without another lookup.
@@ -989,7 +1087,7 @@
     <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
          in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
-      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
+      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
@@ -997,23 +1095,30 @@
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
-          on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
+          on:click={() => { activeTab = "gallery"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
         >
           Gallery
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "submit"}
-          on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
+          on:click={() => { activeTab = "submit"; returnToSkill = null; viewedProfileId.set(null); }}
         >
           Submit
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "profile"}
-          on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
+          on:click={() => { activeTab = "profile"; returnToSkill = null; viewedProfileId.set(null); }}
         >
           Profile
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "howitworks"}
+          on:click={() => { activeTab = "howitworks"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
+        >
+          How it works
         </button>
       </nav>
 
@@ -1043,9 +1148,14 @@
           <div class="flex items-center gap-3 mb-3">
             <ProfileAvatar profileId={$viewedProfileId} size={48} clickable={false} title={`Profile ${$viewedProfileId}`} />
             <div class="min-w-0">
-              <h1 class="text-2xl md:text-3xl font-extrabold">Profile</h1>
+              <h1 class="text-2xl md:text-3xl font-extrabold">
+                {isOwnViewedProfile ? "Your Profile" : "Profile"}
+              </h1>
               <code class="font-mono text-xs break-all text-muted-foreground">{$viewedProfileId}</code>
             </div>
+            {#if !isOwnViewedProfile}
+              <span class="profile-readonly-badge" title="You are viewing another profile — actions are disabled.">Read-only</span>
+            {/if}
           </div>
           <div class="profile-summary-grid">
             <div class="profile-summary-cell">
@@ -1066,6 +1176,20 @@
             </div>
           </div>
         </div>
+
+        <!-- Same reputation-profile card the connected user sees, but read-only
+             unless this is the user's own profile. -->
+        {#if viewedProfileLoading}
+          <div class="detail-card">
+            <p class="text-muted-foreground text-sm">Loading reputation profile…</p>
+          </div>
+        {:else if viewedProfileProof}
+          <ProfileDetailsCard proof={viewedProfileProof} {...viewedProfileCardProps} />
+        {:else}
+          <div class="detail-card">
+            <p class="text-muted-foreground text-sm">No on-chain reputation profile could be loaded for this id.</p>
+          </div>
+        {/if}
 
         {#if profileContributions.submittedSkills.length > 0}
           <section class="detail-section">
@@ -1815,9 +1939,6 @@
       <HeroSection />
 
       <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- How It Works -->
-        <HowItWorks />
-
         <!-- Stats Bar -->
         <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
 
@@ -1942,6 +2063,16 @@
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
+        {#if returnToSkill}
+          <!-- Return to the skill detail this Submit view was opened from
+               ("Modify Skill" → back navigation, matching the profile view). -->
+          <button class="back-button" on:click={backToSkillFromSubmit}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to {returnToSkill.name}
+          </button>
+        {/if}
         <div class="submit-header">
           <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
           <p class="text-muted-foreground text-sm">
@@ -2098,6 +2229,12 @@
           {/if}
         {/if}
       </div>
+    </div>
+
+  {:else if activeTab === "howitworks"}
+    <!-- ── How it works ─────────────────────────────────────────────────────── -->
+    <div class="container mx-auto px-8 py-8">
+      <HowItWorks />
     </div>
 
   {/if}
@@ -2519,6 +2656,13 @@
     @apply rounded-lg p-6 text-center text-sm text-muted-foreground;
     background: hsl(var(--muted) / 0.3);
     border: 1px dashed hsl(var(--border));
+  }
+
+  .profile-readonly-badge {
+    @apply ml-auto inline-flex items-center h-6 px-2.5 rounded-full text-xs font-semibold uppercase tracking-wide;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
   }
 
   .detail-item {

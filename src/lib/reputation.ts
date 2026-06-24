@@ -164,18 +164,33 @@ export function calculateResultReputation(result: Result, siblings?: Result[]): 
 export const NANOERG_PER_ERG = 1e9;
 
 /**
+ * Format a numeric value to at most `maxDecimals` decimal places, trimming
+ * any trailing zeros (and a dangling decimal point):
+ *   5.0000 → "5", 5.0020 → "5.002", 5 → "5", 0.12345 → "0.1235" (maxDecimals 4)
+ *
+ * Centralized here so every reputation/ERG value renders consistently.
+ */
+export function trimDecimals(value: number, maxDecimals = 4): string {
+  if (!Number.isFinite(value)) return '0';
+  // toFixed rounds to the precision cap, then strip trailing zeros + point.
+  return value
+    .toFixed(maxDecimals)
+    .replace(/\.?0+$/, '');
+}
+
+/**
  * Format a reputation score for display, in ERG.
  *
  * Stored reputation values are burned ERG amounts in nanoERG (as returned by
  * the reputation-system `calculate_reputation`). This converts to ERG and
  * appends an "ERG"/"ERGs" suffix (singular only when the amount is exactly 1).
  *
- * Reputation always renders to exactly 4 decimal places (e.g. `0.0000`) so
- * small sacrifices stay distinguishable and the column reads consistently.
+ * Renders at most 4 decimal places with trailing zeros trimmed (`5.0000` → `5`,
+ * `5.0020` → `5.002`) so small sacrifices stay distinguishable without noise.
  */
 export function formatReputation(score: number): string {
   const erg = (score ?? 0) / NANOERG_PER_ERG;
-  const num = erg.toFixed(4);
+  const num = trimDecimals(erg, 4);
   const unit = erg === 1 ? 'ERG' : 'ERGs';
   return `${num} ${unit}`;
 }
