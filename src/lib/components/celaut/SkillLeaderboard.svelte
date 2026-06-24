@@ -422,11 +422,16 @@
                   {#if descriptors.length > 0}
                     <div class="schema-block">
                       <div class="schema-label">Case descriptors (problem dimensions)</div>
-                      <ul class="schema-list">
+                      <div class="metric-ghost-grid">
                         {#each descriptors as d}
-                          <li><code>{d.name}</code> — {d.description || 'no description'}</li>
+                          <div class="metric-ghost-card">
+                            <span class="metric-ghost-name">{d.name}</span>
+                            {#if d.description}
+                              <span class="metric-ghost-desc">{d.description}</span>
+                            {/if}
+                          </div>
                         {/each}
-                      </ul>
+                      </div>
                     </div>
                   {/if}
                   {#if metrics.length > 0}
@@ -1253,7 +1258,7 @@
   }
 
   .td-rank { text-align: center; }
-  .td-runs { text-align: right; font-variant-numeric: tabular-nums; }
+  .td-runs { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
   .td-date { text-align: right; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
 
   .rank-num {
@@ -1279,7 +1284,8 @@
 
   .td-score {
     text-align: right;
-    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: hsl(var(--foreground));
   }
@@ -1360,6 +1366,7 @@
   }
   .descriptor-breakdown-table .td-score {
     text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
   }
