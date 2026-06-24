@@ -3,7 +3,7 @@
   import * as Dialog from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
 
-  export let title: string = "Know Your Assumptions — Celaut Skills";
+  export let title: string = "Know Your Assumptions — Unstoppable Skills";
   export let closeBtnText: string = "I understand and I agree";
   export let autoOpen = false;
 
@@ -76,7 +76,7 @@
     >
       <p class="mb-3">
         This document describes the key assumptions underlying the design, implementation, and
-        operation of the Celaut Skills registry. Skills are AI-agent capabilities published
+        operation of the Unstoppable Skills registry. Skills are AI-agent capabilities published
         on-chain as Reputation Boxes on the Ergo blockchain, and their reputation is the total ERG
         irreversibly burned (sacrificed) against a profile. Please read before connecting your
         wallet and interacting with the registry.
@@ -126,7 +126,7 @@
         <li>The security of the underlying smart contracts and of the wallet integration.</li>
       </ul>
 
-      <p class="font-bold mt-4">By connecting your wallet and using Celaut Skills, you acknowledge and agree that:</p>
+      <p class="font-bold mt-4">By connecting your wallet and using Unstoppable Skills, you acknowledge and agree that:</p>
       <ul class="list-disc ml-6 space-y-2">
         <li>You use the platform at your own risk.</li>
         <li>
@@ -150,7 +150,7 @@
 
       <p class="italic mt-6">
         Do you understand and agree to these assumptions and the associated risks of using the
-        Celaut Skills registry?
+        Unstoppable Skills registry?
       </p>
     </div>
 
