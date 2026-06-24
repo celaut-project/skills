@@ -55,7 +55,7 @@
     type ComparisonTensor,
     type TensorRow
   } from "$lib/scoring";
-  import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
+  import { getUserProfiles, ensureUserProfile, boostProfileReputation, createAdditionalProfile, updateProfileContent } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
   import { viewedProfileId } from "$lib/stores";
@@ -150,6 +150,18 @@
   let createProfileSubmitting = false;
   let profileSacrificeErg = "0";
   let lastProfileLookupKey = "";
+
+  // ── Reputation profile actions (burn / add field / new profile) ──────────
+  let showBurnModal = false;
+  let burnErgAmount = "";
+  let burnSubmitting = false;
+  let showAddFieldModal = false;
+  let addFieldKey = "";
+  let addFieldValue = "";
+  let addFieldSubmitting = false;
+  let showNewProfileModal = false;
+  let newProfileSacrifice = "0";
+  let newProfileSubmitting = false;
   // Source-application state
   let skillSources: FileSource[] = [];
   let showFileSourceModal = false;
@@ -387,6 +399,177 @@
   function currentMainBox() {
     return getMainReputationBox($reputation_proof);
   }
+
+  // ── Reputation profile action handlers ───────────────────────────────────
+  /** Guard: profile actions are on-chain writes — live mode + wallet + proof. */
+  function ensureLiveProfile(): boolean {
+    if ($demoMode) {
+      toasts.info("Switch off demo mode to manage your profile on-chain.");
+      return false;
+    }
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return false;
+    }
+    if (!$reputation_proof) {
+      toasts.error("No reputation profile loaded.");
+      return false;
+    }
+    return true;
+  }
+
+  /** The active profile's self/main box, used as the target for writes. */
+  function activeProfileBox() {
+    return getMainReputationBox($reputation_proof);
+  }
+
+  function openBurnModal() {
+    if (!ensureLiveProfile()) return;
+    burnErgAmount = "";
+    showBurnModal = true;
+  }
+
+  async function submitBurn() {
+    if (!ensureLiveProfile()) return;
+    const box = activeProfileBox();
+    if (!box) {
+      toasts.error("No profile box found to burn against.");
+      return;
+    }
+    const parsed = Number(burnErgAmount || "0");
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toasts.error("Enter a positive ERG amount to burn.");
+      return;
+    }
+    burnSubmitting = true;
+    try {
+      const nanoErg = BigInt(Math.round(parsed * 1e9));
+      await boostProfileReputation($explorer_uri, box, nanoErg);
+      toasts.success(`Burned ${parsed} ERG to your profile.`);
+      showBurnModal = false;
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Burn failed.");
+    } finally {
+      burnSubmitting = false;
+    }
+  }
+
+  /** Current R9 content of the active profile box, normalized to a plain object. */
+  function currentProfileContentObject(): Record<string, unknown> {
+    const raw = activeProfileBox()?.content;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return { ...(raw as Record<string, unknown>) };
+    }
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw.trim());
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return { ...(parsed as Record<string, unknown>) };
+        }
+      } catch {
+        /* not JSON — start fresh rather than clobber an opaque blob */
+      }
+    }
+    return {};
+  }
+
+  function openAddFieldModal() {
+    if (!ensureLiveProfile()) return;
+    addFieldKey = "";
+    addFieldValue = "";
+    showAddFieldModal = true;
+  }
+
+  async function submitAddField() {
+    if (!ensureLiveProfile()) return;
+    const box = activeProfileBox();
+    if (!box) {
+      toasts.error("No profile box found.");
+      return;
+    }
+    const key = addFieldKey.trim();
+    if (!key) {
+      toasts.error("Field name is required.");
+      return;
+    }
+    addFieldSubmitting = true;
+    try {
+      const merged = currentProfileContentObject();
+      merged[key] = addFieldValue;
+      await updateProfileContent($explorer_uri, box, merged);
+      toasts.success("Profile field added.");
+      showAddFieldModal = false;
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Failed to add field.");
+    } finally {
+      addFieldSubmitting = false;
+    }
+  }
+
+  function openNewProfileModal() {
+    if ($demoMode) {
+      toasts.info("Switch off demo mode to create a profile.");
+      return;
+    }
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return;
+    }
+    newProfileSacrifice = "0";
+    showNewProfileModal = true;
+  }
+
+  async function submitNewProfile() {
+    if ($demoMode || !$walletConnected) {
+      toasts.error("Connect a wallet in live mode first.");
+      return;
+    }
+    const parsed = Number(newProfileSacrifice || "0");
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toasts.error("Sacrifice must be a non-negative ERG amount.");
+      return;
+    }
+    newProfileSubmitting = true;
+    try {
+      const sacrificeErg = parsed > 0 ? BigInt(Math.round(parsed * 1e9)) : 0n;
+      await createAdditionalProfile($explorer_uri, { totalSupply: 1, sacrificeErg });
+      toasts.success("New reputation profile created.");
+      showNewProfileModal = false;
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Failed to create profile.");
+    } finally {
+      newProfileSubmitting = false;
+    }
+  }
+
+  /** Switch the globally-active profile to another one held by the wallet. */
+  function handleSelectProfile(tokenId: string) {
+    const next = userProfiles.find((p) => p.token_id === tokenId);
+    if (!next) return;
+    reputation_proof.set(next);
+    toasts.info(`Switched to profile ${tokenId.slice(0, 6)}…`);
+  }
+
+  // Real on-chain content for the active profile, derived from loaded skills.
+  $: activeProfileTokenId = $reputation_proof?.token_id;
+  $: myProfileSkills = activeProfileTokenId
+    ? skills.filter((s) => s.profileId === activeProfileTokenId)
+    : [];
+  $: myProfileServices = activeProfileTokenId
+    ? skills.flatMap((s) => s.coverages).filter((c) => c.profileId === activeProfileTokenId)
+    : [];
+  $: myProfileBenchmarks = activeProfileTokenId
+    ? skills.flatMap((s) => s.benchmarks).filter((b) => b.profileId === activeProfileTokenId)
+    : [];
+  $: myProfileResults = activeProfileTokenId
+    ? skills
+        .flatMap((s) => s.benchmarks)
+        .flatMap((b) => b.results)
+        .filter((r) => r.profileId === activeProfileTokenId)
+    : [];
 
   function requireProfileForWrite(): boolean {
     if ($demoMode) return true;
@@ -2241,10 +2424,19 @@
             {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
           </div>
         {:else}
-          <ProfileDetailsCard proof={$reputation_proof} />
-          {#if userProfiles.length > 1}
-            <p class="text-xs text-muted-foreground mb-2">This wallet holds {userProfiles.length} profiles; showing the primary one.</p>
-          {/if}
+          <ProfileDetailsCard
+            proof={$reputation_proof}
+            profiles={userProfiles}
+            activeProfileId={$reputation_proof?.token_id}
+            skills={myProfileSkills}
+            benchmarks={myProfileBenchmarks}
+            services={myProfileServices}
+            results={myProfileResults}
+            on:burn={openBurnModal}
+            on:addField={openAddFieldModal}
+            on:createProfile={openNewProfileModal}
+            on:selectProfile={(e) => handleSelectProfile(e.detail)}
+          />
         {/if}
       </div>
     </div>
@@ -2290,6 +2482,73 @@
         onSourceAdded={handleFileSourceAdded}
         hash={writable(modalFileHash)}
       />
+    </div>
+  </div>
+{/if}
+
+<!-- ── Burn More ERG modal ─────────────────────────────────────────────── -->
+{#if showBurnModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" use:portal on:click={() => (showBurnModal = false)}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Burn ERG to your profile</h3>
+        <button class="file-source-modal-close" on:click={() => (showBurnModal = false)}>✕</button>
+      </div>
+      <p class="text-sm text-muted-foreground mb-4">Sacrificed ERG is permanently burned into your reputation profile, raising its reputation. This cannot be undone.</p>
+      <div class="form-group">
+        <label class="form-label" for="burn-erg">ERG to burn</label>
+        <input id="burn-erg" class="form-input" type="number" min="0" step="0.001" placeholder="0.000" bind:value={burnErgAmount} />
+      </div>
+      <button class="submit-btn mt-4" type="button" disabled={burnSubmitting} on:click={submitBurn}>
+        {#if burnSubmitting}<div class="submit-spinner"></div>Burning…{:else}Burn ERG{/if}
+      </button>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Add Profile-Data field modal ────────────────────────────────────── -->
+{#if showAddFieldModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" use:portal on:click={() => (showAddFieldModal = false)}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Add profile field</h3>
+        <button class="file-source-modal-close" on:click={() => (showAddFieldModal = false)}>✕</button>
+      </div>
+      <p class="text-sm text-muted-foreground mb-4">Add a self-defining key/value to your profile's on-chain data (R9). This updates your profile box.</p>
+      <div class="form-group">
+        <label class="form-label" for="field-key">Field name</label>
+        <input id="field-key" class="form-input" type="text" placeholder="e.g. website" bind:value={addFieldKey} />
+      </div>
+      <div class="form-group mt-3">
+        <label class="form-label" for="field-value">Value</label>
+        <input id="field-value" class="form-input" type="text" placeholder="e.g. https://…" bind:value={addFieldValue} />
+      </div>
+      <button class="submit-btn mt-4" type="button" disabled={addFieldSubmitting} on:click={submitAddField}>
+        {#if addFieldSubmitting}<div class="submit-spinner"></div>Saving…{:else}Add field{/if}
+      </button>
+    </div>
+  </div>
+{/if}
+
+<!-- ── New reputation profile modal ────────────────────────────────────── -->
+{#if showNewProfileModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" use:portal on:click={() => (showNewProfileModal = false)}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Create a new profile</h3>
+        <button class="file-source-modal-close" on:click={() => (showNewProfileModal = false)}>✕</button>
+      </div>
+      <p class="text-sm text-muted-foreground mb-4">Mint an additional reputation profile (a new reputation token). You can optionally burn ERG into it at creation to seed its reputation.</p>
+      <div class="form-group">
+        <label class="form-label" for="new-profile-sacrifice">Optional ERG sacrifice</label>
+        <input id="new-profile-sacrifice" class="form-input" type="number" min="0" step="0.001" placeholder="0" bind:value={newProfileSacrifice} />
+      </div>
+      <button class="submit-btn mt-4" type="button" disabled={newProfileSubmitting} on:click={submitNewProfile}>
+        {#if newProfileSubmitting}<div class="submit-spinner"></div>Creating…{:else}Create profile{/if}
+      </button>
     </div>
   </div>
 {/if}
