@@ -43,27 +43,36 @@
   .ambient-gradient {
     background: radial-gradient(
       130% 90% at 50% -25%,
-      hsl(var(--accent) / 0.06),
+      hsl(var(--accent) / 0.12),
       transparent 60%
     );
     animation: ambient-drift 60s ease-in-out infinite alternate;
   }
 
-  /* Sun — light mode only. Soft warm radial near the top-right. */
+  /* Sun — light mode only. Soft warm radial near the top-right.
+     Theme visibility is gated with `display` (not `opacity`): the pulse/twinkle
+     keyframes animate `opacity`, and a running animation overrides any static
+     `opacity` from the cascade — so an opacity-based theme toggle would leak the
+     wrong layer into the other theme. `display:none` hides regardless. */
   .ambient-sun {
+    display: block;
     opacity: 1;
     background: radial-gradient(
-      42% 32% at 80% 6%,
-      hsl(35 92% 70% / 0.16),
-      hsl(22 85% 72% / 0.05) 45%,
-      transparent 72%
+      52% 42% at 80% 4%,
+      hsl(35 92% 68% / 0.32),
+      hsl(22 85% 70% / 0.12) 45%,
+      transparent 74%
     );
     animation: ambient-pulse 26s ease-in-out infinite alternate;
   }
 
-  /* Stars — dark mode only. Confined to the top ~40% of the viewport. */
+  /* Stars — dark mode only. Confined to the top ~40% of the viewport.
+     Hidden via `display:none` in light mode (see note on .ambient-sun). The
+     static opacity is the reduced-motion fallback when the twinkle animation
+     is disabled. */
   .ambient-stars {
-    opacity: 0;
+    display: none;
+    opacity: 0.85;
     background-repeat: no-repeat;
     background-image:
       radial-gradient(1px 1px at 8% 11%, hsl(0 0% 100% / 0.8), transparent),
@@ -100,15 +109,15 @@
 
   /* Dark mode: hide the sun, reveal the stars, cool the base wash. */
   :global(.dark) .ambient-sun {
-    opacity: 0;
+    display: none;
   }
   :global(.dark) .ambient-stars {
-    opacity: 0.8;
+    display: block;
   }
   :global(.dark) .ambient-gradient {
     background: radial-gradient(
       130% 90% at 50% -25%,
-      hsl(205 55% 60% / 0.07),
+      hsl(205 55% 60% / 0.14),
       transparent 60%
     );
   }
