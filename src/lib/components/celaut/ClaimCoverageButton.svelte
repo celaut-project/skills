@@ -289,11 +289,15 @@
     cursor: not-allowed;
   }
 
+  /* Default size deliberately matches App.svelte's `.create-benchmark-btn`
+     (padding 0.625rem 1rem / 0.875rem / weight 600 / radius 0.5rem) so the
+     "Add Service Solution" and "Create Benchmark" pair share identical
+     dimensions in the detail action row. */
   .claim-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
+    padding: 0.625rem 1rem;
     border-radius: 0.5rem;
     font-size: 0.875rem;
     font-weight: 600;
