@@ -234,71 +234,74 @@
   // the skill, weighted by each benchmark's own reputation (so a service that
   // wins on a heavily-vouched benchmark beats one that wins on an obscure one).
 
-  // A skill's "recommended" service is the one that is actually runnable: it has
-  // at least one source registered for its service_id in source-application.
-  // Selection is by SOURCE AVAILABILITY (most sources wins), not reputation — a
-  // rep-0 service that only entered via a submitted Result still wins if it has
-  // a source. `selectedSkill.coverages` already merges direct coverage boxes AND
-  // result-derived services (see loadCoverages), so it is the full candidate pool.
-
-  // serviceId -> its registered sources, for the currently selected skill.
-  let serviceSourcesById: Record<string, FileSource[]> = {};
-
-  async function loadCandidateServiceSources(skill: Skill | null) {
-    if (!skill) {
-      serviceSourcesById = {};
-      return;
-    }
-    const ids = Array.from(
-      new Set(skill.coverages.map((c) => c.serviceId).filter(Boolean) as string[]),
-    );
-    const entries = await Promise.all(
-      ids.map(async (id) => {
-        try {
-          return [id, await fetchFileSourcesCached(id)] as const;
-        } catch {
-          return [id, [] as FileSource[]] as const;
-        }
-      }),
-    );
-    // Guard against out-of-order resolution when switching skills quickly.
-    if (selectedSkill?.boxId === skill.boxId) {
-      serviceSourcesById = Object.fromEntries(entries);
-    }
-  }
-  $: loadCandidateServiceSources(selectedSkill);
+  // A skill's "recommended" service is ranked by COMPOSITE SCORE + REPUTATION.
+  // `selectedSkill.coverages` already merges direct coverage boxes AND
+  // result-derived services (see loadCoverages), so it is the full candidate
+  // pool. Crucially we DON'T drop services that lack comparative benchmark data:
+  // the comparison tensor's z-score composite is 0 for a lone/unscored service,
+  // so a unique service that only entered via a Result (composite 0, rep 0) must
+  // still surface — it's simply the single best candidate.
 
   /**
-   * Recommended service = the candidate with the most registered sources
-   * (minimum one). Ties break on the coverage's own reputation, then order.
-   * Null when no candidate has any source — nothing is "recommended" then.
+   * Recommended service for the selected skill. Score = tensor composite score
+   * (0 when the service has no comparative data) + the service's own reputation.
+   * Highest score wins; a sole candidate always shows. Null only when the skill
+   * has no service candidates at all.
    */
-  $: recommendedService = (() => {
-    if (!selectedSkill) return null;
-    const ranked = selectedSkill.coverages
-      .filter((c) => c.serviceId)
-      .map((coverage) => ({
-        coverage,
-        sourceCount: serviceSourcesById[coverage.serviceId!]?.length ?? 0,
-      }))
-      .filter((x) => x.sourceCount > 0)
-      .sort(
-        (a, b) =>
-          b.sourceCount - a.sourceCount ||
-          (b.coverage.reputation ?? 0) - (a.coverage.reputation ?? 0),
+  // Computed in the MARKUP (via `{#each [computeRecommendedService(selectedSkill)]}`),
+  // NOT a `$:` reactive. A skill's `coverages` get populated by in-place mutation
+  // after the skill is selected (notably on a `?skill=` deep link); that mutates
+  // the existing object without reassigning `selectedSkill` or `skills`, so no
+  // reactive statement is ever invalidated and the card stayed permanently hidden.
+  // Markup expressions re-evaluate on every render, so they always see the latest
+  // coverages — the reliable place to derive this.
+  function computeRecommendedService(skill: Skill | null) {
+    if (!skill) return null;
+    const candidates = skill.coverages.filter((c) => c.serviceId);
+    if (!candidates.length) return null;
+    // composite per serviceId — 0 for services absent from the tensor or with
+    // no metric data (z-scores are relative, so a lone service scores 0). The
+    // tensor builder can throw on sparse/edge-case benchmark data; if it does,
+    // fall back to reputation-only ranking so the recommended card (and a sole
+    // result-derived service) still surfaces instead of vanishing.
+    let compositeById = new Map<string, number>();
+    try {
+      compositeById = new Map(
+        buildComparisonTensor(skill).rows.map((r) => [r.serviceId, r.composite]),
       );
+    } catch {
+      compositeById = new Map();
+    }
+    const ranked = candidates
+      .map((coverage) => {
+        const composite = compositeById.get(coverage.serviceId!) ?? 0;
+        const reputation = coverage.reputation ?? 0;
+        return { coverage, composite, reputation, score: composite + reputation };
+      })
+      .sort((a, b) => b.score - a.score || b.reputation - a.reputation);
     return ranked[0] ?? null;
-  })();
+  }
 
-  // Best downloadable source for the recommended service (highest reputationAmount).
-  $: recommendedDownload = (() => {
-    const sources = recommendedService
-      ? serviceSourcesById[recommendedService.coverage.serviceId!] ?? []
-      : [];
-    return sources.length
-      ? [...sources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
-      : null;
-  })();
+  // Optional download convenience on the recommended service (NOT part of
+  // selection). Returns a STABLE promise per serviceId so the markup `{#await}`
+  // doesn't re-fetch/flicker on every render.
+  const NO_DOWNLOAD: Promise<FileSource | null> = Promise.resolve(null);
+  const recommendedDownloadCache = new Map<string, Promise<FileSource | null>>();
+  function recommendedDownloadPromise(serviceId: string | undefined): Promise<FileSource | null> {
+    if (!serviceId) return NO_DOWNLOAD;
+    let pr = recommendedDownloadCache.get(serviceId);
+    if (!pr) {
+      pr = fetchFileSourcesCached(serviceId)
+        .then((srcs) =>
+          srcs.length
+            ? [...srcs].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
+            : null,
+        )
+        .catch(() => null);
+      recommendedDownloadCache.set(serviceId, pr);
+    }
+    return pr;
+  }
 
   // ── Load skills from active provider ────────────────────────────────────────
   async function loadSkills() {
@@ -1654,9 +1657,13 @@
             </div>
           </div>
 
-          <!-- Recommended service: the one with ≥1 source registered for its
-               service_id (source availability, not reputation). -->
-          {#if recommendedService}
+          <!-- Recommended service: ranked by composite score + reputation; the
+               sole/unscored service still surfaces (composite 0). Computed via
+               the single-element {#each} so it re-derives on every render (see
+               computeRecommendedService — coverages mutate in place and no $:
+               reactive would catch it). -->
+          {#each [computeRecommendedService(selectedSkill)] as recommendedService (recommendedService?.coverage.serviceId ?? 'none')}
+            {#if recommendedService}
             <section class="best-service-card">
               <div class="best-service-eyebrow">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1672,11 +1679,18 @@
                   {/if}
                 </div>
                 <div class="best-service-score">
-                  <span class="best-service-score-value">{recommendedService.sourceCount}</span>
-                  <span class="best-service-score-label">source{recommendedService.sourceCount === 1 ? '' : 's'}</span>
+                  <span class="best-service-score-value">{recommendedService.composite.toFixed(2)}</span>
+                  <span class="best-service-score-label">composite score</span>
+                  <span class="best-service-rep">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    <span class="best-service-rep-value">{formatReputation(recommendedService.reputation)}</span>
+                    <span class="best-service-rep-label">reputation</span>
+                  </span>
                   <InfoTip title="Why this service is recommended">
-                    <p>It's shown as recommended because it has <strong>{recommendedService.sourceCount} source{recommendedService.sourceCount === 1 ? '' : 's'}</strong> registered for its <code>service_id</code> in source-application — so it can actually be downloaded and run.</p>
-                    <p>Selection is based purely on <strong>source availability</strong> (at least one), not on reputation. A service that solves the skill only via a submitted result still qualifies if it has a source.</p>
+                    <p>Ranked by its <strong>composite benchmark score plus on-chain reputation</strong> — the highest combined value across this skill's services wins.</p>
+                    <p>A service still shows here when it's the only one or has no comparative benchmark data yet (its composite is simply 0), including services that solve the skill via a submitted result rather than a coverage box.</p>
                   </InfoTip>
                 </div>
               </div>
@@ -1684,22 +1698,25 @@
                 {#if recommendedService.coverage.serviceId}
                   <RunServiceButton serviceId={recommendedService.coverage.serviceId} large={true} label="Run" />
                 {/if}
-                {#if recommendedDownload?.sourceUrl}
-                  <a
-                    class="best-service-download"
-                    href={recommendedDownload.sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Download from source-application
-                  </a>
-                {/if}
+                {#await recommendedDownloadPromise(recommendedService.coverage.serviceId) then dl}
+                  {#if dl?.sourceUrl}
+                    <a
+                      class="best-service-download"
+                      href={dl.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Download from source-application
+                    </a>
+                  {/if}
+                {/await}
               </div>
             </section>
-          {/if}
+            {/if}
+          {/each}
 
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
@@ -3273,6 +3290,19 @@
   .best-service-score-label {
     @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
     color: hsl(var(--muted-foreground));
+  }
+  /* Reputation chip under the composite score — subordinate annotation. */
+  .best-service-rep {
+    @apply inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded;
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--muted-foreground));
+  }
+  .best-service-rep-value {
+    @apply text-xs font-semibold leading-none;
+    font-variant-numeric: tabular-nums;
+  }
+  .best-service-rep-label {
+    @apply text-[0.6rem] uppercase tracking-wider;
   }
   .best-service-actions {
     @apply flex flex-wrap items-center gap-3 mt-3;
