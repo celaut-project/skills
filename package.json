@@ -51,5 +51,8 @@
     "source-application": "github:reputation-systems/source-application",
     "update": "^0.7.4",
     "wallet-svelte-component": "github:ergo-basics/wallet-svelte-component"
+  },
+  "overrides": {
+    "postcss-load-config": "5.1.0"
   }
 }
