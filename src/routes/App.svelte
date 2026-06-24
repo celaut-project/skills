@@ -149,14 +149,12 @@
   let profileSacrificeErg = "0";
   let lastProfileLookupKey = "";
 
-  // ── Reputation profile actions (burn / add field / new profile) ──────────
+  // ── Reputation profile actions (burn / new profile) ──────────────────────
+  // Profile-data editing lives inside ProfileDetailsCard's own modal, which
+  // dispatches the full key/value set via `updateProfileData` (PUT semantics).
   let showBurnModal = false;
   let burnErgAmount = "";
   let burnSubmitting = false;
-  let showAddFieldModal = false;
-  let addFieldKey = "";
-  let addFieldValue = "";
-  let addFieldSubmitting = false;
   let showNewProfileModal = false;
   let newProfileSacrifice = "0";
   let newProfileSubmitting = false;
@@ -452,57 +450,33 @@
     }
   }
 
-  /** Current R9 content of the active profile box, normalized to a plain object. */
-  function currentProfileContentObject(): Record<string, unknown> {
-    const raw = activeProfileBox()?.content;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      return { ...(raw as Record<string, unknown>) };
-    }
-    if (typeof raw === "string" && raw.trim()) {
-      try {
-        const parsed = JSON.parse(raw.trim());
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return { ...(parsed as Record<string, unknown>) };
-        }
-      } catch {
-        /* not JSON — start fresh rather than clobber an opaque blob */
-      }
-    }
-    return {};
-  }
-
-  function openAddFieldModal() {
-    if (!ensureLiveProfile()) return;
-    addFieldKey = "";
-    addFieldValue = "";
-    showAddFieldModal = true;
-  }
-
-  async function submitAddField() {
+  /**
+   * Persist the full profile-data object (PUT semantics). The card's edit modal
+   * dispatches the complete key/value set, so we write it verbatim — this both
+   * adds and modifies fields in one update of the self/profile box.
+   */
+  async function handleUpdateProfileData(data: Record<string, unknown>) {
     if (!ensureLiveProfile()) return;
     const box = activeProfileBox();
     if (!box) {
       toasts.error("No profile box found.");
       return;
     }
-    const key = addFieldKey.trim();
-    if (!key) {
-      toasts.error("Field name is required.");
-      return;
-    }
-    addFieldSubmitting = true;
     try {
-      const merged = currentProfileContentObject();
-      merged[key] = addFieldValue;
-      await updateProfileContent($explorer_uri, box, merged);
-      toasts.success("Profile field added.");
-      showAddFieldModal = false;
+      await updateProfileContent($explorer_uri, box, data);
+      toasts.success("Profile data updated.");
       await loadUserProfileState();
     } catch (e: any) {
-      toasts.error(e?.message || "Failed to add field.");
-    } finally {
-      addFieldSubmitting = false;
+      toasts.error(e?.message || "Failed to update profile data.");
     }
+  }
+
+  /** Navigate from a profile-card entity (skill/benchmark/service/result) to its skill page. */
+  function handleNavigateSkill(boxId: string) {
+    const skill = skills.find((s) => s.boxId === boxId);
+    viewedProfileId.set(null);
+    activeTab = "gallery";
+    if (skill) selectSkill(skill);
   }
 
   function openNewProfileModal() {
@@ -549,24 +523,6 @@
     reputation_proof.set(next);
     toasts.info(`Switched to profile ${tokenId.slice(0, 6)}…`);
   }
-
-  // Real on-chain content for the active profile, derived from loaded skills.
-  $: activeProfileTokenId = $reputation_proof?.token_id;
-  $: myProfileSkills = activeProfileTokenId
-    ? skills.filter((s) => s.profileId === activeProfileTokenId)
-    : [];
-  $: myProfileServices = activeProfileTokenId
-    ? skills.flatMap((s) => s.coverages).filter((c) => c.profileId === activeProfileTokenId)
-    : [];
-  $: myProfileBenchmarks = activeProfileTokenId
-    ? skills.flatMap((s) => s.benchmarks).filter((b) => b.profileId === activeProfileTokenId)
-    : [];
-  $: myProfileResults = activeProfileTokenId
-    ? skills
-        .flatMap((s) => s.benchmarks)
-        .flatMap((b) => b.results)
-        .filter((r) => r.profileId === activeProfileTokenId)
-    : [];
 
   function requireProfileForWrite(): boolean {
     if ($demoMode) return true;
@@ -1090,6 +1046,10 @@
       if (initialProfile) viewedProfileId.set(initialProfile);
       const initialSkill = url.searchParams.get("skill");
       if (initialSkill) pendingSkillId = initialSkill;
+      // Only now that the initial deep-link params have been consumed may the
+      // reactive URL-sync touch the address bar — otherwise it runs during init
+      // (before this onMount) and strips `?profile=`/`?skill=` before they're read.
+      urlSyncEnabled = true;
       loadSkills();
 
       // Back/forward button: keep the profile- and skill-detail views in sync
@@ -1147,10 +1107,13 @@
   // `?profile=` link just sees the profile — no leftover skill, no dangling
   // back-navigation that only made sense in the original user's session.
   let lastSyncedProfileParam: string | null | undefined = undefined;
+  // Enabled at the end of onMount, once initial `?profile=`/`?skill=` deep links
+  // have been read — guards against this reactive stripping them during init.
+  let urlSyncEnabled = false;
   $: desiredProfileParam =
     $viewedProfileId ??
     (activeTab === "profile" ? $reputation_proof?.token_id ?? null : null);
-  $: if (browser && lastSyncedProfileParam !== desiredProfileParam) {
+  $: if (browser && urlSyncEnabled && lastSyncedProfileParam !== desiredProfileParam) {
     const current = new URL(window.location.href);
     const currentParam = current.searchParams.get("profile");
     let changed = false;
@@ -1205,10 +1168,6 @@
   // True when the viewed profile is the connected user's own profile — the only
   // case where the card stays editable.
   $: isOwnViewedProfile = !!$viewedProfileId && $reputation_proof?.token_id === $viewedProfileId;
-  // The `readOnly` prop is being added to ProfileDetailsCard by a parallel
-  // cluster; spread it from an untyped object so `svelte-check` doesn't fail on
-  // the not-yet-merged prop. Honoured by ProfileDetailsCard once that lands.
-  $: viewedProfileCardProps = { readOnly: !isOwnViewedProfile } as Record<string, unknown>;
 
   $: loadViewedProfileProof($viewedProfileId, $reputation_proof);
 
@@ -1330,34 +1289,23 @@
               <span class="profile-readonly-badge" title="You are viewing another profile — actions are disabled.">Read-only</span>
             {/if}
           </div>
-          <div class="profile-summary-grid">
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Skills submitted</span>
-              <span class="profile-summary-value">{profileContributions.submittedSkills.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Service solutions</span>
-              <span class="profile-summary-value">{profileContributions.coverages.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Benchmarks</span>
-              <span class="profile-summary-value">{profileContributions.benchmarks.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Results</span>
-              <span class="profile-summary-value">{profileContributions.results.length}</span>
-            </div>
-          </div>
         </div>
 
         <!-- Same reputation-profile card the connected user sees, but read-only
-             unless this is the user's own profile. -->
+             unless this is the user's own profile. Passing the full `skills`
+             list lets the card self-compute the same contributions (skills,
+             benchmarks, services, results) it shows for the own profile. -->
         {#if viewedProfileLoading}
           <div class="detail-card">
             <p class="text-muted-foreground text-sm">Loading reputation profile…</p>
           </div>
         {:else if viewedProfileProof}
-          <ProfileDetailsCard proof={viewedProfileProof} {...viewedProfileCardProps} />
+          <ProfileDetailsCard
+            proof={viewedProfileProof}
+            readOnly={!isOwnViewedProfile}
+            skills={skills}
+            on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
+          />
         {:else}
           <div class="detail-card">
             <p class="text-muted-foreground text-sm">No on-chain reputation profile could be loaded for this id.</p>
@@ -2337,14 +2285,12 @@
             proof={$reputation_proof}
             profiles={userProfiles}
             activeProfileId={$reputation_proof?.token_id}
-            skills={myProfileSkills}
-            benchmarks={myProfileBenchmarks}
-            services={myProfileServices}
-            results={myProfileResults}
+            skills={skills}
             on:burn={openBurnModal}
-            on:addField={openAddFieldModal}
+            on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
             on:createProfile={openNewProfileModal}
             on:selectProfile={(e) => handleSelectProfile(e.detail)}
+            on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
           />
         {/if}
       </div>
@@ -2411,31 +2357,6 @@
       </div>
       <button class="submit-btn mt-4" type="button" disabled={burnSubmitting} on:click={submitBurn}>
         {#if burnSubmitting}<div class="submit-spinner"></div>Burning…{:else}Burn ERG{/if}
-      </button>
-    </div>
-  </div>
-{/if}
-
-<!-- ── Add Profile-Data field modal ────────────────────────────────────── -->
-{#if showAddFieldModal}
-  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="file-source-modal-backdrop" use:portal on:click={() => (showAddFieldModal = false)}>
-    <div class="file-source-modal-content" on:click|stopPropagation>
-      <div class="file-source-modal-header">
-        <h3 class="text-lg font-semibold">Add profile field</h3>
-        <button class="file-source-modal-close" on:click={() => (showAddFieldModal = false)}>✕</button>
-      </div>
-      <p class="text-sm text-muted-foreground mb-4">Add a self-defining key/value to your profile's on-chain data (R9). This updates your profile box.</p>
-      <div class="form-group">
-        <label class="form-label" for="field-key">Field name</label>
-        <input id="field-key" class="form-input" type="text" placeholder="e.g. website" bind:value={addFieldKey} />
-      </div>
-      <div class="form-group mt-3">
-        <label class="form-label" for="field-value">Value</label>
-        <input id="field-value" class="form-input" type="text" placeholder="e.g. https://…" bind:value={addFieldValue} />
-      </div>
-      <button class="submit-btn mt-4" type="button" disabled={addFieldSubmitting} on:click={submitAddField}>
-        {#if addFieldSubmitting}<div class="submit-spinner"></div>Saving…{:else}Add field{/if}
       </button>
     </div>
   </div>
@@ -3589,30 +3510,6 @@
   }
   .aggregate-label-row-divider {
     font-style: normal;
-  }
-  .profile-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-  .profile-summary-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.5rem;
-    background: hsl(var(--muted) / 0.4);
-  }
-  .profile-summary-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: hsl(var(--muted-foreground));
-  }
-  .profile-summary-value {
-    font-weight: 700;
-    font-size: 1.5rem;
   }
   .aggregate-row-clickable {
     cursor: pointer;
