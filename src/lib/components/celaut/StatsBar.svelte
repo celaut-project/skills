@@ -43,64 +43,68 @@
 </div>
 
 <style lang="postcss">
+  /* Secondary metadata, not a hero card: no surface/border, muted, low weight.
+     Reads as a quiet inline summary line under the subtitle. */
   .stats-bar {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1.5rem;
-    padding: 0.75rem 1.5rem;
+    flex-wrap: wrap;
+    gap: 1.25rem;
     margin-bottom: 1.5rem;
-    border-radius: 0.75rem;
-    border: 1px solid hsl(var(--border));
-    background-color: hsl(var(--card));
   }
 
   .stat-item {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
+    color: hsl(var(--muted-foreground));
   }
 
+  /* No boxed chip — just a small, dimmed inline glyph. */
   .stat-icon {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 0.5rem;
-    background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+    opacity: 0.65;
+  }
+
+  .stat-icon :global(svg) {
+    width: 14px;
+    height: 14px;
   }
 
   .stat-data {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.2;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
   }
 
   .stat-value {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: hsl(var(--foreground));
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground) / 0.72);
   }
 
   .stat-label {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: hsl(var(--muted-foreground));
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
   }
 
+  /* Divider is a faint dot, not a hard rule. */
   .stat-divider {
-    width: 1px;
-    height: 2rem;
-    background-color: hsl(var(--border));
+    width: 3px;
+    height: 3px;
+    border-radius: 9999px;
+    background-color: hsl(var(--muted-foreground) / 0.4);
   }
 
   @media (max-width: 480px) {
     .stats-bar {
-      gap: 1rem;
-      padding: 0.5rem 1rem;
+      gap: 0.85rem;
     }
   }
 </style>
