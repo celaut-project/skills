@@ -1,136 +1,124 @@
 <script lang="ts">
-  let expanded = false;
 </script>
 
 <div class="how-it-works">
-  <button class="how-toggle" on:click={() => expanded = !expanded}>
-    <div class="how-toggle-left">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <header class="how-header">
+    <div class="how-header-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/>
         <line x1="12" y1="16" x2="12" y2="12"/>
         <line x1="12" y1="8" x2="12.01" y2="8"/>
       </svg>
-      <span class="how-toggle-text">How it works</span>
     </div>
-    <svg
-      class="how-chevron"
-      class:how-chevron-open={expanded}
-      width="16" height="16" viewBox="0 0 24 24"
-      fill="none" stroke="currentColor" stroke-width="2"
-      stroke-linecap="round" stroke-linejoin="round"
-    >
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>
-  </button>
+    <h1 class="how-title">How it works</h1>
+  </header>
 
-  {#if expanded}
-    <div class="how-content">
-      <p class="how-intro">
-        <strong>Unstoppable Skills</strong> is a decentralized registry built on one idea:
-        a <strong>Skill</strong> says <em>what</em> to solve — a <strong>service</strong> says <em>how</em>.
+  <div class="how-content">
+    <p class="how-intro">
+      <strong>Unstoppable Skills</strong> is a decentralized registry built on one idea:
+      a <strong>Skill</strong> says <em>what</em> to solve — a <strong>service</strong> says <em>how</em>.
+    </p>
+
+    <!-- The contrast: this is the punchline -->
+    <div class="how-contrast">
+      <div class="contrast-card messy">
+        <div class="contrast-head">
+          <span class="contrast-label">Other skill repos</span>
+        </div>
+        <p class="contrast-line">A skill is a pile of natural-language instructions <span class="plus">+</span> scripts.</p>
+        <div class="contrast-tags">
+          <span class="tag">prompt text</span>
+          <span class="tag">setup.sh</span>
+          <span class="tag">deps?</span>
+          <span class="tag">version?</span>
+          <span class="tag">which model?</span>
+        </div>
+        <p class="contrast-foot warn">The AI has to interpret the <em>how</em>. Different model, different reading — and scripts break on version &amp; dependency drift.</p>
+      </div>
+
+      <div class="contrast-card clean">
+        <div class="contrast-head">
+          <span class="contrast-label">Here</span>
+        </div>
+        <p class="contrast-line">A skill is a clean spec of <em>what</em>. The <em>how</em> is sealed inside a service.</p>
+        <div class="contrast-tags">
+          <span class="tag solid">🖥 exact OS</span>
+          <span class="tag solid">📦 deps</span>
+          <span class="tag solid">🤖 model</span>
+        </div>
+        <p class="contrast-foot ok">Each service is a VM that ships everything it was tested with. Reproducible by construction.</p>
+      </div>
+    </div>
+
+    <div class="how-relationships">
+      <p>
+        <strong>Skills</strong> define <em>what</em> to solve. <strong>Coverages</strong> are services (VMs) that solve them their own way.
+        <strong>Benchmarks</strong> define how to measure. <strong>Results</strong> are on-chain proof — and feed each service's reputation.
       </p>
+    </div>
 
-      <!-- The contrast: this is the punchline -->
-      <div class="how-contrast">
-        <div class="contrast-card messy">
-          <div class="contrast-head">
-            <span class="contrast-label">Other skill repos</span>
-          </div>
-          <p class="contrast-line">A skill is a pile of natural-language instructions <span class="plus">+</span> scripts.</p>
-          <div class="contrast-tags">
-            <span class="tag">prompt text</span>
-            <span class="tag">setup.sh</span>
-            <span class="tag">deps?</span>
-            <span class="tag">version?</span>
-            <span class="tag">which model?</span>
-          </div>
-          <p class="contrast-foot warn">The AI has to interpret the <em>how</em>. Different model, different reading — and scripts break on version &amp; dependency drift.</p>
+    <!-- Layered diagram: one WHAT, many sealed HOWs, judged by the community -->
+    <div class="how-diagram">
+      <div class="diagram-skill">
+        <span class="node-kind">SKILL</span>
+        <span class="node-sub">what to solve</span>
+      </div>
+      <div class="diagram-fan">
+        <span class="fan-line"></span><span class="fan-line"></span><span class="fan-line"></span>
+      </div>
+      <div class="diagram-services">
+        <div class="service-box">
+          <span class="service-title">Service</span>
+          <span class="service-meta">🖥 📦 🤖</span>
         </div>
-
-        <div class="contrast-card clean">
-          <div class="contrast-head">
-            <span class="contrast-label">Here</span>
-          </div>
-          <p class="contrast-line">A skill is a clean spec of <em>what</em>. The <em>how</em> is sealed inside a service.</p>
-          <div class="contrast-tags">
-            <span class="tag solid">🖥 exact OS</span>
-            <span class="tag solid">📦 deps</span>
-            <span class="tag solid">🤖 model</span>
-          </div>
-          <p class="contrast-foot ok">Each service is a VM that ships everything it was tested with. Reproducible by construction.</p>
+        <div class="service-box">
+          <span class="service-title">Service</span>
+          <span class="service-meta">🖥 📦 🤖</span>
+        </div>
+        <div class="service-box">
+          <span class="service-title">Service</span>
+          <span class="service-meta">🖥 📦 🤖</span>
         </div>
       </div>
+      <div class="diagram-caption">each a sealed VM — coverages of the same skill</div>
+      <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every coverage</div>
+    </div>
 
-      <div class="how-relationships">
-        <p>
-          <strong>Skills</strong> define <em>what</em> to solve. <strong>Coverages</strong> are services (VMs) that solve them their own way.
-          <strong>Benchmarks</strong> define how to measure. <strong>Results</strong> are on-chain proof — and feed each service's reputation.
-        </p>
+    <!-- Marketplace loop -->
+    <div class="how-steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Define</div>
+          <div class="step-desc">Publish a Skill describing what to solve — never how.</div>
+        </div>
       </div>
-
-      <!-- Layered diagram: one WHAT, many sealed HOWs, judged by the community -->
-      <div class="how-diagram">
-        <div class="diagram-skill">
-          <span class="node-kind">SKILL</span>
-          <span class="node-sub">what to solve</span>
+      <div class="step-arrow">&rarr;</div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Cover</div>
+          <div class="step-desc">Anyone ships a service (VM) that solves it, deps and all.</div>
         </div>
-        <div class="diagram-fan">
-          <span class="fan-line"></span><span class="fan-line"></span><span class="fan-line"></span>
-        </div>
-        <div class="diagram-services">
-          <div class="service-box">
-            <span class="service-title">Service</span>
-            <span class="service-meta">🖥 📦 🤖</span>
-          </div>
-          <div class="service-box">
-            <span class="service-title">Service</span>
-            <span class="service-meta">🖥 📦 🤖</span>
-          </div>
-          <div class="service-box">
-            <span class="service-title">Service</span>
-            <span class="service-meta">🖥 📦 🤖</span>
-          </div>
-        </div>
-        <div class="diagram-caption">each a sealed VM — coverages of the same skill</div>
-        <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every coverage</div>
       </div>
-
-      <!-- Marketplace loop -->
-      <div class="how-steps">
-        <div class="step">
-          <div class="step-number">1</div>
-          <div class="step-content">
-            <div class="step-title">Define</div>
-            <div class="step-desc">Publish a Skill describing what to solve — never how.</div>
-          </div>
+      <div class="step-arrow">&rarr;</div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Benchmark</div>
+          <div class="step-desc">Coverages submit Results and rank on the leaderboard.</div>
         </div>
-        <div class="step-arrow">&rarr;</div>
-        <div class="step">
-          <div class="step-number">2</div>
-          <div class="step-content">
-            <div class="step-title">Cover</div>
-            <div class="step-desc">Anyone ships a service (VM) that solves it, deps and all.</div>
-          </div>
-        </div>
-        <div class="step-arrow">&rarr;</div>
-        <div class="step">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <div class="step-title">Benchmark</div>
-            <div class="step-desc">Coverages submit Results and rank on the leaderboard.</div>
-          </div>
-        </div>
-        <div class="step-arrow">&rarr;</div>
-        <div class="step">
-          <div class="step-number">4</div>
-          <div class="step-content">
-            <div class="step-title">Choose</div>
-            <div class="step-desc">Reputation grows on-chain; the best coverage wins.</div>
-          </div>
+      </div>
+      <div class="step-arrow">&rarr;</div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Choose</div>
+          <div class="step-desc">Reputation grows on-chain; the best coverage wins.</div>
         </div>
       </div>
     </div>
-  {/if}
+  </div>
 </div>
 
 <style lang="postcss">
@@ -142,45 +130,29 @@
     overflow: hidden;
   }
 
-  .how-toggle {
-    width: 100%;
+  .how-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    background: none;
-    border: none;
-    color: hsl(var(--foreground));
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 600;
+    gap: 0.625rem;
+    padding: 1.25rem 1.25rem 0.5rem;
   }
 
-  .how-toggle:hover {
-    background-color: hsl(var(--muted) / 0.5);
-  }
-
-  .how-toggle-left {
+  .how-header-icon {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-  }
-
-  .how-toggle-text {
-    color: hsl(var(--foreground));
-  }
-
-  .how-chevron {
-    transition: transform 0.2s ease;
     color: hsl(var(--muted-foreground));
   }
 
-  .how-chevron-open {
-    transform: rotate(180deg);
+  .how-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    letter-spacing: -0.01em;
   }
 
   .how-content {
-    padding: 0 1rem 1rem;
+    padding: 0.5rem 1.25rem 1.25rem;
     font-size: 0.875rem;
     color: hsl(var(--muted-foreground));
     line-height: 1.6;
