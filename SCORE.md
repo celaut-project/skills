@@ -1,62 +1,58 @@
-# Especificación Técnica: Sistema de Reputación y Puntuación Global Multi-Criterio (Basado en Stake)
+# Especificación Técnica: Sistema de Puntuación Global Multi-Criterio
 
-Este documento define la arquitectura lógica y matemática para calcular la puntuación de los **Servicios** dentro de la plataforma. El sistema está diseñado bajo un modelo de **confianza en cascada** y mitigación de fraude (*Anti-Sybil*), utilizando el capital apostado (*Stake*) como ancla de reputación.
-
----
+Este documento define la arquitectura matemática para calcular la puntuación global de los **Servicios** dentro de la plataforma. El sistema asume que todas las entidades poseen una reputación externa ya calculada, representada por un número entero, y utiliza este valor para ponderar la confianza y el rendimiento empírico.
 
 ## 1. Modelo de Dominio y Entidades
 
-El sistema se organiza en universos independientes llamados **Skills**. Todo el cálculo de reputación y comparación de rendimiento ocurre de forma aislada dentro de cada Skill.
+El sistema evalúa el rendimiento a través de las siguientes entidades, cada una con un valor de **Reputación Cruda ($R_{raw}$)** asimilado como un entero en el rango $\{-N_{max}, \dots, 0, \dots, N_{max}\}$:
 
-* **Skill:** El contenedor global (ej: "SAT Solvers", "Image Compression").
-* **User:** Entidad que aporta valor monetario (*Stake*) y emite votos o sube resultados.
-* **Service:** El software/algoritmo evaluado. Cuenta con su propio *Stake* reputacional.
-* **Benchmark:** Una suite de pruebas que define un listado de *Case Descriptors* (dimensiones del problema, ej: número de variables) y *Performance Metrics* (ej: tiempo de ejecución, memoria).
-* **Result:** Una ejecución de un *Service* en un *Benchmark* para ciertas dimensiones, aportando los datos crudos de las métricas.
-
----
-
-## 2. Normalización de Reputación por Skill ($W_e$)
-
-La reputación no es un contador lineal, sino que se basa en el valor monetario real apostado (*Stake*). Para evitar que los usuarios con un capital masivo ("ballenas") invisibilicen por completo a los usuarios pequeños, el programador debe aplicar una **escala logarítmica**.
-
-Para cualquier entidad $e$ (Usuario o Servicio) con un capital apostado $S_e$ dentro de una Skill específica, su reputación normalizada $W_e \in [0, 1]$ se calcula como:
-
-$$W_e = \frac{\log(1 + S_e)}{\log(1 + S_{max})}$$
-
-* $S_e$: Capital apostado por la entidad en esa Skill.
-* $S_{max}$: El capital máximo apostado por una única entidad competidora dentro de la misma Skill.
-
-> **Nota para el programador:** Esta normalización debe recalcularse dinámicamente o mediante un *cron* programado cada vez que varíen los *stakes* máximos de la Skill para mantener la escala $[0, 1]$ actualizada.
+* **Skill:** La categoría global dentro de esta fórmula.
+* **User:** Quien ejecuta o sube un resultado.
+* **Service:** El software/algoritmo que se está evaluando.
+* **Benchmark:** Suite de pruebas con *Case Descriptors* y *Performance Metrics*.
+* **Result:** Los datos empíricos de una ejecución concreta.
 
 ---
 
-## 3. Puntuación de Opinión de la Comunidad ($R_e$)
+## 2. Normalización de Confianza ($W_e$)
 
-Cualquier entidad (Servicio, Benchmark o Resultado) puede recibir votos positivos ($+1$) o negativos ($-1$) por parte de los usuarios. El peso de un voto equivale a la reputación logarítmica del usuario que lo emite ($W_u$).
+Dado que la reputación cruda ($R_{raw}$) puede tener valores extremos (positivos o negativos), no podemos usarla directamente para multiplicar métricas. Necesitamos mapearla a un **Peso de Confianza ($W_e$)** en el intervalo $[0, 1]$.
 
-La **Puntuación de Opinión ($R_e$)** neta de cualquier entidad se calcula aplicando un factor de amortiguación $K$:
+Para evitar que una entidad con una reputación masiva (una "ballena") reduzca a cero el peso del resto, aplicamos una **escala logarítmica con signo**.
 
-$$R_e = \text{scal}\left( \frac{\sum_{i} (Voto_i \cdot W_{u_i})}{\sum_{i} W_{u_i} + K} \right)$$
+Para cualquier entidad $e$, su peso de confianza $W_e$ se calcula así:
 
-* $Voto_i \in \{-1, 1\}$
-* $K$ (Constante de amortiguación, recomendado $K = 5$): Evita que un único voto de un usuario con reputación $1.0$ catapulte una entidad nueva al 100% de confianza. Requiere tracción.
-* $\text{scal}(x)$: Función lineal que mapea el resultado del intervalo $[-1, 1]$ al intervalo de trabajo $[0, 1]$.
+* **Si la reputación es positiva o cero ($R_{raw} \ge 0$):**
+
+$$W_e = 0.5 + 0.5 \cdot \frac{\log(1 + R_{raw}(e))}{\log(1 + N_{max})}$$
+
+
+* **Si la reputación es negativa ($R_{raw} < 0$):**
+
+$$W_e = 0.5 - 0.5 \cdot \frac{\log(1 + |R_{raw}(e)|)}{\log(1 + N_{max})}$$
+
+
+
+**Comportamiento de esta fórmula:**
+
+* Reputación fuertemente negativa $\rightarrow$ $W_e$ se acerca a $0$ (su impacto se anula).
+* Reputación $0$ (entidad nueva/neutral) $\rightarrow$ $W_e = 0.5$ (impacto medio).
+* Reputación fuertemente positiva $\rightarrow$ $W_e$ se acerca a $1$ (máxima confianza).
+
+*(Nota: $N_{max}$ es el valor absoluto máximo de reputación observado únicamente dentro de esa Skill para mantener la escala calibrada).*
 
 ---
 
-## 4. Normalización de Métricas de Rendimiento ($N(x)$)
+## 3. Normalización de Métricas de Rendimiento ($N(x)$)
 
-Los resultados crudos no se pueden comparar directamente debido a la heterogeneidad de unidades (milisegundos vs megabytes) y a las dimensiones del problema (*Case Descriptors*).
+Los resultados crudos de un benchmark (ej. milisegundos vs. tasa de éxito) deben llevarse a una escala común $[0, 1]$. Para cada dimensión del problema $d$, se usan los mínimos ($min_d$) y máximos ($max_d$) históricos:
 
-Para cada dimensión del problema $d$ analizada, se localizan los valores mínimos ($min_d$) y máximos ($max_d$) históricos de la métrica en la base de datos para realizar una normalización de $0$ a $1$:
-
-* **Métricas "Lower is better"** (ej: `execution_time_ms`, `memory_peak_mb`):
+* **Métricas "Lower is better"** (ej. tiempo, memoria):
 
 $$N(x) = \frac{max_d - x}{max_d - min_d}$$
 
 
-* **Métricas "Higher is better"** (ej: `solving_success_rate`):
+* **Métricas "Higher is better"** (ej. ratio de éxito):
 
 $$N(x) = \frac{x - min_d}{max_d - min_d}$$
 
@@ -64,71 +60,56 @@ $$N(x) = \frac{x - min_d}{max_d - min_d}$$
 
 ---
 
-## 5. Reputación Híbrida del Benchmark ($R_B$)
+## 4. Confianza y Calidad de un Resultado
 
-Un benchmark de alta reputación es aquel validado por la comunidad y adoptado por los mejores servicios. Su reputación final combina ambos factores:
+Cuando un usuario sube un `Result` ($r$) de un servicio evaluado en un benchmark, calculamos dos factores: **qué tan real es** y **qué tan bueno es**.
 
-$$R_B = \gamma \cdot Op(B) + (1 - \gamma) \cdot P_{inst}(B)$$
+### A. Peso de Confianza del Resultado ($C_r$)
 
-* $\gamma \in [0, 1]$ (Recomendado $\gamma = 0.5$): Equilibrio entre opinión y adopción.
-* $Op(B)$: Puntuación de opinión directa recibida por los usuarios (fórmula de la sección 3).
-* $P_{inst}(B)$: Prestigio Institucional, calculado a partir de los Servicios que han decidido competir en él (lo que representa un voto de confianza implícito del Servicio hacia el Benchmark):
+Combina el peso de confianza del usuario que subió el dato ($W_u$) y el peso de confianza del resultado en sí mismo ($W_r$, derivado de su propia reputación externa por los votos que haya recibido).
 
-$$P_{inst}(B) = \left( \frac{\sum_{S \in Participantes} W_S}{\text{Total Participantes}} \right) \cdot \min\left(1, \frac{\text{Total Participantes}}{N_{ideal}}\right)$$
+$$C_r = \alpha \cdot W_u + (1 - \alpha) \cdot W_r$$
 
-* $W_S$: Reputación basada en el *Stake* del servicio participante.
-* $N_{ideal}$ (Recomendado $N_{ideal} = 5$): Penaliza benchmarks fantasmas o aislados que cuentan con muy pocos participantes.
+*(Donde $\alpha \in [0, 1]$, ej. **0.4**, permite balancear si nos fiamos más del creador original o de la reputación que ha cosechado el propio resultado).*
 
----
+### B. Calidad de Rendimiento ($P_r$)
 
-## 6. Confianza y Calidad de un Resultado ($Q_r$)
-
-Para evitar que datos falsificados sesguen las métricas, cada `Result` ($r$) es evaluado bajo un **Peso de Confianza ($W_r$)** y una **Calidad de Rendimiento ($P_r$)**.
-
-### A. Peso de Confianza del Resultado ($W_r$)
-
-Determina qué tan verídico es el dato según quién lo subió ($W_{u_{creador}}$) y qué opina la comunidad de él ($R_r$):
-
-
-$$W_r = \alpha \cdot W_{u_{creador}} + (1 - \alpha) \cdot R_r$$
-
-
-*(Donde $\alpha = 0.4$ da mayor peso a la auditoría comunitaria posterior).*
-
-### B. Calidad Intrínseca del Rendimiento ($P_r$)
-
-Es el promedio ponderado de las métricas del resultado una vez normalizadas:
-
+Es la suma ponderada de sus métricas normalizadas:
 
 $$P_r = \sum_{m} (w_m \cdot N(x_m))$$
 
-
-*(Donde $w_m$ es el peso específico asignado a la métrica $m$ dentro del diseño del benchmark, cumpliendo que $\sum w_m = 1$).*
+*(Donde $w_m$ es el peso que el creador del benchmark le dio a esa métrica específica, sumando $\sum w_m = 1$).*
 
 ---
 
-## 7. La Fórmula del Score Global ($Score_{Global}$)
+## 5. La Fórmula del Score Global ($Score_{Global}$)
 
-Para obtener el ranking definitivo de servicios dentro de la Skill, el cálculo se realiza de abajo hacia arriba en dos etapas:
+La puntuación final del servicio se construye de forma ascendente.
 
-### Paso A: Rendimiento del Servicio en un Benchmark
+### Paso 1: Rendimiento dentro de un Benchmark específico
 
-Se calcula la media de calidad de todos los resultados del servicio en ese benchmark específico, usando la confianza del resultado como ponderador:
+Se promedian todos los resultados ($r$) del Servicio ($S$) en el Benchmark ($B$), ponderados por la confianza del resultado ($C_r$):
 
-
-$$P(S, B) = \frac{\sum_{r \in Results(S,B)} (W_r \cdot P_r)}{\sum_{r \in Results(S,B)} W_r}$$
-
-### Paso B: Rendimiento Agregado Total ($Score_{Perf}$)
-
-Se consolida el rendimiento del servicio a lo largo de todos los benchmarks de la Skill, ponderándolo por la reputación de cada Benchmark ($R_B$):
+$$P(S, B) = \frac{\sum (C_r \cdot P_r)}{\sum C_r}$$
 
 
-$$Score_{Perf}(S) = \frac{\sum_{B} (R_B \cdot P(S, B))}{\sum B}$$
+*Si un resultado tiene mala reputación (falso/incorrecto), su $C_r$ será cercano a 0 y no afectará la nota del servicio.*
 
-### Paso C: Score Global Definitivo
+### Paso 2: Rendimiento Técnico Total ($Score_{Perf}$)
 
-Para el resultado final, combinamos el rendimiento empírico verificado ($Score_{Perf}$) con la reputación comercial/institucional directa que el servicio posee a través de su propio stake y votos ($R_S$):
+Se consolida el rendimiento del servicio en todos los benchmarks, ponderado por la confianza/reputación de cada Benchmark ($W_B$):
 
-$$Score_{Global}(S) = \beta \cdot Score_{Perf}(S) + (1 - \beta) \cdot R_S$$
+$$Score_{Perf}(S) = \frac{\sum (W_B \cdot P(S, B))}{\sum W_B}$$
 
-> **Parámetro Crítico:** Se establece $\beta = 0.7$. Al otorgar el 70% del peso a la experimentación técnica verificada y solo un 30% a la reputación directa de la entidad, el sistema se vuelve inmune a campañas de marketing masivas o "compras" de reviews que no vengan acompañadas de un software verdaderamente eficiente.
+
+*Los benchmarks con mala reputación (mal diseñados o maliciosos) apenas impactan en la nota final.*
+
+### Paso 3: Score Global Definitivo
+
+El ranking real del Servicio se obtiene combinando sus resultados empíricos ($Score_{Perf}$) con el peso de la reputación directa de la entidad Servicio ($W_S$):
+
+$$Score_{Global}(S) = \beta \cdot Score_{Perf}(S) + (1 - \beta) \cdot W_S$$
+
+*(Se recomienda $\beta = 0.7$ para dar un **70%** de importancia al rendimiento técnico verificado y un **30%** a la reputación externa de la marca/servicio).*
+
+---
