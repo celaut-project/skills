@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import ProfileAvatar from './celaut/ProfileAvatar.svelte';
+  import { categoryIcon, categoryColor, categoryVisual } from '$lib/categoryIcons';
     import { formatReputation } from '$lib/reputation';
 
   export let name: string;
@@ -14,7 +14,7 @@
   export let isDuplicate: boolean = false;
   export let index: number = 0;
   export let reputation: number = 0;
-  /** Profile id of the submitter — used to render an identicon avatar. */
+  /** Profile id of the submitter — retained for parent compatibility; no longer rendered. */
   export let profileId: string | undefined = undefined;
 
   let visible = false;
@@ -22,15 +22,11 @@
     setTimeout(() => { visible = true; }, 80 + index * 30);
   });
 
-  const domainColors: Record<string, string> = {
-    finance: 'domain-finance',
-    infrastructure: 'domain-infra',
-    analytics: 'domain-analytics',
-    nlp: 'domain-nlp',
-    security: 'domain-security',
-  };
-
-  $: domainClass = domainColors[domain.toLowerCase()] || 'domain-default';
+  // The submitter avatar has been replaced by the category icon, which doubles
+  // as the gallery's color-coded category indicator (so no separate badge).
+  $: categoryComponent = categoryIcon(domain);
+  $: categoryAccent = categoryColor(domain);
+  $: categoryLabel = categoryVisual(domain).label;
 </script>
 
 <button
@@ -41,9 +37,13 @@
   <div class="card-inner">
     <div class="flex items-start justify-between gap-2 mb-3">
       <div class="flex items-center gap-2 min-w-0">
-        {#if profileId}
-          <ProfileAvatar {profileId} size={18} title={`Submitted by ${profileId}`} />
-        {/if}
+        <span
+          class="category-icon"
+          style={`color: hsl(${categoryAccent}); background: hsl(${categoryAccent} / 0.12);`}
+          title={`Category: ${categoryLabel}`}
+        >
+          <svelte:component this={categoryComponent} size={16} strokeWidth={2.25} />
+        </span>
         <h3 class="card-title">{name}</h3>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
@@ -54,9 +54,6 @@
             </svg>
             {formatReputation(reputation)}
           </span>
-        {/if}
-        {#if domain}
-          <span class="domain-badge {domainClass}">{domain}</span>
         {/if}
       </div>
     </div>
@@ -137,58 +134,10 @@
     letter-spacing: -0.01em;
   }
 
-  .domain-badge {
-    @apply inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex-shrink-0;
-  }
-
-  .domain-finance {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  :global(.dark) .domain-finance {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .domain-infra {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  :global(.dark) .domain-infra {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .domain-analytics {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  :global(.dark) .domain-analytics {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .domain-nlp {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  :global(.dark) .domain-nlp {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .domain-security {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-  :global(.dark) .domain-security {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .domain-default {
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
+  .category-icon {
+    @apply inline-flex items-center justify-center rounded-lg flex-shrink-0;
+    width: 28px;
+    height: 28px;
   }
 
   .reputation-badge {
