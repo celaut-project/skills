@@ -21,6 +21,7 @@ import {
   fetchTypeNfts,
   sacrifice_assets,
   total_burned,
+  update_opinion,
   type ReputationProof,
   type RPBox,
   type TypeNFT,
@@ -83,6 +84,50 @@ export async function boostProfileReputation(
 ): Promise<string> {
   const txId = await sacrifice_assets(explorerUri, box, ergAmount);
   if (!txId) throw new Error('Sacrifice failed.');
+  return txId;
+}
+
+/**
+ * Create an ADDITIONAL reputation profile for a wallet that already has one.
+ * Unlike `ensureUserProfile`, this never short-circuits on an existing profile —
+ * it always mints a fresh reputation token (the card's "+ New" action).
+ *
+ * Returns the tx id of the new profile.
+ */
+export async function createAdditionalProfile(
+  explorerUri: string,
+  options: {
+    totalSupply?: number;
+    sacrificeErg?: bigint;
+    typeNftId?: string;
+    content?: object | string | null;
+  } = {},
+): Promise<string> {
+  const txId = await create_profile(
+    explorerUri,
+    options.totalSupply ?? 1,
+    options.typeNftId ?? USER_PROFILE_TYPE_ID,
+    options.content ?? null,
+    options.sacrificeErg,
+  );
+  if (!txId) throw new Error('Failed to create reputation profile.');
+  return txId;
+}
+
+/**
+ * Rewrite the profile's self-defining R9 content (the "Profile Data" fields).
+ * The profile box is the self-pointing box; `update_opinion` recreates it with
+ * the new content blob. `content` is the full, already-merged object/string.
+ *
+ * Returns the tx id of the update.
+ */
+export async function updateProfileContent(
+  explorerUri: string,
+  profileBox: RPBox,
+  content: object | string | null,
+): Promise<string> {
+  const txId = await update_opinion(explorerUri, profileBox, undefined, content);
+  if (!txId) throw new Error('Failed to update profile data.');
   return txId;
 }
 
