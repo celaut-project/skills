@@ -48,12 +48,10 @@
   import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation, NANOERG_PER_ERG } from "$lib/reputation";
   import {
     buildComparisonTensor,
-    pickBestService,
     aggregateMetricForService,
     bucketByDescriptor,
     formatMetricValue,
-    type ComparisonTensor,
-    type TensorRow
+    type ComparisonTensor
   } from "$lib/scoring";
   import { getUserProfiles, ensureUserProfile, boostProfileReputation, createAdditionalProfile, updateProfileContent } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
@@ -236,75 +234,71 @@
   // the skill, weighted by each benchmark's own reputation (so a service that
   // wins on a heavily-vouched benchmark beats one that wins on an obscure one).
 
-  /**
-   * Aggregate profile reputation backing a composite score for one service.
-   * (Pulled from the comparison tensor — see scoring.ts.)
-   * Adds the coverage's own profile reputation on top of the tensor's
-   * compositeReputation (which only counts benchmark+result contributions),
-   * matching the pre-tensor behaviour.
-   */
-  function dataReputationForRow(skill: Skill, row: TensorRow): number {
-    const coverage = skill.coverages.find((c) => c.serviceId === row.serviceId);
-    return (coverage?.reputation ?? 0) + row.compositeWeight;
-  }
+  // A skill's "recommended" service is the one that is actually runnable: it has
+  // at least one source registered for its service_id in source-application.
+  // Selection is by SOURCE AVAILABILITY (most sources wins), not reputation — a
+  // rep-0 service that only entered via a submitted Result still wins if it has
+  // a source. `selectedSkill.coverages` already merges direct coverage boxes AND
+  // result-derived services (see loadCoverages), so it is the full candidate pool.
 
-  /** Pick the Coverage whose service has the highest composite tensor score. */
-  function pickBestCoverage(
-    skill: Skill,
-  ): { coverage: Coverage; score: number; dataReputation: number } | null {
-    const bestRow = pickBestService(skill);
-    if (!bestRow) return null;
-    const coverage = skill.coverages.find((c) => c.serviceId === bestRow.serviceId);
-    if (!coverage) return null;
-    if (bestRow.composite <= 0) return null;
-    return {
-      coverage,
-      score: bestRow.composite,
-      dataReputation: dataReputationForRow(skill, bestRow)
-    };
-  }
+  // serviceId -> its registered sources, for the currently selected skill.
+  let serviceSourcesById: Record<string, FileSource[]> = {};
 
-  /**
-   * Blake2b256 hashes are exactly 64 hex chars; source-application is keyed by
-   * that hash format, so any other serviceId shape (UUIDs, type-NFT ids, etc.)
-   * has zero chance of resolving and we skip the lookup entirely.
-   */
-  function looksLikeFileHash(value: string | undefined): boolean {
-    return !!value && /^[0-9a-f]{64}$/i.test(value);
-  }
-
-  $: bestCoverage = selectedSkill ? pickBestCoverage(selectedSkill) : null;
-  let bestServiceSources: FileSource[] = [];
-  let bestServiceLoading = false;
-
-  async function loadBestServiceSources(hash: string) {
-    bestServiceLoading = true;
-    try {
-      bestServiceSources = await fetchFileSourcesCached(hash);
-    } catch {
-      bestServiceSources = [];
-    } finally {
-      bestServiceLoading = false;
+  async function loadCandidateServiceSources(skill: Skill | null) {
+    if (!skill) {
+      serviceSourcesById = {};
+      return;
+    }
+    const ids = Array.from(
+      new Set(skill.coverages.map((c) => c.serviceId).filter(Boolean) as string[]),
+    );
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          return [id, await fetchFileSourcesCached(id)] as const;
+        } catch {
+          return [id, [] as FileSource[]] as const;
+        }
+      }),
+    );
+    // Guard against out-of-order resolution when switching skills quickly.
+    if (selectedSkill?.boxId === skill.boxId) {
+      serviceSourcesById = Object.fromEntries(entries);
     }
   }
-
-  // Only hit source-application when the winning service has a Blake2b256
-  // serviceId — every other shape would 404. Resets to [] otherwise so the
-  // download UI clears between selections.
-  $: if (bestCoverage && looksLikeFileHash(bestCoverage.coverage.serviceId)) {
-    loadBestServiceSources(bestCoverage.coverage.serviceId!);
-  } else {
-    bestServiceSources = [];
-  }
+  $: loadCandidateServiceSources(selectedSkill);
 
   /**
-   * Pick the source with the highest reputationAmount (first wins on ties).
-   * Multiple uploaders can register the same hash in source-application; we
-   * surface the one the network trusts most, not just whichever arrived first.
+   * Recommended service = the candidate with the most registered sources
+   * (minimum one). Ties break on the coverage's own reputation, then order.
+   * Null when no candidate has any source — nothing is "recommended" then.
    */
-  $: bestServiceDownload = bestServiceSources.length
-    ? [...bestServiceSources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
-    : null;
+  $: recommendedService = (() => {
+    if (!selectedSkill) return null;
+    const ranked = selectedSkill.coverages
+      .filter((c) => c.serviceId)
+      .map((coverage) => ({
+        coverage,
+        sourceCount: serviceSourcesById[coverage.serviceId!]?.length ?? 0,
+      }))
+      .filter((x) => x.sourceCount > 0)
+      .sort(
+        (a, b) =>
+          b.sourceCount - a.sourceCount ||
+          (b.coverage.reputation ?? 0) - (a.coverage.reputation ?? 0),
+      );
+    return ranked[0] ?? null;
+  })();
+
+  // Best downloadable source for the recommended service (highest reputationAmount).
+  $: recommendedDownload = (() => {
+    const sources = recommendedService
+      ? serviceSourcesById[recommendedService.coverage.serviceId!] ?? []
+      : [];
+    return sources.length
+      ? [...sources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
+      : null;
+  })();
 
   // ── Load skills from active provider ────────────────────────────────────────
   async function loadSkills() {
@@ -1139,22 +1133,39 @@
     }
   });
 
-  // Mirror `viewedProfileId` into the URL so the profile-detail view is
-  // bookmarkable and the browser back button restores the prior gallery state.
-  let lastSyncedProfileId: string | null | undefined = undefined;
-  $: if (browser && lastSyncedProfileId !== $viewedProfileId) {
+  // Mirror the active profile into the URL (`?profile=`) so the view is
+  // bookmarkable/shareable and back/forward restores it. This covers BOTH
+  // another user's profile (`viewedProfileId`) and the connected user's own
+  // Profile tab (`activeTab === "profile"`).
+  //
+  // While any profile is on screen we also drop a stale `?skill=`: the
+  // in-session "back to skill" button is driven by in-memory `returnToSkill`,
+  // not the URL, so removing the param means someone opening a shared
+  // `?profile=` link just sees the profile — no leftover skill, no dangling
+  // back-navigation that only made sense in the original user's session.
+  let lastSyncedProfileParam: string | null | undefined = undefined;
+  $: desiredProfileParam =
+    $viewedProfileId ??
+    (activeTab === "profile" ? $reputation_proof?.token_id ?? null : null);
+  $: if (browser && lastSyncedProfileParam !== desiredProfileParam) {
     const current = new URL(window.location.href);
     const currentParam = current.searchParams.get("profile");
-    if ($viewedProfileId) {
-      if (currentParam !== $viewedProfileId) {
-        current.searchParams.set("profile", $viewedProfileId);
-        window.history.pushState({}, "", current);
+    let changed = false;
+    if (desiredProfileParam) {
+      if (currentParam !== desiredProfileParam) {
+        current.searchParams.set("profile", desiredProfileParam);
+        changed = true;
+      }
+      if (current.searchParams.has("skill")) {
+        current.searchParams.delete("skill");
+        changed = true;
       }
     } else if (currentParam) {
       current.searchParams.delete("profile");
-      window.history.pushState({}, "", current);
+      changed = true;
     }
-    lastSyncedProfileId = $viewedProfileId;
+    if (changed) window.history.pushState({}, "", current);
+    lastSyncedProfileParam = desiredProfileParam;
   }
 
   // Clear the tab highlight whenever a profile-detail view is open: the
@@ -1643,60 +1654,48 @@
             </div>
           </div>
 
-          <!-- Best service highlight (top-reputation Coverage by results) -->
-          {#if bestCoverage}
+          <!-- Recommended service: the one with ≥1 source registered for its
+               service_id (source availability, not reputation). -->
+          {#if recommendedService}
             <section class="best-service-card">
               <div class="best-service-eyebrow">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                 </svg>
-                Best service for this skill
+                Recommended service for this skill
               </div>
               <div class="best-service-body">
                 <div class="best-service-text">
-                  <div class="best-service-name">{bestCoverage.coverage.serviceId ? bestCoverage.coverage.serviceId.slice(0, 8) : 'Unnamed Service'}</div>
-                  {#if bestCoverage.coverage.serviceId}
-                    <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
+                  <div class="best-service-name">{recommendedService.coverage.serviceId ? recommendedService.coverage.serviceId.slice(0, 8) : 'Unnamed Service'}</div>
+                  {#if recommendedService.coverage.serviceId}
+                    <code class="best-service-id">{formatServiceId(recommendedService.coverage.serviceId)}</code>
                   {/if}
                 </div>
                 <div class="best-service-score">
-                  <span class="best-service-score-value">{bestCoverage.score}</span>
-                  <span class="best-service-score-label">composite score</span>
-                  <InfoTip title="Why this service is the best">
-                    <p><strong>Composite score</strong> — direction-signed per-column z-score, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> averaged across metrics. Highest composite wins.</p>
-                    <p><strong>Data reputation</strong> — sum of the coverage's profile reputation plus the total composite weight (benchmark + result reputations) backing this score. Higher means more reputable on-chain profiles vouched for this service.</p>
+                  <span class="best-service-score-value">{recommendedService.sourceCount}</span>
+                  <span class="best-service-score-label">source{recommendedService.sourceCount === 1 ? '' : 's'}</span>
+                  <InfoTip title="Why this service is recommended">
+                    <p>It's shown as recommended because it has <strong>{recommendedService.sourceCount} source{recommendedService.sourceCount === 1 ? '' : 's'}</strong> registered for its <code>service_id</code> in source-application — so it can actually be downloaded and run.</p>
+                    <p>Selection is based purely on <strong>source availability</strong> (at least one), not on reputation. A service that solves the skill only via a submitted result still qualifies if it has a source.</p>
                   </InfoTip>
-                  <span class="best-service-rep">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                    </svg>
-                    <span class="best-service-rep-value">{formatReputation(bestCoverage.dataReputation)}</span>
-                    <span class="best-service-rep-label">data rep</span>
-                  </span>
                 </div>
               </div>
               <div class="best-service-actions">
-                {#if bestCoverage.coverage.serviceId}
-                  <RunServiceButton serviceId={bestCoverage.coverage.serviceId} large={true} label="Run" />
+                {#if recommendedService.coverage.serviceId}
+                  <RunServiceButton serviceId={recommendedService.coverage.serviceId} large={true} label="Run" />
                 {/if}
-                {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
-                  {#if bestServiceLoading}
-                    <div class="best-service-download best-service-download-muted">Looking up source-application…</div>
-                  {:else if bestServiceDownload?.sourceUrl}
-                    <a
-                      class="best-service-download"
-                      href={bestServiceDownload.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                      Download from source-application
-                    </a>
-                  {:else if bestServiceSources.length === 0}
-                    <div class="best-service-download best-service-download-muted">No source registered for this service yet.</div>
-                  {/if}
+                {#if recommendedDownload?.sourceUrl}
+                  <a
+                    class="best-service-download"
+                    href={recommendedDownload.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download from source-application
+                  </a>
                 {/if}
               </div>
             </section>
@@ -3275,21 +3274,6 @@
     @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
     color: hsl(var(--muted-foreground));
   }
-  /* Data-reputation badge under the composite score. Visually subordinate
-     (smaller text, dimmer) — it's a "how much should I trust this number"
-     annotation, not a number to compare across services on its own. */
-  .best-service-rep {
-    @apply inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded;
-    background: hsl(var(--muted) / 0.4);
-    color: hsl(var(--muted-foreground));
-  }
-  .best-service-rep-value {
-    @apply text-xs font-semibold leading-none;
-    font-variant-numeric: tabular-nums;
-  }
-  .best-service-rep-label {
-    @apply text-[0.6rem] uppercase tracking-wider;
-  }
   .best-service-actions {
     @apply flex flex-wrap items-center gap-3 mt-3;
   }
@@ -3301,13 +3285,6 @@
   }
   .best-service-download:hover {
     opacity: 0.9;
-  }
-  .best-service-download-muted {
-    background: transparent;
-    color: hsl(var(--muted-foreground));
-    padding: 0;
-    font-size: 0.75rem;
-    font-weight: 400;
   }
 
   /* ── Current submissions for this skill (siblings) ─────────────────── */
