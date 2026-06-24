@@ -1238,35 +1238,6 @@
       if (pid === $viewedProfileId) viewedProfileLoading = false;
     }
   }
-
-  // ── Profile detail aggregation ─────────────────────────────────────────────
-  // Roll up every entity in `skills` authored by the viewed profile so the
-  // detail view can show the profile's full footprint without another lookup.
-  interface ProfileContributions {
-    submittedSkills: Skill[];
-    coverages: Array<{ skill: Skill; coverage: Coverage }>;
-    benchmarks: Array<{ skill: Skill; benchmark: Benchmark }>;
-    results: Array<{ skill: Skill; benchmark: Benchmark; result: Result }>;
-  }
-  $: profileContributions = ((): ProfileContributions => {
-    const empty: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
-    const pid = $viewedProfileId;
-    if (!pid) return empty;
-    const acc: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
-    for (const skill of skills) {
-      if (skill.profileId === pid) acc.submittedSkills.push(skill);
-      for (const cov of skill.coverages) {
-        if (cov.profileId === pid) acc.coverages.push({ skill, coverage: cov });
-      }
-      for (const bench of skill.benchmarks) {
-        if (bench.profileId === pid) acc.benchmarks.push({ skill, benchmark: bench });
-        for (const result of bench.results) {
-          if (result.profileId === pid) acc.results.push({ skill, benchmark: bench, result });
-        }
-      }
-    }
-    return acc;
-  })();
 </script>
 
 <!-- Ambient Conway's Game of Life in the page side gutters (decorative). -->
@@ -1393,84 +1364,6 @@
           </div>
         {/if}
 
-        {#if profileContributions.submittedSkills.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Skills Submitted</h2>
-              <span class="detail-count">{profileContributions.submittedSkills.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.submittedSkills as s}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{s.name}</span>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(calculateSkillReputation(s).total)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.coverages.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Service solutions</h2>
-              <span class="detail-count">{profileContributions.coverages.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.coverages as { skill: s, coverage }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{s.name}</span>
-                  <code class="font-mono text-xs text-muted-foreground">{formatHash(coverage.serviceId || coverage.boxId)}</code>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(coverage.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.benchmarks.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Benchmarks</h2>
-              <span class="detail-count">{profileContributions.benchmarks.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.benchmarks as { skill: s, benchmark }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{benchmark.name}</span>
-                  <span class="text-xs text-muted-foreground">on {s.name}</span>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(benchmark.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.results.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Results</h2>
-              <span class="detail-count">{profileContributions.results.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.results as { skill: s, benchmark, result }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{benchmark.name}</span>
-                  <code class="font-mono text-xs text-muted-foreground">{formatHash(result.serviceId)}</code>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(result.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.submittedSkills.length === 0 && profileContributions.coverages.length === 0 && profileContributions.benchmarks.length === 0 && profileContributions.results.length === 0}
-          <section class="detail-section">
-            <div class="detail-empty">
-              <p>No on-chain contributions found for this profile in the currently loaded skill set.</p>
-            </div>
-          </section>
-        {/if}
       </div>
     </div>
 
