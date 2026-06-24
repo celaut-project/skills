@@ -2,7 +2,15 @@
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { Github, Globe, Send } from 'lucide-svelte';
+  import { walletConnected } from 'wallet-svelte-component';
   import { EXPLORER_API } from '$lib/api';
+  import Kya from '../../routes/kya.svelte';
+
+  // Auto-open the Know Your Assumptions notice on first wallet connect; the Kya
+  // component no-ops if the user already accepted it (persisted in localStorage).
+  // The footer also exposes a "KYA" link to re-read it at any time.
+  let autoOpenKya = false;
+  $: autoOpenKya = browser && $walletConnected;
 
   /**
    * Cyberpunk footer — ported from game-of-prompts/app per Josemi 2026-06-16.
@@ -86,6 +94,9 @@
     >
       <Send class="h-4 w-4" />
     </a>
+    <span class="footer-link footer-kya" title="Know Your Assumptions">
+      <Kya autoOpen={autoOpenKya} />
+    </span>
   </div>
 
   <div class="footer-center">
@@ -135,6 +146,10 @@
   }
   .footer-link:hover {
     color: hsl(var(--primary));
+  }
+  /* The KYA trigger renders text (not an icon); keep it footer-sized and aligned. */
+  .footer-kya {
+    @apply inline-flex items-center text-xs font-medium tracking-wide;
   }
 
   .footer-center {
