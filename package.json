@@ -10,7 +10,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest",
-    "mcp": "node mcp/server.mjs"
+    "mcp": "node mcp/server.mjs",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@fleet-sdk/mock-chain": "^0.12.0",
@@ -24,6 +25,7 @@
     "formsnap": "^1.0.1",
     "lucide-svelte": "^0.469.0",
     "paneforge": "^0.0.6",
+    "patch-package": "^8.0.1",
     "svelte": "^4.0.5",
     "svelte-check": "^3.4.3",
     "sveltekit-superforms": "^2.22.1",
