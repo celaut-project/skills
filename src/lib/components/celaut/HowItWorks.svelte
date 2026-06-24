@@ -1,4 +1,6 @@
 <script lang="ts">
+  import "katex/dist/katex.min.css";
+  import { scoreDocHtml } from "$lib/renderScoreDoc";
 </script>
 
 <div class="how-it-works">
@@ -118,6 +120,16 @@
         </div>
       </div>
     </div>
+
+    <!-- ── Scoring system: full SCORE.md spec, Markdown + KaTeX math ──────────── -->
+    <section class="score-doc">
+      <div class="score-doc-head">
+        <span class="contrast-label">Scoring system</span>
+        <p class="score-doc-sub">The full multi-criteria scoring specification that ranks every coverage.</p>
+      </div>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted in-repo doc (SCORE.md), math pre-rendered with KaTeX -->
+      <div class="score-doc-body">{@html scoreDocHtml}</div>
+    </section>
   </div>
 </div>
 
@@ -409,6 +421,108 @@
     padding-top: 0.25rem;
     color: hsl(var(--muted-foreground));
     font-size: 1rem;
+  }
+
+  /* --- Scoring system doc (rendered SCORE.md) --- */
+  .score-doc {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid hsl(var(--border));
+  }
+
+  .score-doc-head {
+    margin-bottom: 1rem;
+  }
+
+  .score-doc-sub {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .score-doc-body {
+    max-width: 70ch;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    /* KaTeX inherits currentColor, so formulas stay legible in light & dark. */
+    color: hsl(var(--muted-foreground));
+    overflow-x: auto;
+  }
+
+  .score-doc-body :global(h1),
+  .score-doc-body :global(h2),
+  .score-doc-body :global(h3) {
+    color: hsl(var(--foreground));
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 1.5rem 0 0.6rem;
+  }
+
+  .score-doc-body :global(h1) {
+    font-size: 1.25rem;
+    margin-top: 0;
+  }
+
+  .score-doc-body :global(h2) {
+    font-size: 1.0625rem;
+  }
+
+  .score-doc-body :global(h3) {
+    font-size: 0.9375rem;
+  }
+
+  .score-doc-body :global(p) {
+    margin: 0.6rem 0;
+  }
+
+  .score-doc-body :global(strong) {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+
+  .score-doc-body :global(ul),
+  .score-doc-body :global(ol) {
+    margin: 0.6rem 0;
+    padding-left: 1.4rem;
+    list-style: disc;
+  }
+
+  .score-doc-body :global(ol) {
+    list-style: decimal;
+  }
+
+  .score-doc-body :global(li) {
+    margin: 0.3rem 0;
+  }
+
+  .score-doc-body :global(li::marker) {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .score-doc-body :global(hr) {
+    margin: 1.25rem 0;
+    border: none;
+    border-top: 1px solid hsl(var(--border));
+  }
+
+  .score-doc-body :global(code) {
+    font-size: 0.85em;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.3rem;
+    background-color: hsl(var(--muted) / 0.6);
+    color: hsl(var(--foreground));
+  }
+
+  .score-doc-body :global(em) {
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Block math: let long formulas scroll instead of overflowing the card. */
+  .score-doc-body :global(.katex-display) {
+    margin: 1rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0;
   }
 
   @media (max-width: 640px) {
