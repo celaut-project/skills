@@ -1,115 +1,105 @@
-# Especificación Técnica: Sistema de Puntuación Global Multi-Criterio
+# Technical Specification: Multi-Criteria Global Scoring System
 
-Este documento define la arquitectura matemática para calcular la puntuación global de los **Servicios** dentro de la plataforma. El sistema asume que todas las entidades poseen una reputación externa ya calculada, representada por un número entero, y utiliza este valor para ponderar la confianza y el rendimiento empírico.
+This document defines the mathematical architecture for calculating the global score of **Services** within the platform. The system assumes that all entities possess a pre-calculated external reputation, represented by an integer, and uses this value to weight confidence and empirical performance.
 
-## 1. Modelo de Dominio y Entidades
+## 1. Domain Model and Entities
 
-El sistema evalúa el rendimiento a través de las siguientes entidades, cada una con un valor de **Reputación Cruda ($R_{raw}$)** asimilado como un entero en el rango $\{-N_{max}, \dots, 0, \dots, N_{max}\}$:
+The system evaluates performance through the following entities, each with a **Raw Reputation ($R_{raw}$)** value assimilated as an integer in the range $\{-N_{max}, \dots, 0, \dots, N_{max}\}$:
 
-* **Skill:** La categoría global dentro de esta fórmula.
-* **User:** Quien ejecuta o sube un resultado.
-* **Service:** El software/algoritmo que se está evaluando.
-* **Benchmark:** Suite de pruebas con *Case Descriptors* y *Performance Metrics*.
-* **Result:** Los datos empíricos de una ejecución concreta.
+* **Skill:** The global category within this formula.
+* **User:** The actor who executes or uploads a result.
+* **Service:** The software/algorithm being evaluated.
+* **Benchmark:** Test suite featuring *Case Descriptors* and *Performance Metrics*.
+* **Result:** The empirical data from a specific execution.
 
 ---
 
-## 2. Normalización de Confianza ($W_e$)
+## 2. Confidence Normalization ($W_e$)
 
-Dado que la reputación cruda ($R_{raw}$) puede tener valores extremos (positivos o negativos), no podemos usarla directamente para multiplicar métricas. Necesitamos mapearla a un **Peso de Confianza ($W_e$)** en el intervalo $[0, 1]$.
+Since raw reputation ($R_{raw}$) can take extreme values (positive or negative), it cannot be used directly as a metric multiplier. We need to map it to a **Confidence Weight ($W_e$)** within the interval $[0, 1]$.
 
-Para evitar que una entidad con una reputación masiva (una "ballena") reduzca a cero el peso del resto, aplicamos una **escala logarítmica con signo**.
+To prevent an entity with a massive reputation (a "whale") from driving everyone else's weight down to zero, we apply a **signed logarithmic scale**.
 
-Para cualquier entidad $e$, su peso de confianza $W_e$ se calcula así:
+For any entity $e$, its confidence weight $W_e$ is calculated as follows:
 
-* **Si la reputación es positiva o cero ($R_{raw} \ge 0$):**
+* **If the reputation is positive or zero ($R_{raw} \ge 0$):**
 
 $$W_e = 0.5 + 0.5 \cdot \frac{\log(1 + R_{raw}(e))}{\log(1 + N_{max})}$$
 
-
-* **Si la reputación es negativa ($R_{raw} < 0$):**
+* **If the reputation is negative ($R_{raw} < 0$):**
 
 $$W_e = 0.5 - 0.5 \cdot \frac{\log(1 + |R_{raw}(e)|)}{\log(1 + N_{max})}$$
 
+**Behavior of this formula:**
 
+* Strongly negative reputation $\rightarrow$ $W_e$ approaches $0$ (its impact is nullified).
+* Reputation of $0$ (new/neutral entity) $\rightarrow$ $W_e = 0.5$ (medium impact).
+* Strongly positive reputation $\rightarrow$ $W_e$ approaches $1$ (maximum confidence).
 
-**Comportamiento de esta fórmula:**
-
-* Reputación fuertemente negativa $\rightarrow$ $W_e$ se acerca a $0$ (su impacto se anula).
-* Reputación $0$ (entidad nueva/neutral) $\rightarrow$ $W_e = 0.5$ (impacto medio).
-* Reputación fuertemente positiva $\rightarrow$ $W_e$ se acerca a $1$ (máxima confianza).
-
-*(Nota: $N_{max}$ es el valor absoluto máximo de reputación observado únicamente dentro de esa Skill para mantener la escala calibrada).*
+*(Note: $N_{max}$ is the maximum absolute reputation value observed solely within that Skill to keep the scale calibrated).*
 
 ---
 
-## 3. Normalización de Métricas de Rendimiento ($N(x)$)
+## 3. Performance Metric Normalization ($N(x)$)
 
-Los resultados crudos de un benchmark (ej. milisegundos vs. tasa de éxito) deben llevarse a una escala común $[0, 1]$. Para cada dimensión del problema $d$, se usan los mínimos ($min_d$) y máximos ($max_d$) históricos:
+Raw benchmark results (e.g., milliseconds vs. success rate) must be brought into a common $[0, 1]$ scale. For each dimension of the problem $d$, historical minimums ($min_d$) and maximums ($max_d$) are used:
 
-* **Métricas "Lower is better"** (ej. tiempo, memoria):
+* **"Lower is better" metrics** (e.g., time, memory):
 
 $$N(x) = \frac{max_d - x}{max_d - min_d}$$
 
-
-* **Métricas "Higher is better"** (ej. ratio de éxito):
+* **"Higher is better" metrics** (e.g., success ratio):
 
 $$N(x) = \frac{x - min_d}{max_d - min_d}$$
 
-
-
 ---
 
-## 4. Confianza y Calidad de un Resultado
+## 4. Confidence and Quality of a Result
 
-Cuando un usuario sube un `Result` ($r$) de un servicio evaluado en un benchmark, calculamos dos factores: **qué tan real es** y **qué tan bueno es**.
+When a user uploads a `Result` ($r$) for a service evaluated in a benchmark, we calculate two factors: **how real it is** and **how good it is**.
 
-### A. Peso de Confianza del Resultado ($C_r$)
+### A. Result Confidence Weight ($C_r$)
 
-Combina el peso de confianza del usuario que subió el dato ($W_u$) y el peso de confianza del resultado en sí mismo ($W_r$, derivado de su propia reputación externa por los votos que haya recibido).
+This combines the confidence weight of the user who uploaded the data ($W_u$) and the confidence weight of the result itself ($W_r$, derived from its own external reputation via votes received).
 
 $$C_r = \alpha \cdot W_u + (1 - \alpha) \cdot W_r$$
 
-*(Donde $\alpha \in [0, 1]$, ej. **0.4**, permite balancear si nos fiamos más del creador original o de la reputación que ha cosechado el propio resultado).*
+*(Where $\alpha \in [0, 1]$, e.g., **0.4**, allows us to balance whether we trust the original creator more or the reputation that the result itself has garnered).*
 
-### B. Calidad de Rendimiento ($P_r$)
+### B. Performance Quality ($P_r$)
 
-Es la suma ponderada de sus métricas normalizadas:
+This is the weighted sum of its normalized metrics:
 
 $$P_r = \sum_{m} (w_m \cdot N(x_m))$$
 
-*(Donde $w_m$ es el peso que el creador del benchmark le dio a esa métrica específica, sumando $\sum w_m = 1$).*
+*(Where $w_m$ is the weight assigned to that specific metric by the benchmark creator, summing to $\sum w_m = 1$).*
 
 ---
 
-## 5. La Fórmula del Score Global ($Score_{Global}$)
+## 5. The Global Score Formula ($Score_{Global}$)
 
-La puntuación final del servicio se construye de forma ascendente.
+The final score of the service is built from the bottom up.
 
-### Paso 1: Rendimiento dentro de un Benchmark específico
+### Step 1: Performance within a Specific Benchmark
 
-Se promedian todos los resultados ($r$) del Servicio ($S$) en el Benchmark ($B$), ponderados por la confianza del resultado ($C_r$):
+All results ($r$) of the Service ($S$) in the Benchmark ($B$) are averaged, weighted by the confidence of each result ($C_r$):
 
 $$P(S, B) = \frac{\sum (C_r \cdot P_r)}{\sum C_r}$$
 
+*If a result has a poor reputation (fake/incorrect), its $C_r$ will be close to 0 and will not impact the service's score.*
 
-*Si un resultado tiene mala reputación (falso/incorrecto), su $C_r$ será cercano a 0 y no afectará la nota del servicio.*
+### Step 2: Total Technical Performance ($Score_{Perf}$)
 
-### Paso 2: Rendimiento Técnico Total ($Score_{Perf}$)
-
-Se consolida el rendimiento del servicio en todos los benchmarks, ponderado por la confianza/reputación de cada Benchmark ($W_B$):
+The service's performance across all benchmarks is consolidated, weighted by the confidence/reputation of each Benchmark ($W_B$):
 
 $$Score_{Perf}(S) = \frac{\sum (W_B \cdot P(S, B))}{\sum W_B}$$
 
+*Benchmarks with a poor reputation (badly designed or malicious) will barely impact the final score.*
 
-*Los benchmarks con mala reputación (mal diseñados o maliciosos) apenas impactan en la nota final.*
+### Step 3: Definitive Global Score
 
-### Paso 3: Score Global Definitivo
-
-El ranking real del Servicio se obtiene combinando sus resultados empíricos ($Score_{Perf}$) con el peso de la reputación directa de la entidad Servicio ($W_S$):
+The final ranking of the Service is obtained by combining its verified empirical results ($Score_{Perf}$) with the direct reputation weight of the Service entity ($W_S$):
 
 $$Score_{Global}(S) = \beta \cdot Score_{Perf}(S) + (1 - \beta) \cdot W_S$$
 
-*(Se recomienda $\beta = 0.7$ para dar un **70%** de importancia al rendimiento técnico verificado y un **30%** a la reputación externa de la marca/servicio).*
-
----
+*(A value of $\beta = 0.7$ is recommended to give **70%** importance to verified technical performance and **30%** to the external reputation of the brand/service).*
