@@ -85,3 +85,15 @@ Jerarquía de atención: NIVEL 1 máxima atención (ERG valor con tipografía 3x
 - **Mejoras de la pantalla de Detalle del Skill (Skill Detail View):** Basándote en la captura actual, rediseña esta vista para reducir la carga visual y mantener la estética minimalista (Linear/Vercel). La descripción larga debe tener mejor espaciado, interlineado y contraste (evitar bloques de texto densos). Las métricas dentro de cada benchmark (ej. Execution time, Memory, Clauses & Literals) deben presentarse en tarjetas "ghost" (fondo sutil y bordes muy suaves) con tipografía monoespaciada para los valores numéricos y labels tenues, evitando que parezca una tabla cruda sin estilo. El botón "Open discussion" debe tratarse como un elemento secundario (estilo text-link o botón fantasma) para no competir con los CTAs principales ("Add Service Solution" y "Create Benchmark"). Recuerda aplicar aquí la regla de no duplicar títulos (si el tab ya dice "Benchmarks", no repitas el título dentro) e integra sin falta: el icono de la categoría reemplazando el título, el bloque del creador (`profile_id` + icono) debajo de ID/Source Hash, y el contenedor de "current submissions" debajo del creador.
 
 - Los enlaces al explorador deben de llevarnos a /transactions/ hacia la transaccion donde se creó el box_id. ... en lugar de al actual /box/box_id
+
+- Al clicar en un profile vamos a la vista de profile. Esta debe ser la misma vista que vemos con el Profile conectado (el del usuario) pero sin poder realizar acciones, obviamente.
+
+- El desplegable de benchmark runners se llama "Coverages", deberia de poner "Benchmark runner".
+
+- Sometimes info dialogs seems cutted by the UI ... should always be on top.
+
+- A skill coverage service solution that originates from a search result instead of a coverage box. The service has a reputation score of 0 and is not displayed as the recommended service for the skill, despite being the unique service available.
+
+- To consider a service solution as the service recomended of a skill, we should have into account that there is a source available (minimum one) instead of only pay attention into its reputation. Add the reasson why its show as the best in a low attention dialog (not important dialog)
+
+- Modify skill goes into the Submit tab, thats correct, but we should have the same button navigation that a profile contains to back into the skill detail page.
