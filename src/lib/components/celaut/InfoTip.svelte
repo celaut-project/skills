@@ -4,21 +4,32 @@
    * in the Skill view. Lightweight popover — uses a native `<dialog>`-style
    * overlay so it works on touch without depending on hover.
    *
+   * The popover is **portalled to <body>** and pinned with `position: fixed`
+   * (coordinates derived from the trigger's bounding rect). This guarantees it
+   * always renders on top and is never clipped by an ancestor's `overflow` or
+   * trapped inside a stacking context — previously it could be cut off by
+   * surrounding cards/tables.
+   *
    * Usage:
    *   <InfoTip title="Composite score">
    *     The composite is the direction-signed z-score per metric column,
    *     weighted by max(bench_rep, 1) × max(result_rep, 1).
    *   </InfoTip>
    */
+  import { tick } from 'svelte';
+  import { portal } from '$lib/actions/portal';
+
   export let title: string = '';
   /** Optional small label rendered next to the icon (e.g. "what is this?"). */
   export let label: string = '';
-  /** Position the popover relative to the button. */
+  /** Preferred position of the popover relative to the button. */
   export let placement: 'bottom' | 'top' | 'right' = 'bottom';
 
   let open = false;
   let buttonEl: HTMLButtonElement;
   let popoverEl: HTMLDivElement;
+  // Start hidden so the popover never flashes at (0,0) before it's positioned.
+  let popoverStyle = 'visibility:hidden;';
 
   function toggle(e: MouseEvent) {
     e.stopPropagation();
@@ -27,6 +38,47 @@
 
   function close() {
     open = false;
+  }
+
+  /** Pin the portalled popover to the trigger, clamped inside the viewport. */
+  async function position() {
+    if (!open || !buttonEl) return;
+    await tick();
+    if (!popoverEl) return;
+    const b = buttonEl.getBoundingClientRect();
+    const pop = popoverEl.getBoundingClientRect();
+    const gap = 6;
+    const margin = 8;
+    let top: number;
+    let left: number;
+
+    if (placement === 'top') {
+      top = b.top - gap - pop.height;
+      left = b.left;
+    } else if (placement === 'right') {
+      top = b.top;
+      left = b.right + gap;
+    } else {
+      // bottom (default)
+      top = b.bottom + gap;
+      left = b.left;
+    }
+
+    // Clamp horizontally, then vertically, so the popover never leaves the view.
+    const maxLeft = window.innerWidth - pop.width - margin;
+    left = Math.min(Math.max(margin, left), Math.max(margin, maxLeft));
+    const maxTop = window.innerHeight - pop.height - margin;
+    top = Math.min(Math.max(margin, top), Math.max(margin, maxTop));
+
+    popoverStyle = `top:${top}px;left:${left}px;visibility:visible;`;
+  }
+
+  // Reposition while open (page scroll, inner-scroll containers, resize).
+  // Reset to hidden on close so the next open re-positions before painting.
+  $: if (open) {
+    position();
+  } else {
+    popoverStyle = 'visibility:hidden;';
   }
 
   function onWindowClick(e: MouseEvent) {
@@ -39,9 +91,20 @@
   function onEscape(e: KeyboardEvent) {
     if (e.key === 'Escape' && open) close();
   }
+
+  // `capture: true` so scrolling any ancestor container (not just window)
+  // keeps the popover glued to its trigger.
+  function onScroll() {
+    if (open) position();
+  }
 </script>
 
-<svelte:window on:click={onWindowClick} on:keydown={onEscape} />
+<svelte:window
+  on:click={onWindowClick}
+  on:keydown={onEscape}
+  on:resize={position}
+  on:scroll|capture={onScroll}
+/>
 
 <span class="info-tip-wrap">
   <button
@@ -64,7 +127,9 @@
   {#if open}
     <div
       bind:this={popoverEl}
-      class="info-tip-popover info-tip-popover-{placement}"
+      use:portal
+      class="info-tip-popover"
+      style={popoverStyle}
       role="dialog"
       aria-label={title || 'Info'}
     >
@@ -110,9 +175,11 @@
     font-weight: 500;
   }
 
+  /* Portalled to <body>: fixed positioning + high z-index so it always sits on
+     top and is never clipped. Exact top/left come from inline `popoverStyle`. */
   .info-tip-popover {
-    position: absolute;
-    z-index: 50;
+    position: fixed;
+    z-index: 1000;
     min-width: 16rem;
     max-width: 22rem;
     padding: 0.75rem 0.875rem;
@@ -125,21 +192,6 @@
     line-height: 1.55;
     text-align: left;
     white-space: normal;
-  }
-
-  .info-tip-popover-bottom {
-    top: calc(100% + 0.375rem);
-    left: 0;
-  }
-
-  .info-tip-popover-top {
-    bottom: calc(100% + 0.375rem);
-    left: 0;
-  }
-
-  .info-tip-popover-right {
-    top: 0;
-    left: calc(100% + 0.375rem);
   }
 
   .info-tip-title {
