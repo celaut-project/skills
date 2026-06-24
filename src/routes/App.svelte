@@ -1385,7 +1385,7 @@
                 </button>
               </div>
             </div>
-            <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
+            <p class="skill-detail-prose">{selectedSkill.prose || "No description."}</p>
             {#if selectedSkill.sourceHash}
               <details class="source-details mb-4">
                 <summary class="source-summary">
@@ -1582,6 +1582,17 @@
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
               </svg>
               {showCreateBenchmarkForm ? 'Cancel' : 'Create Benchmark'}
+            </button>
+            <!-- Secondary action, grouped with the CTAs but visually quieter (ghost link). -->
+            <button
+              class="open-discussion-link"
+              type="button"
+              on:click={() => selectedSkill && openForum(selectedSkill.boxId, `Skill: ${selectedSkill.name}`)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+              </svg>
+              Open discussion
             </button>
           </div>
 
@@ -1976,19 +1987,6 @@
             </section>
           {/if}
 
-          <!-- Forum entry point — opens the single side-rail panel. -->
-          <section class="detail-section">
-            <button
-              class="dialogue-btn dialogue-btn-lg"
-              type="button"
-              on:click={() => selectedSkill && openForum(selectedSkill.boxId, `Skill: ${selectedSkill.name}`)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-              </svg>
-              Open discussion
-            </button>
-          </section>
         </div>
       </div>
 
@@ -3369,12 +3367,46 @@
     background: hsl(var(--muted) / 0.5);
   }
 
-  /* ── Action row: Claim Coverage + Create Benchmark ─────────────────── */
+  /* ── Skill description: roomy, readable, WCAG-AA contrast ──────────── */
+  .skill-detail-prose {
+    max-width: 68ch;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+    line-height: 1.75;
+    color: hsl(var(--foreground) / 0.85);
+    white-space: pre-wrap;
+  }
+
+  /* ── Action row: Claim Coverage + Create Benchmark + Open discussion ── */
   .action-row {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.75rem;
     margin-bottom: 1.5rem;
+  }
+  /* Secondary, quiet ghost link — grouped with the CTAs but not competing. */
+  .open-discussion-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .open-discussion-link:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+  }
+  @media (max-width: 560px) {
+    .open-discussion-link { margin-left: 0; }
   }
 
   .create-benchmark-btn {
