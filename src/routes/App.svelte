@@ -3146,6 +3146,7 @@
     color: hsl(var(--muted-foreground));
   }
   .submissions-empty {
+    display: inline-block;
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
     padding: 0.5rem 0.75rem;
@@ -3370,7 +3371,8 @@
 
   /* ── Skill description: roomy, readable, WCAG-AA contrast ──────────── */
   .skill-detail-prose {
-    max-width: 68ch;
+    width: 100%;
+    max-width: 84ch;
     margin-bottom: 1.5rem;
     font-size: 1rem;
     line-height: 1.75;
