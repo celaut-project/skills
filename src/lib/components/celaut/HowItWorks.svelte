@@ -290,12 +290,16 @@
     font-size: 0.9375rem;
     color: hsl(var(--foreground) / 0.78);
     line-height: 1.65;
-    max-width: 68ch;
-    margin: 0 auto;
+    /* Full column width: the top "How it works" graphics (contrast cards,
+       diagram, steps) span the whole container. Long-form prose lines are
+       individually capped below so they stay readable. The Scoring/FAQ card
+       keeps its own narrower measure. */
   }
 
+  /* Keep the two prose blocks readable even though the card is full-width. */
   .how-intro {
     margin-bottom: 1rem;
+    max-width: 68ch;
   }
 
   .how-intro em {
@@ -399,6 +403,11 @@
     border-radius: 0.5rem;
     background-color: hsl(var(--muted) / 0.5);
     font-size: 0.8125rem;
+  }
+
+  .how-relationships p {
+    max-width: 72ch;
+    margin: 0;
   }
 
   .how-relationships em {
