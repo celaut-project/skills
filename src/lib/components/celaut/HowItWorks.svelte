@@ -54,7 +54,7 @@
 
     <div class="how-relationships">
       <p>
-        <strong>Skills</strong> define <em>what</em> to solve. <strong>Coverages</strong> are services (VMs) that solve them their own way.
+        <strong>Skills</strong> define <em>what</em> to solve. <strong>Services</strong> are Virtual Machines (VMs) that solve them their own way.
         <strong>Benchmarks</strong> define how to measure. <strong>Results</strong> are on-chain proof — and feed each service's reputation.
       </p>
     </div>
@@ -83,7 +83,7 @@
         </div>
       </div>
       <div class="diagram-caption">each a sealed VM — coverages of the same skill</div>
-      <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every coverage</div>
+      <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every service</div>
     </div>
 
     <!-- Marketplace loop -->
@@ -92,7 +92,7 @@
         <div class="step-number">1</div>
         <div class="step-content">
           <div class="step-title">Define</div>
-          <div class="step-desc">Publish a Skill describing what to solve — never how.</div>
+          <div class="step-desc">Publish a Skill — a declarative spec of the problem: inputs, outputs, success criteria. No implementation.</div>
         </div>
       </div>
       <div class="step-arrow">&rarr;</div>
@@ -100,7 +100,7 @@
         <div class="step-number">2</div>
         <div class="step-content">
           <div class="step-title">Cover</div>
-          <div class="step-desc">Anyone ships a service (VM) that solves it, deps and all.</div>
+          <div class="step-desc">Build a service: a sealed VM that ships the exact OS, dependencies, and model it was tested with.</div>
         </div>
       </div>
       <div class="step-arrow">&rarr;</div>
@@ -108,7 +108,7 @@
         <div class="step-number">3</div>
         <div class="step-content">
           <div class="step-title">Benchmark</div>
-          <div class="step-desc">Coverages submit Results and rank on the leaderboard.</div>
+          <div class="step-desc">Anyone can run a benchmark against any service and submit results on-chain — transparent, verifiable proof.</div>
         </div>
       </div>
       <div class="step-arrow">&rarr;</div>
@@ -116,7 +116,7 @@
         <div class="step-number">4</div>
         <div class="step-content">
           <div class="step-title">Choose</div>
-          <div class="step-desc">Reputation grows on-chain; the best coverage wins.</div>
+          <div class="step-desc">Results accumulate into on-chain reputation. Users pick the service with the strongest verified track record.</div>
         </div>
       </div>
     </div>
@@ -125,7 +125,7 @@
     <section class="score-doc">
       <div class="score-doc-head">
         <span class="contrast-label">Scoring system</span>
-        <p class="score-doc-sub">The full multi-criteria scoring specification that ranks every coverage.</p>
+        <p class="score-doc-sub">The full multi-criteria scoring specification that ranks every service.</p>
       </div>
       <!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted in-repo doc (SCORE.md), math pre-rendered with KaTeX -->
       <div class="score-doc-body">{@html scoreDocHtml}</div>
