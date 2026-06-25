@@ -240,7 +240,10 @@
 
 <!-- ── Demo-mode CTA: explore the app populated with example data ───────────── -->
 <div class="how-demo-cta">
-  <a href="?env=dev" class="demo-cta-link">See it with example data &rarr;</a>
+  <!-- data-sveltekit-reload forces a real page load (not client-side nav) so the
+       app boots fresh: it reads ?env=dev at startup → demo mode on, landing on the
+       default gallery tab. The relative href keeps the GitHub Pages base path. -->
+  <a href="?env=dev" data-sveltekit-reload class="demo-cta-link">See it with example data &rarr;</a>
   <span class="demo-cta-note">Loads the gallery in demo mode with sample skills, services and benchmark results — no wallet needed.</span>
 </div>
 
