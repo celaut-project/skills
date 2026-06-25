@@ -647,6 +647,14 @@
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
+  // Gallery counter reconciliation: the StatsBar shows every Skill on-chain, but
+  // the listing hides skills that are nested under a higher-reputation parent
+  // (extendedSkillBoxIds) or collapsed as duplicate-named submissions. When no
+  // user filter is active, the gap between the two numbers is exactly those
+  // hidden entries — surface it so the counts reconcile for the user.
+  $: galleryUnfiltered = !searchQuery && activeCategory === "all" && (!minReputation || minReputation <= 0);
+  $: hiddenFromListing = Math.max(0, skills.length - displayedSkills.length);
+
   // Track duplicate skill names to flag concurrent submissions. Anyone can post
   // a skill with the same human name as another — the chain doesn't enforce
   // uniqueness — so the UI must surface "this name is claimed by N others" and
@@ -1335,7 +1343,7 @@
           <!-- Skill header card -->
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
-              <div class="flex items-center gap-3">
+              <div class="flex flex-wrap items-center gap-3 min-w-0">
                 <span
                   class="detail-category-icon"
                   style="color: hsl({categoryColor(selectedSkill.domain)});"
@@ -2007,10 +2015,20 @@
                 All Skills
               {/if}
             </h2>
-            <p class="text-sm text-muted-foreground mt-0.5">
-              {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
-              {searchQuery ? ` matching "${searchQuery}"` : ""}
-              {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
+            <p class="text-sm text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
+              {#if galleryUnfiltered && hiddenFromListing > 0}
+                <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
+                <InfoTip title="Why fewer cards than the total?">
+                  <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
+                  <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
+                </InfoTip>
+              {:else}
+                <span>
+                  {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
+                  {searchQuery ? ` matching "${searchQuery}"` : ""}
+                  {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
+                </span>
+              {/if}
             </p>
           </div>
           <div class="flex items-center gap-3">
@@ -2127,7 +2145,7 @@
           </button>
         {/if}
         <div class="submit-header">
-          <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
+          <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
           <p class="text-muted-foreground text-sm">
             Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
           </p>
@@ -2230,10 +2248,12 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-avatar">
-            <ProfileAvatar profileId={$reputation_proof?.token_id} size={64} clickable={false} title="Your profile" />
+          <div class="submit-header-titlerow">
+            <div class="submit-header-avatar">
+              <ProfileAvatar profileId={$reputation_proof?.token_id} size={48} clickable={false} title="Your profile" />
+            </div>
+            <h2 class="text-2xl md:text-3xl font-extrabold">Reputation Profile</h2>
           </div>
-          <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
           <p class="text-muted-foreground text-sm">
             Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
           </p>
@@ -2927,9 +2947,14 @@
     @apply text-center mb-8;
   }
 
-  /* Profile page: the user's identicon avatar above the title. */
+  /* Profile page: identicon avatar sits laterally next to the title (centered
+     as a group), not stacked above it. */
+  .submit-header-titlerow {
+    @apply flex items-center justify-center gap-3 mb-2;
+  }
+
   .submit-header-avatar {
-    @apply inline-flex items-center justify-center mb-4;
+    @apply inline-flex items-center justify-center shrink-0;
   }
 
   .submit-connect-card {
@@ -3060,12 +3085,18 @@
   /* ── Best Service Highlight ────────────────────────────────────────── */
   .best-service-card {
     @apply mb-6 p-4 rounded-lg border;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--primary) / 0.06),
-      hsl(var(--primary) / 0.02) 60%
-    );
-    border-color: hsl(var(--primary) / 0.25);
+    /* Sit on the solid card surface, then layer a clearer primary tint on top so
+       the block reads as a distinct, recommended card — the old 0.06/0.02 wash
+       was nearly invisible against the page background in light mode. */
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--primary) / 0.16),
+        hsl(var(--primary) / 0.06) 60%
+      ),
+      hsl(var(--card));
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 1px 3px hsl(var(--primary) / 0.12);
   }
   .best-service-eyebrow {
     @apply flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-2;
