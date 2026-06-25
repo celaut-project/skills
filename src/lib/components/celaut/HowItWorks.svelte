@@ -39,7 +39,7 @@
     {
       q: "Can I create my own Services?",
       a: [
-        "Yes. Anyone can publish a Service (a VM) that covers an existing Skill and compete on performance, cost, speed and quality. The best coverage rises on the leaderboard."
+        "Yes. Anyone can publish a Service (a VM) that covers an existing Skill and compete on performance, cost, speed and quality. The best service rises on the leaderboard."
       ]
     },
     {
@@ -143,7 +143,7 @@
           <span class="service-meta">🖥 📦 🤖</span>
         </div>
       </div>
-      <div class="diagram-caption">each a sealed VM — coverages of the same skill</div>
+      <div class="diagram-caption">each a sealed VM — services covering the same skill</div>
       <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every service</div>
     </div>
 

@@ -1545,10 +1545,10 @@
                   <RunServiceButton serviceId={recommendedService.coverage.serviceId} large={true} label="Run" />
                 {/if}
                 {#await recommendedDownloadPromise(recommendedService.coverage.serviceId) then dl}
-                  {#if dl?.sourceUrl}
+                  {#if dl?.source?.urlLink}
                     <a
                       class="best-service-download"
-                      href={dl.sourceUrl}
+                      href={dl.source.urlLink}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
