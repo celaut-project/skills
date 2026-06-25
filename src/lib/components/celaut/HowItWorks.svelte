@@ -1,8 +1,69 @@
 <script lang="ts">
   import "katex/dist/katex.min.css";
   import { scoreDocHtml } from "$lib/renderScoreDoc";
+
+  // Lower container has two tabs: the formal scoring spec and a plain-English FAQ.
+  type LearnTab = "scoring" | "faq";
+  let activeTab: LearnTab = "scoring";
+
+  // FAQ content (English — the whole site is English). Each answer is an array
+  // of paragraphs so it renders without {@html}.
+  const faqs: { q: string; a: string[] }[] = [
+    {
+      q: "What is Unstoppable Skills?",
+      a: [
+        "Unstoppable Skills separates the what from the how. A Skill is a pure declarative contract — what problem it solves, the expected inputs and outputs, and the success criteria or benchmarks that define “done”. It contains no code.",
+        "A Service is a sealed, fully reproducible virtual machine that actually solves the skill: an exact OS, dependencies, model, scripts, API, architecture and filesystem frozen together as a trustworthy long-term black box. By default it connects to no network — your Celaut Node decides what it can reach.",
+        "Benchmarks and on-chain results turn that into transparent reputation: anyone can run the verifiable tests, and users simply pick the service with the best track record."
+      ]
+    },
+    {
+      q: "Why are the results verifiable?",
+      a: [
+        "Because a Service's specification is completely closed. It doesn't depend on external sources or repository downloads that rot over time — it ships everything it was tested with.",
+        "A Service runs identically today as it will in four years, so any benchmark result recorded on-chain can always be reproduced."
+      ]
+    },
+    {
+      q: "What problems does it solve?",
+      a: [
+        "Four recurring ones: version dependency and drift (scripts that break when a dependency changes), ambiguous interpretation (different LLMs read the same natural-language instructions differently), the difficulty of objectively comparing alternatives, and the long-term fragility of solutions that quietly stop working."
+      ]
+    },
+    {
+      q: "How do I choose between services?",
+      a: [
+        "By reputation. Each Service accrues reputation from on-chain, verified benchmark results — real evidence rather than promises. The service with the strongest track record on the benchmarks you care about is the one to pick."
+      ]
+    },
+    {
+      q: "Can I create my own Services?",
+      a: [
+        "Yes. Anyone can publish a Service (a VM) that covers an existing Skill and compete on performance, cost, speed and quality. The best service rises on the leaderboard."
+      ]
+    },
+    {
+      q: "Are Services paid?",
+      a: [
+        "Optionally, yes. Payment is handled by external methods (for example NiPoPoW-based or other payment systems) and is entirely outside the Unstoppable Skills platform itself."
+      ]
+    },
+    {
+      q: "Is it decentralized?",
+      a: [
+        "Yes. Skills, Services and benchmark results are all stored immutably on the Ergo Blockchain."
+      ]
+    },
+    {
+      q: "What's the main advantage?",
+      a: [
+        "Guaranteed reproducibility plus real competition on verifiable results instead of marketing claims. You choose tools by what they have provably done, not by what they say they can do."
+      ]
+    }
+  ];
 </script>
 
+<!-- ── Card 1: How it works ─────────────────────────────────────────────────── -->
 <div class="how-it-works">
   <header class="how-header">
     <div class="how-header-icon">
@@ -82,7 +143,7 @@
           <span class="service-meta">🖥 📦 🤖</span>
         </div>
       </div>
-      <div class="diagram-caption">each a sealed VM — coverages of the same skill</div>
+      <div class="diagram-caption">each a sealed VM — services covering the same skill</div>
       <div class="diagram-bench">⭐ Benchmarks &amp; Results — the community scores every service</div>
     </div>
 
@@ -120,8 +181,33 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
 
-    <!-- ── Scoring system: full SCORE.md spec, Markdown + KaTeX math ──────────── -->
+<!-- ── Card 2: Scoring system + FAQ (separate white card, tabbed) ───────────── -->
+<div class="learn-more">
+  <div class="learn-tabs" role="tablist" aria-label="Learn more">
+    <button
+      class="learn-tab"
+      class:active={activeTab === "scoring"}
+      role="tab"
+      aria-selected={activeTab === "scoring"}
+      on:click={() => (activeTab = "scoring")}
+    >
+      Scoring System
+    </button>
+    <button
+      class="learn-tab"
+      class:active={activeTab === "faq"}
+      role="tab"
+      aria-selected={activeTab === "faq"}
+      on:click={() => (activeTab = "faq")}
+    >
+      FAQ
+    </button>
+  </div>
+
+  {#if activeTab === "scoring"}
     <section class="score-doc">
       <div class="score-doc-head">
         <span class="contrast-label">Scoring system</span>
@@ -130,7 +216,32 @@
       <!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted in-repo doc (SCORE.md), math pre-rendered with KaTeX -->
       <div class="score-doc-body">{@html scoreDocHtml}</div>
     </section>
-  </div>
+  {:else}
+    <section class="faq">
+      <div class="faq-head">
+        <span class="contrast-label">FAQ</span>
+        <p class="faq-sub">The short version — what this is, why it's trustworthy, and how to use it.</p>
+      </div>
+      <div class="faq-list">
+        {#each faqs as item}
+          <details class="faq-item">
+            <summary class="faq-q">{item.q}</summary>
+            <div class="faq-a">
+              {#each item.a as para}
+                <p>{para}</p>
+              {/each}
+            </div>
+          </details>
+        {/each}
+      </div>
+    </section>
+  {/if}
+</div>
+
+<!-- ── Demo-mode CTA: explore the app populated with example data ───────────── -->
+<div class="how-demo-cta">
+  <a href="?env=dev" class="demo-cta-link">See it with example data &rarr;</a>
+  <span class="demo-cta-note">Loads the gallery in demo mode with sample skills, services and benchmark results — no wallet needed.</span>
 </div>
 
 <style lang="postcss">
@@ -142,11 +253,14 @@
     overflow: hidden;
   }
 
+  /* Page header — centered, matching the unified header treatment used across
+     the Gallery / Submit / Profile tabs (icon sits to the side of the title). */
   .how-header {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.625rem;
-    padding: 1.25rem 1.25rem 0.5rem;
+    padding: 1.5rem 1.25rem 0.75rem;
   }
 
   .how-header-icon {
@@ -158,16 +272,26 @@
   .how-title {
     margin: 0;
     font-size: 1.5rem;
-    font-weight: 700;
+    font-weight: 800;
     color: hsl(var(--foreground));
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+  }
+
+  @media (min-width: 768px) {
+    .how-title {
+      font-size: 1.875rem;
+    }
   }
 
   .how-content {
-    padding: 0.5rem 1.25rem 1.25rem;
-    font-size: 0.875rem;
-    color: hsl(var(--muted-foreground));
-    line-height: 1.6;
+    padding: 0.5rem 1.25rem 1.5rem;
+    /* Comfortable, readable body: a touch larger than 0.875rem with a higher
+       line-height and stronger contrast than plain muted text. */
+    font-size: 0.9375rem;
+    color: hsl(var(--foreground) / 0.78);
+    line-height: 1.65;
+    max-width: 68ch;
+    margin: 0 auto;
   }
 
   .how-intro {
@@ -360,6 +484,7 @@
   .diagram-caption {
     font-size: 0.7rem;
     color: hsl(var(--muted-foreground));
+    text-align: center;
   }
 
   .diagram-bench {
@@ -423,15 +548,54 @@
     font-size: 1rem;
   }
 
-  /* --- Scoring system doc (rendered SCORE.md) --- */
-  .score-doc {
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid hsl(var(--border));
+  /* ── Card 2: Learn more (separate white card with tabs) ─────────────────── */
+  .learn-more {
+    margin-bottom: 1.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    overflow: hidden;
   }
 
+  .learn-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.75rem 1.25rem 0;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .learn-tab {
+    appearance: none;
+    border: none;
+    background: none;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .learn-tab:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .learn-tab.active {
+    color: hsl(var(--foreground));
+    border-bottom-color: hsl(var(--foreground));
+  }
+
+  /* --- Scoring system doc (rendered SCORE.md) --- */
+  .score-doc {
+    padding: 1.25rem;
+  }
+
+  /* Item 3: heading/intro centered; body stays left-aligned for readability. */
   .score-doc-head {
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    text-align: center;
   }
 
   .score-doc-sub {
@@ -442,10 +606,11 @@
 
   .score-doc-body {
     max-width: 70ch;
-    font-size: 0.875rem;
-    line-height: 1.65;
+    margin: 0 auto;
+    font-size: 0.9rem;
+    line-height: 1.7;
     /* KaTeX inherits currentColor, so formulas stay legible in light & dark. */
-    color: hsl(var(--muted-foreground));
+    color: hsl(var(--foreground) / 0.82);
     overflow-x: auto;
   }
 
@@ -525,6 +690,133 @@
     padding: 0.25rem 0;
   }
 
+  /* Tables can be wide — let them scroll horizontally rather than overflow. */
+  .score-doc-body :global(table) {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.85em;
+    margin: 0.75rem 0;
+  }
+
+  .score-doc-body :global(th),
+  .score-doc-body :global(td) {
+    border: 1px solid hsl(var(--border));
+    padding: 0.35rem 0.55rem;
+    text-align: left;
+  }
+
+  /* --- FAQ --- */
+  .faq {
+    padding: 1.25rem;
+  }
+
+  .faq-head {
+    margin-bottom: 1.25rem;
+    text-align: center;
+  }
+
+  .faq-sub {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .faq-list {
+    max-width: 70ch;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .faq-item {
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background-color: hsl(var(--muted) / 0.25);
+    overflow: hidden;
+  }
+
+  .faq-q {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.75rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .faq-q::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-q::before {
+    content: "+";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+    font-weight: 700;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .faq-item[open] .faq-q::before {
+    content: "−";
+  }
+
+  .faq-a {
+    padding: 0 0.875rem 0.875rem 2.375rem;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: hsl(var(--foreground) / 0.8);
+  }
+
+  .faq-a :global(p) {
+    margin: 0 0 0.6rem;
+  }
+
+  .faq-a :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  /* --- Demo-mode CTA --- */
+  .how-demo-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+    border: 1px dashed hsl(var(--border));
+    background-color: hsl(var(--muted) / 0.2);
+  }
+
+  .demo-cta-link {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: hsl(var(--primary));
+    text-decoration: none;
+  }
+
+  .demo-cta-link:hover {
+    text-decoration: underline;
+  }
+
+  .demo-cta-note {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    max-width: 42ch;
+  }
+
   @media (max-width: 640px) {
     .how-contrast {
       grid-template-columns: 1fr;
@@ -534,6 +826,14 @@
     }
     .step-arrow {
       display: none;
+    }
+    .how-content {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+    .score-doc,
+    .faq {
+      padding: 1rem;
     }
   }
 </style>

@@ -9,7 +9,12 @@ marked.use(
   markedKatex({
     throwOnError: false,
     // Inherit text color so formulas stay legible in both light and dark themes.
-    output: 'html'
+    output: 'html',
+    // `nonStandard: true` lets inline `$...$` be tokenized even when it isn't
+    // surrounded by whitespace — e.g. inside bold (`**Raw Reputation ($R_{raw}$)**`)
+    // or wrapped in parentheses. Without it those inline formulas render as raw
+    // `$R_{raw}$` text instead of typeset math.
+    nonStandard: true
   })
 );
 

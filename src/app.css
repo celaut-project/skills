@@ -113,6 +113,11 @@
    over that non-important rule regardless of injection order. */
 html {
   background-color: hsl(var(--background));
+  /* The fixed-position footer marquee animates with translateX(100vw); a fixed
+     element's overflow is clipped against the viewport/<html>, not <body>, so
+     <body>'s overflow-x:hidden can't contain it. Clip here too to kill the
+     horizontal page scroll it would otherwise create on mobile. */
+  overflow-x: hidden;
 }
 body {
   background-color: transparent !important;

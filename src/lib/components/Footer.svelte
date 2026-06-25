@@ -178,7 +178,10 @@
   }
 
   @keyframes scroll-left {
-    from { transform: translateX(100vw); }
+    /* Start just past the right edge of the masked center column (100% of the
+       text's own width) rather than 100vw — keeps the slide-in within the
+       footer instead of pushing the document's scroll width on narrow screens. */
+    from { transform: translateX(100%); }
     to   { transform: translateX(-100%); }
   }
 
