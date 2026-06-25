@@ -2489,6 +2489,40 @@
     background: hsl(var(--muted) / 0.3);
   }
 
+  /* ── Mobile header: stack logo + wallet on row 1, tabs scroll on row 2 ──────
+     On phones the single-row island overflowed its right edge (logo + 4 tabs +
+     wallet + theme don't fit at ~390px). Wrap the tabs to their own full-width
+     row and let them scroll horizontally instead of pushing past the island. */
+  @media (max-width: 640px) {
+    .navbar-content {
+      @apply px-4 py-3 gap-2;
+      border-radius: 1rem;
+    }
+    .navbar-top {
+      @apply flex-wrap gap-2;
+    }
+    .logo-text {
+      @apply text-lg;
+    }
+    .navbar-tabs {
+      order: 3;
+      flex: 1 0 100%;
+      justify-content: flex-start;
+      gap: 0.25rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .navbar-tabs::-webkit-scrollbar {
+      display: none;
+    }
+    .tab-btn {
+      @apply py-2 px-2.5 text-sm;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+  }
+
   /* ── Main content ───────────────────────────────────────────────────── */
   .main-content {
     /* pb-12 (3rem) reserves space for the fixed page-footer (h-12 = 3rem) so
@@ -3275,6 +3309,46 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 0.6875rem;
     color: hsl(var(--muted-foreground));
+  }
+
+  /* ── Mobile: sibling submissions become cards, not dense single-line rows ───
+     At phone widths the avatar + name + domain + rep + hash crammed onto one
+     clipped line. Wrap each into a bordered card: name on its own line next to
+     the avatar, domain/rep chips below, box hash on the final line. */
+  @media (max-width: 640px) {
+    .submissions-block .duplicate-notice-list {
+      gap: 0.5rem;
+    }
+    .duplicate-notice-row {
+      border: 1px solid hsl(var(--border));
+      border-radius: 0.5rem;
+      background: hsl(var(--muted) / 0.25);
+      align-items: stretch;
+      gap: 0;
+    }
+    .duplicate-notice-item {
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.375rem 0.5rem;
+      padding: 0.625rem 0.75rem;
+      font-size: 0.8125rem;
+    }
+    .duplicate-notice-item-name {
+      flex: 1 1 auto;
+      min-width: calc(100% - 1.75rem);
+      font-size: 0.8125rem;
+    }
+    .duplicate-notice-item-rep {
+      margin-left: 0;
+    }
+    .duplicate-notice-item-box {
+      flex: 1 1 100%;
+      word-break: break-all;
+    }
+    .duplicate-notice-discuss {
+      align-self: center;
+      margin-right: 0.375rem;
+    }
   }
 
   /* ── Source Details (collapsible FileCard wrapper) ──────────────────── */

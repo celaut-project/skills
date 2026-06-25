@@ -192,23 +192,38 @@
     opacity: 0.5;
   }
 
-  /* On phones: wrap is allowed but each row is height-capped, so the footer
-     can grow to two rows (still under-thumb) without exploding to fit links. */
+  /* On phones: keep a single fixed-height row with the social links + KYA on the
+     left and the block height on the right. The scrolling marquee is decorative
+     and was forcing a tall multi-row footer where the KYA trigger floated above
+     the social icons — hide it on phones and align everything on one centered
+     line so nothing overlaps. */
   @media (max-width: 640px) {
     .page-footer {
-      @apply h-auto px-4 py-2 gap-2;
-      flex-wrap: wrap;
+      @apply h-12 px-4 gap-3;
+      flex-wrap: nowrap;
     }
     .footer-center {
-      order: -1;
-      flex: 0 0 100%;
+      display: none;
+    }
+    .footer-left {
+      gap: 0.875rem;
     }
     .footer-left,
     .footer-right {
-      flex: 1 1 0;
+      flex: 0 0 auto;
     }
     .footer-right {
-      justify-content: flex-end;
+      margin-left: auto;
+    }
+    /* The KYA trigger (a text span from the Kya component, in its own scope)
+       renders as a block and inflated the row; pin it to an inline, centered,
+       single-line box so it sits level with the icons. */
+    .footer-kya,
+    .footer-kya :global(span) {
+      display: inline-flex;
+      align-items: center;
+      height: 1rem;
+      line-height: 1;
     }
   }
 </style>
