@@ -1,0 +1,9 @@
+- How it works con letra mas grande ... ahora cuesta leerlo.
+- Corregir la representación de algunas formulas en "Technical Specification: Multi-Criteria Global Scoring System" (ej: ($R_{raw}$), ($W_e$))
+- Colocar "Scorin system" en otro contenedor blanco separado del contenedor de arriba (el de How it works) y centrar el texto en eje horizontal.
+- Agregar en link que vaya a ?env=dev para ver ejemplos
+- El header de cada página es distinto!! Vamos a hacerlos todos del mismo tamaño y en la misma posicion (en el caso de profile pongamos el icono al lateral)
+- Gallery nos muestra "skills registered on-chain" unicamente con la cantidad que nos muestra en el listado ... pero realmente el contador de arriba nos da mas, esto se debe a que en el listado estamos ocultando las que supuestamente se repiten. Este comportamiento es correcto, pero como usuario no entiendo porque en un sitio dice mas que en el otro.
+- "Recommended service for this skill" se debería de ver mejor (ahora el color se parece demasiado al fondo, al menos en light mode.)
+- Agregar seccion FAQ en How It Works. Junto con Scoring System. Agregar tabs en el top del contenedor inferior de la página How It Works (contenedor inferior en base a lo que mencioné en el punto anterior sobre separar Scoring System en otro contenedor blanco) para que el usuario elija FAQ o Scoring System.
+- Revisar todo el sistema para que sea responsive en telefonos móviles.

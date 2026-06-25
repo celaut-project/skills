@@ -33,7 +33,6 @@
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
   import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
-  import GameOfLife from "$lib/components/celaut/GameOfLife.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
   import { portal } from "$lib/actions/portal";
@@ -1199,9 +1198,6 @@
     }
   }
 </script>
-
-<!-- Ambient Conway's Game of Life in the page side gutters (decorative). -->
-<!-- <GameOfLife /> -->
 
 <!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
 {#if $demoMode}
