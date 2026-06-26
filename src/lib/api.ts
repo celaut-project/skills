@@ -4,7 +4,8 @@
  */
 
 import { hexToUtf8 } from './ergo/envs';
-import type { Skill, Coverage, Benchmark, Result } from './types';
+import type { Skill, Coverage, Benchmark, Result, Descriptor, PerformanceMetric } from './types';
+import { ApiError, NetworkError, ParseError } from './types';
 import {
   searchBoxes,
   fetchAllProfiles,
@@ -538,6 +539,40 @@ export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Cover
   return merged;
 }
 
+/**
+ * Normalize a raw on-chain `case_descriptors` entry into the UI's
+ * `{ name, description }` shape. The canonical Type-NFT schema and the app's
+ * own writer agree on these keys, but defensively coerces bare-string entries
+ * (`"doc_length"`) and alternate keys so a descriptor authored by external
+ * tooling still renders instead of surfacing as `undefined`.
+ */
+function normalizeDescriptor(raw: any): Descriptor {
+  if (typeof raw === 'string') return { name: raw, description: '' };
+  return {
+    name: String(raw?.name ?? raw?.key ?? raw?.label ?? ''),
+    description: String(raw?.description ?? raw?.desc ?? '')
+  };
+}
+
+/**
+ * Normalize a raw on-chain `performance_metrics` entry. Critically, the
+ * canonical benchmark Type-NFT schema declares the direction flag as
+ * snake_case `higher_is_better`, while this app's writer emits camelCase
+ * `higherIsBetter`. Reading either keeps `higherIsBetter` defined — without
+ * this, metrics published against the canonical schema lose their direction
+ * (undefined), breaking both the ↑/↓ UI hint and the sign of the z-score
+ * normalization in scoring.ts.
+ */
+function normalizeMetric(raw: any): PerformanceMetric {
+  if (typeof raw === 'string') return { name: raw, description: '', higherIsBetter: true };
+  const dir = raw?.higherIsBetter ?? raw?.higher_is_better;
+  return {
+    name: String(raw?.name ?? raw?.key ?? raw?.label ?? ''),
+    description: String(raw?.description ?? raw?.desc ?? ''),
+    higherIsBetter: dir === undefined ? true : Boolean(dir)
+  };
+}
+
 /** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
@@ -554,8 +589,12 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
           skillBoxId,
           name: parsed.name || 'Unnamed Benchmark',
           description: parsed.description || '',
-          caseDescriptors: Array.isArray(parsed.case_descriptors) ? parsed.case_descriptors : [],
-          performanceMetrics: Array.isArray(parsed.performance_metrics) ? parsed.performance_metrics : [],
+          caseDescriptors: Array.isArray(parsed.case_descriptors)
+            ? parsed.case_descriptors.map(normalizeDescriptor)
+            : [],
+          performanceMetrics: Array.isArray(parsed.performance_metrics)
+            ? parsed.performance_metrics.map(normalizeMetric)
+            : [],
           results: [],
           coverages: [],
           sourceHash: parsed.source_hash,

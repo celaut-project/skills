@@ -165,8 +165,18 @@ class ErgoDataProvider implements DataProvider {
         skill_box_id: input.skillBoxId,
         name: input.name,
         description: input.description,
-        case_descriptors: input.caseDescriptors,
-        performance_metrics: input.performanceMetrics,
+        case_descriptors: input.caseDescriptors.map((d) => ({
+          name: d.name,
+          description: d.description
+        })),
+        // Emit the canonical snake_case `higher_is_better` declared by the
+        // benchmark Type-NFT schema so external tooling (and our own reader)
+        // resolve the metric direction instead of seeing `undefined`.
+        performance_metrics: input.performanceMetrics.map((m) => ({
+          name: m.name,
+          description: m.description,
+          higher_is_better: m.higherIsBetter
+        })),
         source_hash: input.sourceHash ?? null
       },
       LOCKED,
