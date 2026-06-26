@@ -88,6 +88,92 @@ const TOOLS = [
       required: ['skillBoxId'],
       additionalProperties: false
     }
+  },
+  // ── Publish (state-mutating) tools ──────────────────────────────────────
+  // These build/submit on-chain reputation opinions via reputation-system/node.
+  // Signing mode is set by env (CELAUT_SIGNER_MODE=seed|unsigned); see publish.mjs.
+  {
+    name: 'create_skill',
+    description: 'Publish a new Skill (capability marker) to the Celaut on-chain registry. Builds a reputation opinion and either submits it (seed signer) or returns the unsigned tx (unsigned signer).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        name: { type: 'string', description: 'Skill name.' },
+        prose: { type: 'string', description: 'Human-readable description of the skill.' },
+        formal: { type: 'string', description: 'Optional formal/spec definition.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags.' },
+        domain: { type: 'string', description: 'Optional domain.' },
+        extendedSkillBoxIds: { type: 'array', items: { type: 'string' }, description: 'Optional parent skill box ids this extends.' },
+        sourceHash: { type: 'string', description: 'Optional hash of the source artifact.' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'name', 'prose'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_coverage',
+    description: 'Publish a Coverage opinion asserting that a service can address a given Skill.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        skillBoxId: { type: 'string', description: 'Hex box id of the Skill being covered.' },
+        serviceId: { type: 'string', description: 'Optional service identifier providing the coverage.' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'skillBoxId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_benchmark',
+    description: 'Publish a Benchmark opinion defining how a given Skill is measured.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        skillBoxId: { type: 'string', description: 'Hex box id of the Skill being benchmarked.' },
+        name: { type: 'string', description: 'Benchmark name.' },
+        description: { type: 'string', description: 'Benchmark description.' },
+        caseDescriptors: { type: 'array', description: 'Ordered case descriptors.' },
+        performanceMetrics: { type: 'array', description: 'Ordered performance metric definitions.' },
+        sourceHash: { type: 'string', description: 'Optional hash of the source artifact.' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'skillBoxId', 'name'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_result',
+    description: 'Publish a Result opinion: a performance tensor submitted against a given Benchmark.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        benchmarkId: { type: 'string', description: 'Hex box id of the Benchmark.' },
+        serviceId: { type: 'string', description: 'Service identifier that produced the result.' },
+        data: {
+          type: 'array',
+          description: 'Per-case execution data: [{ caseMeta: number[], metricsValues: number[] }].',
+          items: {
+            type: 'object',
+            properties: {
+              caseMeta: { type: 'array', items: { type: 'number' } },
+              metricsValues: { type: 'array', items: { type: 'number' } }
+            }
+          }
+        },
+        notes: { type: 'string', description: 'Optional notes.' },
+        timestamp: { type: 'number', description: 'Optional unix timestamp.' },
+        sourceHash: { type: 'string', description: 'Optional hash of the source artifact.' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'benchmarkId', 'serviceId', 'data'],
+      additionalProperties: false
+    }
   }
 ];
 
@@ -96,7 +182,13 @@ const HANDLERS = {
   load_coverages: async ({ skillBoxId }) => loadCoverages(skillBoxId),
   load_benchmarks: async ({ skillBoxId }) => loadBenchmarks(skillBoxId),
   load_results: async ({ benchmarkId }) => loadResults(benchmarkId),
-  load_skill_tree: async ({ skillBoxId }) => loadSkillTree(skillBoxId)
+  load_skill_tree: async ({ skillBoxId }) => loadSkillTree(skillBoxId),
+  // Publish handlers lazy-import the publish surface so the read-only tools keep
+  // working even if the reputation-system/node dependency is unavailable.
+  create_skill: async (args) => (await import('./publish.mjs')).createSkill(args),
+  create_coverage: async (args) => (await import('./publish.mjs')).createCoverage(args),
+  create_benchmark: async (args) => (await import('./publish.mjs')).createBenchmark(args),
+  create_result: async (args) => (await import('./publish.mjs')).createResult(args)
 };
 
 // ── Server bootstrap ───────────────────────────────────────────────────────
