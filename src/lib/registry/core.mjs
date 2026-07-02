@@ -27,6 +27,16 @@ export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f
 export const RESULT_TYPE_ID = '49b26dc06b1680769477264d2e8e9bf561005236cde3097630bffcff631b7aef';
 export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
 
+// Service info types — put a *fragment* of a service's celaut specification
+// on-chain (keyed by service id in R5) so clients can read basic info (api,
+// network, architecture, name…) WITHOUT downloading the whole service.
+//   - service-data:v1     → functional spec fields: architecture / api / network
+//   - service-metadata:v1 → descriptive metadata:    name / description / tags
+// PLACEHOLDER ids until the real Type NFTs are minted; `isHexId` gates the
+// queries to `[]` meanwhile (same pattern as the four types above).
+export const SERVICE_DATA_TYPE_ID = 'celaut:service-data:v1';
+export const SERVICE_METADATA_TYPE_ID = 'celaut:service-metadata:v1';
+
 export const DEFAULT_EXPLORER_API =
   (typeof process !== 'undefined' && process.env && process.env.CELAUT_EXPLORER_API) ||
   'https://api.ergoplatform.com';
@@ -128,6 +138,41 @@ export function parseR9(box) {
   } catch {
     return {};
   }
+}
+
+/** True when a value is a bare blake2b256 hex digest (32 bytes → 64 hex chars). */
+export const looksLikeBlake2bHash = (v) =>
+  typeof v === 'string' && /^[0-9a-f]{64}$/i.test(v.trim());
+
+/**
+ * Parse a Service* box R9 into one of two modes:
+ *   - `source` : R9 is a bare blake2b256 hash → the real content lives off-chain
+ *     in `sources` (the client resolves it via the source-application registry).
+ *     Detected simply by the R9 payload being a hash string.
+ *   - `inline` : R9 is a JSON spec fragment carried directly on-chain.
+ * Returns `{ mode, sourceHash, content }` (content is `{}` in source mode).
+ */
+export function parseServiceInfoBox(box) {
+  const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+  const decoded = hexToUtf8(rendered).trim();
+  if (looksLikeBlake2bHash(decoded)) {
+    return { mode: 'source', sourceHash: decoded, content: {} };
+  }
+  let content = {};
+  try {
+    content = decoded ? JSON.parse(decoded) : {};
+  } catch {
+    content = {};
+  }
+  // A JSON-encoded string that is itself just a hash also means "source" mode.
+  if (typeof content === 'string' && looksLikeBlake2bHash(content)) {
+    return { mode: 'source', sourceHash: content.trim(), content: {} };
+  }
+  return {
+    mode: 'inline',
+    sourceHash: undefined,
+    content: content && typeof content === 'object' ? content : {}
+  };
 }
 
 export function deriveProfileId(box, parsed) {
@@ -255,4 +300,51 @@ export async function loadSkillTree(skillBoxId, explorerUri = DEFAULT_EXPLORER_A
     benchmarks.map(async (b) => ({ ...b, results: await loadResults(b.id, explorerUri) }))
   );
   return { skill, coverages, benchmarks: benchmarksWithResults };
+}
+
+// ── Service info (metadata + data) ──────────────────────────────────────────
+//
+// Both are opinion boxes keyed by service id (R5) whose R9 carries a fragment of
+// the service's celaut specification — either inline JSON or a blake2b hash that
+// points at the full fragment in `sources`. This lets the skills UI show a
+// service's api/network/architecture/name without downloading the whole service.
+
+/** Functional spec fragment for a service: architecture / api / network. */
+export async function loadServiceData(serviceId, explorerUri = DEFAULT_EXPLORER_API) {
+  if (!isHexId(SERVICE_DATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_DATA_TYPE_ID, serviceId, 100, explorerUri);
+  return boxes.map((box) => {
+    const info = parseServiceInfoBox(box);
+    const c = info.content;
+    return {
+      boxId: box.boxId,
+      profileId: deriveProfileId(box, c),
+      serviceId,
+      mode: info.mode,
+      sourceHash: info.sourceHash,
+      architecture: typeof c.architecture === 'string' ? c.architecture : undefined,
+      api: Array.isArray(c.api) ? c.api : undefined,
+      network: Array.isArray(c.network) ? c.network : undefined
+    };
+  });
+}
+
+/** Descriptive metadata for a service: name / description / tags. */
+export async function loadServiceMetadata(serviceId, explorerUri = DEFAULT_EXPLORER_API) {
+  if (!isHexId(SERVICE_METADATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_METADATA_TYPE_ID, serviceId, 100, explorerUri);
+  return boxes.map((box) => {
+    const info = parseServiceInfoBox(box);
+    const c = info.content;
+    return {
+      boxId: box.boxId,
+      profileId: deriveProfileId(box, c),
+      serviceId,
+      mode: info.mode,
+      sourceHash: info.sourceHash,
+      name: typeof c.name === 'string' ? c.name : undefined,
+      description: typeof c.description === 'string' ? c.description : undefined,
+      tags: Array.isArray(c.tags) ? c.tags : undefined
+    };
+  });
 }

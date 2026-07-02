@@ -21,6 +21,7 @@
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceSourceCard from "$lib/components/celaut/ServiceSourceCard.svelte";
+  import ServiceInfoCard from "$lib/components/celaut/ServiceInfoCard.svelte";
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
   import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
@@ -1882,6 +1883,7 @@
                         compact={true}
                         on:addSource={(event) => openFileSourceModal(event.detail)}
                       />
+                      <ServiceInfoCard serviceId={cov.serviceId || ''} compact={true} />
                       <div class="coverage-action-row mt-3">
                         <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
                         <button

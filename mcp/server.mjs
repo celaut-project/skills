@@ -30,7 +30,9 @@ import {
   loadCoverages,
   loadBenchmarks,
   loadResults,
-  loadSkillTree
+  loadSkillTree,
+  loadServiceData,
+  loadServiceMetadata
 } from '../src/lib/registry/core.mjs';
 
 // ── MCP tool registry ──────────────────────────────────────────────────────
@@ -86,6 +88,30 @@ const TOOLS = [
         skillBoxId: { type: 'string', description: 'Hex box id of the Skill.' }
       },
       required: ['skillBoxId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'load_service_data',
+    description: 'Load the on-chain functional spec fragments (architecture / api / network) published for a given service id. Each entry is either inline (JSON on-chain) or source mode (a blake2b hash whose content lives in `sources`). Lets a client learn basic service facts without downloading the whole service.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string', description: 'Hex service id (content hash) the info is about.' }
+      },
+      required: ['serviceId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'load_service_metadata',
+    description: 'Load the on-chain descriptive metadata (name / description / tags) published for a given service id. Each entry is inline JSON or a blake2b hash resolved from `sources`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        serviceId: { type: 'string', description: 'Hex service id (content hash) the info is about.' }
+      },
+      required: ['serviceId'],
       additionalProperties: false
     }
   },
@@ -183,6 +209,8 @@ const HANDLERS = {
   load_benchmarks: async ({ skillBoxId }) => loadBenchmarks(skillBoxId),
   load_results: async ({ benchmarkId }) => loadResults(benchmarkId),
   load_skill_tree: async ({ skillBoxId }) => loadSkillTree(skillBoxId),
+  load_service_data: async ({ serviceId }) => loadServiceData(serviceId),
+  load_service_metadata: async ({ serviceId }) => loadServiceMetadata(serviceId),
   // Publish handlers lazy-import the publish surface so the read-only tools keep
   // working even if the reputation-system/node dependency is unavailable.
   create_skill: async (args) => (await import('./publish.mjs')).createSkill(args),

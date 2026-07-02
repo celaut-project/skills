@@ -186,6 +186,72 @@ export interface ResultCreationInput {
   mainBox?: unknown;
 }
 
+/**
+ * Service info (metadata + data) — on-chain fragments of a service's celaut
+ * specification, keyed by service id (R5), so the UI can show basic info without
+ * downloading the full service.
+ *
+ * Type NFT definitions:
+ *  - `celaut:service-data:v1`     → the functional spec: architecture / api / network.
+ *  - `celaut:service-metadata:v1` → descriptive metadata: name / description / tags.
+ *
+ * R9 encoding is one of two modes (see `parseServiceInfoR9`):
+ *  - `inline` — R9 is a JSON spec fragment carried directly on-chain.
+ *  - `source` — R9 is a bare blake2b256 hash; the full fragment lives off-chain
+ *    in `sources` and is resolved via the source-application registry.
+ */
+export type ServiceInfoMode = 'inline' | 'source';
+
+/** One API slot of a service (a port + its transport/protocol stack). */
+export interface ServiceApiSlot {
+  port?: number;
+  transport?: string[];
+  protocol?: string[];
+}
+
+/** `celaut:service-data:v1` — functional spec fields for a service. */
+export interface ServiceData {
+  boxId: string;
+  profileId: string;
+  serviceId: string;
+  mode: ServiceInfoMode;
+  /** Set in `source` mode: blake2b256 hash to resolve from sources. */
+  sourceHash?: string;
+  architecture?: string;
+  api?: ServiceApiSlot[];
+  network?: unknown[];
+  reputation?: number;
+}
+
+/** `celaut:service-metadata:v1` — descriptive metadata for a service. */
+export interface ServiceMetadata {
+  boxId: string;
+  profileId: string;
+  serviceId: string;
+  mode: ServiceInfoMode;
+  /** Set in `source` mode: blake2b256 hash to resolve from sources. */
+  sourceHash?: string;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  reputation?: number;
+}
+
+/** Payload used to create a Service Data / Service Metadata opinion. */
+export interface ServiceInfoCreationInput {
+  /** Service id (content hash) the info is about — becomes R5. */
+  serviceId: string;
+  /**
+   * R9 payload: either an inline spec fragment (object) or a blake2b256 hash
+   * string pointing at the content in `sources`.
+   */
+  content: Record<string, unknown> | string;
+  /** Reputation token amount to allocate to the opinion. */
+  tokenAmount?: number;
+  /** Optional main box used for live on-chain writes. */
+  mainBox?: unknown;
+}
+
 /** Result from creating an entity. */
 export interface EntityWriteResult {
   txId: string;
