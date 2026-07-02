@@ -14,6 +14,7 @@
   import { loadServiceData, loadServiceMetadata, formatServiceId } from '$lib/api';
   import type { ServiceData, ServiceMetadata } from '$lib/types';
   import { reputation_proof } from '$lib/common/store';
+  import { registerServiceInfo } from '$lib/serviceFilters';
   import ServiceSourceCard from './ServiceSourceCard.svelte';
   import ServiceInfoSubmitForm from './ServiceInfoSubmitForm.svelte';
 
@@ -47,6 +48,9 @@
       return;
     }
     loading = true;
+    // Publish "loading" to the skill-detail filter registry so the coverage list
+    // keeps this service visible (with its indicator) until the info arrives.
+    registerServiceInfo(serviceId, { data: [], metadata: [], loading: true });
     try {
       [metadata, data] = await Promise.all([
         loadServiceMetadata(serviceId),
@@ -57,6 +61,7 @@
       data = [];
     } finally {
       loading = false;
+      registerServiceInfo(serviceId, { data, metadata, loading: false });
     }
   }
 
