@@ -13,7 +13,8 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
 import { applySkillInheritance, getDemoSkills } from './api';
 
@@ -206,6 +207,17 @@ class MockDatabase implements DataProvider {
 
     this.syncSkillCounters(match.skill);
     return this.createTxId('result');
+  }
+
+  // Service info has no demo gallery yet (the ServiceInfoCard reads live chain
+  // data directly), so demo publishing is a no-op that just returns a tx id —
+  // enough to satisfy the DataProvider contract and exercise the submit UI.
+  async createServiceData(_input: ServiceInfoCreationInput): Promise<string> {
+    return this.createTxId('service-data');
+  }
+
+  async createServiceMetadata(_input: ServiceInfoCreationInput): Promise<string> {
+    return this.createTxId('service-metadata');
   }
 
   /** Reset the database to initial demo data. */

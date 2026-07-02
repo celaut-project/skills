@@ -309,7 +309,23 @@ export async function loadSkillTree(skillBoxId, explorerUri = DEFAULT_EXPLORER_A
 // points at the full fragment in `sources`. This lets the skills UI show a
 // service's api/network/architecture/name without downloading the whole service.
 
-/** Functional spec fragment for a service: architecture / api / network. */
+/** Architecture string from a service-data spec fragment (celaut nests it under
+ *  `container`, but tolerate a flat top-level `architecture` too). */
+export function deriveArchitecture(content) {
+  const c = content || {};
+  if (c.container && typeof c.container === 'object' && typeof c.container.architecture === 'string') {
+    return c.container.architecture;
+  }
+  return typeof c.architecture === 'string' ? c.architecture : undefined;
+}
+
+/**
+ * Functional spec fragment for a service. R9 is a JSON object that MAY contain
+ * `container`, `api` and `network` (with their respective sub-fields), or a
+ * blake2b hash (source mode). Fields are kept as-is (no shape coercion) so the
+ * UI/filters read whatever the publisher put on-chain; `architecture` is a
+ * convenience derived from `container`.
+ */
 export async function loadServiceData(serviceId, explorerUri = DEFAULT_EXPLORER_API) {
   if (!isHexId(SERVICE_DATA_TYPE_ID) || !isHexId(serviceId)) return [];
   const boxes = await collectBoxes(SERVICE_DATA_TYPE_ID, serviceId, 100, explorerUri);
@@ -322,14 +338,20 @@ export async function loadServiceData(serviceId, explorerUri = DEFAULT_EXPLORER_
       serviceId,
       mode: info.mode,
       sourceHash: info.sourceHash,
-      architecture: typeof c.architecture === 'string' ? c.architecture : undefined,
-      api: Array.isArray(c.api) ? c.api : undefined,
-      network: Array.isArray(c.network) ? c.network : undefined
+      content: c,
+      container: c.container && typeof c.container === 'object' ? c.container : undefined,
+      api: c.api,
+      network: c.network,
+      architecture: deriveArchitecture(c)
     };
   });
 }
 
-/** Descriptive metadata for a service: name / description / tags. */
+/**
+ * Descriptive metadata for a service. R9 is ARBITRARY JSON (or a blake2b hash in
+ * source mode); the whole object is kept in `content`, with `name`/`description`/
+ * `tags` surfaced when present for convenient display.
+ */
 export async function loadServiceMetadata(serviceId, explorerUri = DEFAULT_EXPLORER_API) {
   if (!isHexId(SERVICE_METADATA_TYPE_ID) || !isHexId(serviceId)) return [];
   const boxes = await collectBoxes(SERVICE_METADATA_TYPE_ID, serviceId, 100, explorerUri);
@@ -342,6 +364,7 @@ export async function loadServiceMetadata(serviceId, explorerUri = DEFAULT_EXPLO
       serviceId,
       mode: info.mode,
       sourceHash: info.sourceHash,
+      content: c,
       name: typeof c.name === 'string' ? c.name : undefined,
       description: typeof c.description === 'string' ? c.description : undefined,
       tags: Array.isArray(c.tags) ? c.tags : undefined

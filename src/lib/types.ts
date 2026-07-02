@@ -207,9 +207,15 @@ export interface ServiceApiSlot {
   port?: number;
   transport?: string[];
   protocol?: string[];
+  [key: string]: unknown;
 }
 
-/** `celaut:service-data:v1` — functional spec fields for a service. */
+/**
+ * `celaut:service-data:v1` — the functional spec fragment. R9 is a JSON object
+ * that may hold `container`, `api` and `network` (each with their own sub-fields),
+ * or a blake2b hash (source mode). Fields are kept as-published; `architecture` is
+ * derived from `container` for convenience/filtering.
+ */
 export interface ServiceData {
   boxId: string;
   profileId: string;
@@ -217,13 +223,24 @@ export interface ServiceData {
   mode: ServiceInfoMode;
   /** Set in `source` mode: blake2b256 hash to resolve from sources. */
   sourceHash?: string;
+  /** The full inline R9 object (empty in source mode). */
+  content?: Record<string, unknown>;
+  /** celaut `container` block (architecture, filesystem, entrypoint, …). */
+  container?: Record<string, unknown>;
+  /** celaut `api` — port/transport/protocol slots (shape as-published). */
+  api?: ServiceApiSlot[] | unknown;
+  /** celaut `network` — network requirements/tags (shape as-published). */
+  network?: unknown;
+  /** Convenience: architecture string derived from `container`. */
   architecture?: string;
-  api?: ServiceApiSlot[];
-  network?: unknown[];
   reputation?: number;
 }
 
-/** `celaut:service-metadata:v1` — descriptive metadata for a service. */
+/**
+ * `celaut:service-metadata:v1` — ARBITRARY descriptive JSON about a service (or a
+ * blake2b hash in source mode). The whole object is kept in `content`, with a few
+ * common fields surfaced when present.
+ */
 export interface ServiceMetadata {
   boxId: string;
   profileId: string;
@@ -231,6 +248,8 @@ export interface ServiceMetadata {
   mode: ServiceInfoMode;
   /** Set in `source` mode: blake2b256 hash to resolve from sources. */
   sourceHash?: string;
+  /** The full inline R9 object (empty in source mode). */
+  content?: Record<string, unknown>;
   name?: string;
   description?: string;
   tags?: string[];

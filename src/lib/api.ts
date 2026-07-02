@@ -36,7 +36,8 @@ import {
   COVERAGE_TYPE_ID,
   SERVICE_DATA_TYPE_ID,
   SERVICE_METADATA_TYPE_ID,
-  looksLikeBlake2bHash
+  looksLikeBlake2bHash,
+  deriveArchitecture
 } from './registry/core.mjs';
 export {
   SKILL_TYPE_ID,
@@ -45,7 +46,8 @@ export {
   COVERAGE_TYPE_ID,
   SERVICE_DATA_TYPE_ID,
   SERVICE_METADATA_TYPE_ID,
-  looksLikeBlake2bHash
+  looksLikeBlake2bHash,
+  deriveArchitecture
 };
 
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -698,9 +700,11 @@ export async function loadServiceData(serviceId: string): Promise<ServiceData[]>
           serviceId,
           mode: info.mode,
           sourceHash: info.sourceHash,
-          architecture: typeof c.architecture === 'string' ? c.architecture : undefined,
-          api: Array.isArray(c.api) ? c.api : undefined,
-          network: Array.isArray(c.network) ? c.network : undefined,
+          content: c,
+          container: c.container && typeof c.container === 'object' ? c.container : undefined,
+          api: c.api,
+          network: c.network,
+          architecture: deriveArchitecture(c),
           reputation: 0
         } as ServiceData;
       } catch {
@@ -727,6 +731,7 @@ export async function loadServiceMetadata(serviceId: string): Promise<ServiceMet
           serviceId,
           mode: info.mode,
           sourceHash: info.sourceHash,
+          content: c,
           name: typeof c.name === 'string' ? c.name : undefined,
           description: typeof c.description === 'string' ? c.description : undefined,
           tags: Array.isArray(c.tags) ? c.tags : undefined,

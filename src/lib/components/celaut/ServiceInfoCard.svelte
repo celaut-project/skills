@@ -1,9 +1,10 @@
 <script lang="ts">
   /**
-   * Shows a service's on-chain info — the `celaut:service-metadata:v1` (name /
-   * description / tags) and `celaut:service-data:v1` (architecture / api /
-   * network) opinions keyed by this service id. Lets the skills UI surface basic
-   * service info without downloading the whole service.
+   * Shows a service's on-chain info — `celaut:service-metadata:v1` (arbitrary
+   * descriptive JSON) and `celaut:service-data:v1` (`container` / `api` /
+   * `network`) opinions keyed by this service id. Lets the skills UI surface basic
+   * service info without downloading the whole service, weighting competing
+   * assertions by their reputation.
    *
    * When an opinion's R9 is a blake2b hash instead of an inline fragment (source
    * mode), the fragment lives in `sources`; we hand the hash to the existing
@@ -12,7 +13,9 @@
   import { onMount } from 'svelte';
   import { loadServiceData, loadServiceMetadata, formatServiceId } from '$lib/api';
   import type { ServiceData, ServiceMetadata } from '$lib/types';
+  import { reputation_proof } from '$lib/common/store';
   import ServiceSourceCard from './ServiceSourceCard.svelte';
+  import ServiceInfoSubmitForm from './ServiceInfoSubmitForm.svelte';
 
   export let serviceId: string = '';
   export let compact: boolean = false;
@@ -20,6 +23,9 @@
   let metadata: ServiceMetadata[] = [];
   let data: ServiceData[] = [];
   let loading = false;
+  let showPublish = false;
+
+  const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : v == null ? [] : [v]);
 
   // Highest-reputation assertion wins for display; the rest still contribute
   // their source hashes below.
@@ -56,6 +62,11 @@
 
   onMount(load);
   $: if (serviceId) load();
+
+  function onPublished() {
+    showPublish = false;
+    load();
+  }
 </script>
 
 <div class:service-info-card={true} class:service-info-card-compact={compact}>
@@ -84,19 +95,19 @@
         {#if topData.architecture}
           <div><dt>Architecture</dt><dd><code>{topData.architecture}</code></dd></div>
         {/if}
-        {#if topData.api?.length}
+        {#if asArray(topData.api).length}
           <div>
             <dt>API</dt>
             <dd>
-              {#each topData.api as slot}
+              {#each asArray(topData.api) as slot}
                 <code class="service-info-slot">
-                  {slot.port ?? '?'}{slot.protocol?.length ? ' · ' + slot.protocol.join('/') : ''}{slot.transport?.length ? ' · ' + slot.transport.join('/') : ''}
+                  {#if slot && typeof slot === 'object'}{slot.port ?? '?'}{slot.protocol?.length ? ' · ' + slot.protocol.join('/') : ''}{slot.transport?.length ? ' · ' + slot.transport.join('/') : ''}{:else}{slot}{/if}
                 </code>
               {/each}
             </dd>
           </div>
         {/if}
-        {#if topData.network?.length}
+        {#if asArray(topData.network).length}
           <div><dt>Network</dt><dd><code>{JSON.stringify(topData.network)}</code></dd></div>
         {/if}
       </dl>
@@ -112,6 +123,17 @@
         {/each}
       </div>
     {/if}
+  {/if}
+
+  {#if serviceId && $reputation_proof}
+    <div class="service-info-publish">
+      <button class="service-info-publish-toggle" type="button" on:click={() => (showPublish = !showPublish)}>
+        {showPublish ? 'Cancel' : '+ Publish service info'}
+      </button>
+      {#if showPublish}
+        <ServiceInfoSubmitForm {serviceId} on:published={onPublished} />
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -216,5 +238,23 @@
 
   .service-info-sources {
     margin-top: 0.5rem;
+  }
+
+  .service-info-publish {
+    margin-top: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .service-info-publish-toggle {
+    align-self: flex-start;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--border) / 0.8);
+    background: transparent;
+    cursor: pointer;
   }
 </style>

@@ -12,7 +12,8 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
 
 export interface DataProvider {
@@ -42,4 +43,10 @@ export interface DataProvider {
 
   /** Create a new result opinion. */
   createResult(input: ResultCreationInput): Promise<string>;
+
+  /** Publish a Service Data opinion (functional spec fragment for a service). */
+  createServiceData(input: ServiceInfoCreationInput): Promise<string>;
+
+  /** Publish a Service Metadata opinion (descriptive info for a service). */
+  createServiceMetadata(input: ServiceInfoCreationInput): Promise<string>;
 }

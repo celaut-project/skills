@@ -200,6 +200,36 @@ const TOOLS = [
       required: ['mainBoxId', 'benchmarkId', 'serviceId', 'data'],
       additionalProperties: false
     }
+  },
+  {
+    name: 'create_service_data',
+    description: 'Publish a Service Data opinion: a functional spec fragment (container / api / network) for a service id. `content` is either a JSON object (inline) or a blake2b hash string whose content lives in `sources`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        serviceId: { type: 'string', description: 'Service id (content hash) the data describes.' },
+        content: { description: 'JSON object (container/api/network) OR a blake2b256 hash string (source mode).' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'serviceId', 'content'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'create_service_metadata',
+    description: 'Publish a Service Metadata opinion: arbitrary descriptive JSON (or a blake2b hash) for a service id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mainBoxId: { type: 'string', description: 'Hex box id of the reputation profile box to spend from.' },
+        serviceId: { type: 'string', description: 'Service id (content hash) the metadata describes.' },
+        content: { description: 'Arbitrary JSON object OR a blake2b256 hash string (source mode).' },
+        tokenAmount: { type: 'number', description: 'Reputation tokens to allocate (default 1).' }
+      },
+      required: ['mainBoxId', 'serviceId', 'content'],
+      additionalProperties: false
+    }
   }
 ];
 
@@ -216,7 +246,9 @@ const HANDLERS = {
   create_skill: async (args) => (await import('./publish.mjs')).createSkill(args),
   create_coverage: async (args) => (await import('./publish.mjs')).createCoverage(args),
   create_benchmark: async (args) => (await import('./publish.mjs')).createBenchmark(args),
-  create_result: async (args) => (await import('./publish.mjs')).createResult(args)
+  create_result: async (args) => (await import('./publish.mjs')).createResult(args),
+  create_service_data: async (args) => (await import('./publish.mjs')).createServiceData(args),
+  create_service_metadata: async (args) => (await import('./publish.mjs')).createServiceMetadata(args)
 };
 
 // ── Server bootstrap ───────────────────────────────────────────────────────
