@@ -34,7 +34,7 @@ export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948
 // queries stay dormant until the real Type NFT ids are deployed.
 /** Strict Definition (Tag-Prose-Formal): an improvable formalization of any concept — skill, benchmark space, or network. */
 export const STRICT_DEFINITION_TYPE_ID = 'celaut:strict-definition:v1';
-/** Dependency and Trust Framework: Sigmaverse-standard risk assessment bound to a Strict Definition, scores computed on-chain. */
+/** Dependency and Trust Framework: Sigmaverse-standard KyA assessment; R5 → Strict Definition, R9 → trust/access structure. Scores derived off-chain. */
 export const DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID = 'celaut:dependency-trust-framework:v1';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
