@@ -34,11 +34,11 @@ export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f
 export const RESULT_TYPE_ID = '49b26dc06b1680769477264d2e8e9bf561005236cde3097630bffcff631b7aef';
 export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
 /** Strict Definition (Tag-Prose-Formal): an improvable formalization of any concept — skill, benchmark space, or network. */
-export const STRICT_DEFINITION_TYPE_ID = 'celaut:strict-definition:v1';
+export const STRICT_DEFINITION_TYPE_ID = 'c3229193ee2e76d62c5d19d4f6a923802e6213b70e58d589d7a2d07aa19ebafe';
 /** Dependency and Trust Framework: Sigmaverse-standard KyA assessment; R5 → Strict Definition, R9 → trust/access structure. Scores derived off-chain. */
-export const DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID = 'celaut:dependency-trust-framework:v1';
-export const SERVICE_DATA_TYPE_ID = 'celaut:service-data:v1';
-export const SERVICE_METADATA_TYPE_ID = 'celaut:service-metadata:v1';
+export const DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID = 'aeece0a2352363d9b232d9a21c6a32a276ab9eae3ab6cdd3fdad4f8f676637f0';
+export const SERVICE_DATA_TYPE_ID = 'fbc12d505e5e397efec69da4fb2c5200fdddcf7fbe236f47d67e9656ba015838';
+export const SERVICE_METADATA_TYPE_ID = '84f5b7a9211bf47d54fb5e395d829fea087bb7e2a9a1598c40d9eaa3f3c061bd';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
