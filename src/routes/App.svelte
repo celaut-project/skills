@@ -2356,7 +2356,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="file-source-modal-backdrop" use:portal on:click={() => showFileSourceModal = false}>
-    <div class="file-source-modal-content" on:click|stopPropagation>
+    <div class="file-source-modal-content file-source-modal-content--wide" on:click|stopPropagation>
       <div class="file-source-modal-header">
         <h3 class="text-lg font-semibold">Register Download Source</h3>
         <button class="file-source-modal-close" on:click={() => showFileSourceModal = false}>✕</button>
@@ -3455,6 +3455,12 @@
     padding: 1.5rem;
     margin: 1rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+
+  /* "Register Download Source" carries a denser form than the burn/new-profile
+     dialogs, so give just that modal extra width. */
+  .file-source-modal-content--wide {
+    max-width: 56rem;
   }
 
   .file-source-modal-header {
