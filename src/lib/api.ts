@@ -15,6 +15,11 @@ import {
   calculate_reputation,
   type ReputationProof,
 } from 'reputation-system';
+// Shared hash predicate used below by resolveServiceInfoSources / parse helpers.
+// Lives in the framework-agnostic registry core (single source of truth, shared
+// with the MCP server); re-exported so app callers can import it from '$lib/api'.
+import { looksLikeBlake2bHash } from './registry/core.mjs';
+export { looksLikeBlake2bHash };
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
