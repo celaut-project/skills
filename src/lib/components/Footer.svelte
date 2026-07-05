@@ -2,7 +2,15 @@
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { Github, Globe, Send } from 'lucide-svelte';
+  import { walletConnected } from 'wallet-svelte-component';
   import { EXPLORER_API } from '$lib/api';
+  import Kya from '../../routes/kya.svelte';
+
+  // Auto-open the Know Your Assumptions notice on first wallet connect; the Kya
+  // component no-ops if the user already accepted it (persisted in localStorage).
+  // The footer also exposes a "KYA" link to re-read it at any time.
+  let autoOpenKya = false;
+  $: autoOpenKya = browser && $walletConnected;
 
   /**
    * Cyberpunk footer — ported from game-of-prompts/app per Josemi 2026-06-16.
@@ -18,7 +26,7 @@
   // so users see a different tagline on each loop instead of one fixed string.
   const footerMessages = [
     'Descentraliced & unstoppable skill registry. Powered by Ergo Blockchain.',
-    'Find a skill for your problem and download the best solver. Celaut paradigm.',
+    'Celaut paradigm: Find a skill for your problem and download the best solver.',
     'Public gateway hosted on GitHub. Or run it yourself for full P2P sovereignty.',
   ];
   let activeMessageIndex = 0;
@@ -86,6 +94,9 @@
     >
       <Send class="h-4 w-4" />
     </a>
+    <span class="footer-link footer-kya" title="Know Your Assumptions">
+      <Kya autoOpen={autoOpenKya} />
+    </span>
   </div>
 
   <div class="footer-center">
@@ -136,6 +147,10 @@
   .footer-link:hover {
     color: hsl(var(--primary));
   }
+  /* The KYA trigger renders text (not an icon); keep it footer-sized and aligned. */
+  .footer-kya {
+    @apply inline-flex items-center text-xs font-medium tracking-wide;
+  }
 
   .footer-center {
     /* Mask edges so the scrolling text fades in/out instead of popping at the
@@ -163,7 +178,10 @@
   }
 
   @keyframes scroll-left {
-    from { transform: translateX(100vw); }
+    /* Start just past the right edge of the masked center column (100% of the
+       text's own width) rather than 100vw — keeps the slide-in within the
+       footer instead of pushing the document's scroll width on narrow screens. */
+    from { transform: translateX(100%); }
     to   { transform: translateX(-100%); }
   }
 
@@ -174,23 +192,38 @@
     opacity: 0.5;
   }
 
-  /* On phones: wrap is allowed but each row is height-capped, so the footer
-     can grow to two rows (still under-thumb) without exploding to fit links. */
+  /* On phones: keep a single fixed-height row with the social links + KYA on the
+     left and the block height on the right. The scrolling marquee is decorative
+     and was forcing a tall multi-row footer where the KYA trigger floated above
+     the social icons — hide it on phones and align everything on one centered
+     line so nothing overlaps. */
   @media (max-width: 640px) {
     .page-footer {
-      @apply h-auto px-4 py-2 gap-2;
-      flex-wrap: wrap;
+      @apply h-12 px-4 gap-3;
+      flex-wrap: nowrap;
     }
     .footer-center {
-      order: -1;
-      flex: 0 0 100%;
+      display: none;
+    }
+    .footer-left {
+      gap: 0.875rem;
     }
     .footer-left,
     .footer-right {
-      flex: 1 1 0;
+      flex: 0 0 auto;
     }
     .footer-right {
-      justify-content: flex-end;
+      margin-left: auto;
+    }
+    /* The KYA trigger (a text span from the Kya component, in its own scope)
+       renders as a block and inflated the row; pin it to an inline, centered,
+       single-line box so it sits level with the icons. */
+    .footer-kya,
+    .footer-kya :global(span) {
+      display: inline-flex;
+      align-items: center;
+      height: 1rem;
+      line-height: 1;
     }
   }
 </style>

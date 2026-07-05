@@ -10,7 +10,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest",
-    "mcp": "node mcp/server.mjs"
+    "mcp": "node mcp/server.mjs",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@fleet-sdk/mock-chain": "^0.12.0",
@@ -24,6 +25,7 @@
     "formsnap": "^1.0.1",
     "lucide-svelte": "^0.469.0",
     "paneforge": "^0.0.6",
+    "patch-package": "^8.0.1",
     "svelte": "^4.0.5",
     "svelte-check": "^3.4.3",
     "sveltekit-superforms": "^2.22.1",
@@ -46,10 +48,16 @@
     "date-fns": "^4.1.0",
     "forum-application": "github:reputation-systems/forum-application",
     "jdenticon": "^3.3.0",
+    "katex": "^0.17.0",
+    "marked": "^18.0.5",
+    "marked-katex-extension": "^5.1.10",
     "mode-watcher": "^0.5.0",
     "reputation-system": "github:reputation-systems/reputation-system",
     "source-application": "github:reputation-systems/source-application",
     "update": "^0.7.4",
     "wallet-svelte-component": "github:ergo-basics/wallet-svelte-component"
+  },
+  "overrides": {
+    "postcss-load-config": "5.1.0"
   }
 }

@@ -14,7 +14,18 @@
         <span class="toast-icon">
           {#if toast.type === 'success'}✓{:else if toast.type === 'error'}✕{:else}ℹ{/if}
         </span>
-        <span class="toast-message">{toast.message}</span>
+        <span class="toast-body">
+          <span class="toast-message">{toast.message}</span>
+          {#if toast.detail}
+            <span class="toast-detail">
+              {#if toast.detailHref}
+                <a href={toast.detailHref} target="_blank" rel="noopener noreferrer">{toast.detail}</a>
+              {:else}
+                {toast.detail}
+              {/if}
+            </span>
+          {/if}
+        </span>
         <button class="toast-close" on:click={() => toasts.dismiss(toast.id)}>×</button>
       </div>
     {/each}
@@ -35,7 +46,7 @@
 
   .toast-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-radius: 0.5rem;
@@ -81,8 +92,32 @@
     color: hsl(215 15% 50%);
   }
 
-  .toast-message {
+  .toast-body {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .toast-message {
+    line-height: 1.3;
+  }
+
+  .toast-detail {
+    font-size: 0.75rem;
+    line-height: 1.3;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .toast-detail a {
+    color: hsl(var(--muted-foreground));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .toast-detail a:hover {
+    color: hsl(var(--foreground));
   }
 
   .toast-close {

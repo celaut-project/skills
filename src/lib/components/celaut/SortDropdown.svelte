@@ -6,10 +6,11 @@
   const dispatch = createEventDispatcher();
 
   const sortOptions = [
-    { value: 'name', label: 'Name (A-Z)' },
+    { value: 'reputation', label: 'Top Reputation' },
     { value: 'services', label: 'Most Services' },
+    { value: 'newest', label: 'Recently Added' },
     { value: 'results', label: 'Most Results' },
-    { value: 'newest', label: 'Newest' }
+    { value: 'name', label: 'Name (A-Z)' }
   ];
 
   function handleChange(e: Event) {

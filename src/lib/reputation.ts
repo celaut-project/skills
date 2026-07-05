@@ -18,6 +18,86 @@ export interface ReputationScore {
 }
 
 /**
+ * A precomputed relative-labeling scale over a population of sibling scores.
+ *
+ * Build this ONCE for a set of siblings (e.g. all skills, all benchmarks of a
+ * skill) and reuse it for every member — never rebuild it inside a per-element
+ * loop. `labelForScore` then classifies any score against the population.
+ */
+export interface ReputationScale {
+  /** Sibling scores sorted ascending. */
+  readonly sorted: number[];
+  /** Population size. */
+  readonly n: number;
+}
+
+const EPSILON = 1e-9;
+
+/** Build a relative-labeling scale from a population of sibling scores. */
+export function buildReputationScale(scores: number[]): ReputationScale {
+  const sorted = [...scores].sort((a, b) => a - b);
+  return { sorted, n: sorted.length };
+}
+
+/**
+ * Midrank percentile of `score` within the population (0..1).
+ *
+ * Uses the average-rank convention so heavily-tied populations behave sanely:
+ * an outlier above a flat population lands near 1.0, the flat bulk lands near
+ * the middle, and an outlier below lands near 0.0.
+ */
+function percentileRank(score: number, scale: ReputationScale): number {
+  const { sorted, n } = scale;
+  if (n === 0) return 0.5;
+  let less = 0;
+  let lessOrEqual = 0;
+  for (const v of sorted) {
+    if (v < score - EPSILON) {
+      less += 1;
+      lessOrEqual += 1;
+    } else if (v <= score + EPSILON) {
+      lessOrEqual += 1;
+    }
+  }
+  return (less + lessOrEqual) / 2 / n;
+}
+
+/**
+ * Relative reputation label for a score, judged against its siblings.
+ *
+ * Labels are RELATIVE to the population — an element that stands out is
+ * `Excellent` and one that lags is `Low`/`Very Low`, regardless of absolute
+ * value (a 10 among 5s is Excellent; a 10 among 5000s is Very Low).
+ *
+ * Bands (by percentile):
+ *  - base case (population < 2): `Medium`
+ *  - top 15% (p ≥ 0.85): `Excellent`
+ *  - p 0.50–0.85: `High`
+ *  - p 0.25–0.50: `Medium`
+ *  - p 0.05–0.25: `Low`
+ *  - bottom 5% (p < 0.05): `Very Low`, or `New` when the score is ~0
+ */
+export function labelForScore(score: number, scale: ReputationScale): string {
+  if (scale.n < 2) return 'Medium';
+  const p = percentileRank(score, scale);
+  if (p >= 0.85) return 'Excellent';
+  if (p >= 0.5) return 'High';
+  if (p >= 0.25) return 'Medium';
+  if (p >= 0.05) return 'Low';
+  return score <= EPSILON ? 'New' : 'Very Low';
+}
+
+/**
+ * Convenience: label a score against a raw population of sibling scores.
+ * Builds the scale on the fly — for a single element only. To label many
+ * elements, call `buildReputationScale` once and `labelForScore` per element.
+ */
+function relativeLabel(score: number, siblingScores?: number[]): string {
+  if (!siblingScores || siblingScores.length < 2) return 'Medium';
+  return labelForScore(score, buildReputationScale(siblingScores));
+}
+
+/**
  * Calculate reputation for a Skill.
  *
  * Formula: coverages + benchmarks + totalResults + avgResultScore
@@ -26,13 +106,14 @@ export interface ReputationScore {
  * - totalResults: total result submissions across all benchmarks
  * - avgResultScore: average score across all results (normalized 0-10)
  */
-export function calculateSkillReputation(skill: Skill): ReputationScore {
+export function calculateSkillReputation(skill: Skill, siblings?: Skill[]): ReputationScore {
   const total = skill.reputation ?? 0;
+  const rounded = Math.round(total * 100) / 100;
 
   return {
-    total: Math.round(total * 100) / 100,
-    label: getReputationLabel(total),
-    breakdown: { sacrifice: Math.round(total * 100) / 100 }
+    total: rounded,
+    label: relativeLabel(total, siblings?.map((s) => s.reputation ?? 0)),
+    breakdown: { sacrifice: rounded }
   };
 }
 
@@ -41,13 +122,14 @@ export function calculateSkillReputation(skill: Skill): ReputationScore {
  *
  * Formula: numberOfResults + avgScore (normalized)
  */
-export function calculateBenchmarkReputation(benchmark: Benchmark): ReputationScore {
+export function calculateBenchmarkReputation(benchmark: Benchmark, siblings?: Benchmark[]): ReputationScore {
   const total = benchmark.reputation ?? 0;
+  const rounded = Math.round(total * 100) / 100;
 
   return {
-    total: Math.round(total * 100) / 100,
-    label: getReputationLabel(total),
-    breakdown: { sacrifice: Math.round(total * 100) / 100 }
+    total: rounded,
+    label: relativeLabel(total, siblings?.map((b) => b.reputation ?? 0)),
+    breakdown: { sacrifice: rounded }
   };
 }
 
@@ -57,43 +139,58 @@ export function calculateBenchmarkReputation(benchmark: Benchmark): ReputationSc
  */
 export function calculateCoverageReputation(
   coverage: Coverage,
-  _allSkills: Skill[]
+  siblings?: Coverage[]
 ): ReputationScore {
   const total = coverage.reputation ?? 0;
 
   return {
     total,
-    label: getReputationLabel(total),
+    label: relativeLabel(total, siblings?.map((c) => c.reputation ?? 0)),
     breakdown: { sacrifice: Math.round(total * 100) / 100 }
   };
 }
 
-export function calculateResultReputation(result: Result): ReputationScore {
+export function calculateResultReputation(result: Result, siblings?: Result[]): ReputationScore {
   const total = result.reputation ?? 0;
 
   return {
     total,
-    label: getReputationLabel(total),
+    label: relativeLabel(total, siblings?.map((r) => r.reputation ?? 0)),
     breakdown: { sacrifice: Math.round(total * 100) / 100 }
   };
 }
 
+/** nanoERG per 1 ERG. Reputation is stored on-chain as burned nanoERG. */
+export const NANOERG_PER_ERG = 1e9;
+
 /**
- * Get a human-readable label for a reputation score.
+ * Format a numeric value to at most `maxDecimals` decimal places, trimming
+ * any trailing zeros (and a dangling decimal point):
+ *   5.0000 → "5", 5.0020 → "5.002", 5 → "5", 0.12345 → "0.1235" (maxDecimals 4)
+ *
+ * Centralized here so every reputation/ERG value renders consistently.
  */
-function getReputationLabel(score: number): string {
-  if (score >= 20) return 'Excellent';
-  if (score >= 10) return 'High';
-  if (score >= 5) return 'Medium';
-  if (score >= 1) return 'Low';
-  return 'New';
+export function trimDecimals(value: number, maxDecimals = 4): string {
+  if (!Number.isFinite(value)) return '0';
+  // toFixed rounds to the precision cap, then strip trailing zeros + point.
+  return value
+    .toFixed(maxDecimals)
+    .replace(/\.?0+$/, '');
 }
 
 /**
- * Format a reputation score for display.
+ * Format a reputation score for display, in ERG.
+ *
+ * Stored reputation values are burned ERG amounts in nanoERG (as returned by
+ * the reputation-system `calculate_reputation`). This converts to ERG and
+ * appends an "ERG"/"ERGs" suffix (singular only when the amount is exactly 1).
+ *
+ * Renders at most 4 decimal places with trailing zeros trimmed (`5.0000` → `5`,
+ * `5.0020` → `5.002`) so small sacrifices stay distinguishable without noise.
  */
 export function formatReputation(score: number): string {
-  if (score >= 100) return score.toFixed(0);
-  if (score >= 10) return score.toFixed(1);
-  return score.toFixed(2);
+  const erg = (score ?? 0) / NANOERG_PER_ERG;
+  const num = trimDecimals(erg, 4);
+  const unit = erg === 1 ? 'ERG' : 'ERGs';
+  return `${num} ${unit}`;
 }

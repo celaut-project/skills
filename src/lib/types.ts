@@ -67,12 +67,23 @@ export interface Coverage {
   boxId: string;
   profileId: string;
   serviceId?: string;
+  /**
+   * When set, this coverage targets a Benchmark instead of the skill directly —
+   * a suggestion that the named service tests the skill following that
+   * benchmark's specification. Absent for plain skill-level coverages.
+   */
+  benchmarkId?: string;
   reputation?: number;
 }
 
 /** Payload used to create a new Coverage opinion. */
 export interface CoverageCreationInput {
   skillBoxId: string;
+  /**
+   * Target benchmark id. When provided, the coverage points at the benchmark
+   * (object pointer = benchmarkId) rather than the skill box.
+   */
+  benchmarkId?: string;
   serviceId?: string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
@@ -115,6 +126,11 @@ export interface Benchmark {
   caseDescriptors: Descriptor[];
   performanceMetrics: PerformanceMetric[];
   results: Result[];
+  /**
+   * Coverages that target this benchmark — services suggested to test the
+   * skill following this benchmark's spec. Loaded lazily; defaults to [].
+   */
+  coverages?: Coverage[];
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
@@ -164,6 +180,91 @@ export interface ResultCreationInput {
   timestamp?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
+  /** Reputation token amount to allocate to the opinion. */
+  tokenAmount?: number;
+  /** Optional main box used for live on-chain writes. */
+  mainBox?: unknown;
+}
+
+/**
+ * Service info (metadata + data) — on-chain fragments of a service's celaut
+ * specification, keyed by service id (R5), so the UI can show basic info without
+ * downloading the full service.
+ *
+ * Type NFT definitions:
+ *  - `celaut:service-data:v1`     → the functional spec: architecture / api / network.
+ *  - `celaut:service-metadata:v1` → descriptive metadata: name / description / tags.
+ *
+ * R9 encoding is one of two modes (see `parseServiceInfoR9`):
+ *  - `inline` — R9 is a JSON spec fragment carried directly on-chain.
+ *  - `source` — R9 is a bare blake2b256 hash; the full fragment lives off-chain
+ *    in `sources` and is resolved via the source-application registry.
+ */
+export type ServiceInfoMode = 'inline' | 'source';
+
+/** One API slot of a service (a port + its transport/protocol stack). */
+export interface ServiceApiSlot {
+  port?: number;
+  transport?: string[];
+  protocol?: string[];
+  [key: string]: unknown;
+}
+
+/**
+ * `celaut:service-data:v1` — the functional spec fragment. R9 is a JSON object
+ * that may hold `container`, `api` and `network` (each with their own sub-fields),
+ * or a blake2b hash (source mode). Fields are kept as-published; `architecture` is
+ * derived from `container` for convenience/filtering.
+ */
+export interface ServiceData {
+  boxId: string;
+  profileId: string;
+  serviceId: string;
+  mode: ServiceInfoMode;
+  /** Set in `source` mode: blake2b256 hash to resolve from sources. */
+  sourceHash?: string;
+  /** The full inline R9 object (empty in source mode). */
+  content?: Record<string, unknown>;
+  /** celaut `container` block (architecture, filesystem, entrypoint, …). */
+  container?: Record<string, unknown>;
+  /** celaut `api` — port/transport/protocol slots (shape as-published). */
+  api?: ServiceApiSlot[] | unknown;
+  /** celaut `network` — network requirements/tags (shape as-published). */
+  network?: unknown;
+  /** Convenience: architecture string derived from `container`. */
+  architecture?: string;
+  reputation?: number;
+}
+
+/**
+ * `celaut:service-metadata:v1` — ARBITRARY descriptive JSON about a service (or a
+ * blake2b hash in source mode). The whole object is kept in `content`, with a few
+ * common fields surfaced when present.
+ */
+export interface ServiceMetadata {
+  boxId: string;
+  profileId: string;
+  serviceId: string;
+  mode: ServiceInfoMode;
+  /** Set in `source` mode: blake2b256 hash to resolve from sources. */
+  sourceHash?: string;
+  /** The full inline R9 object (empty in source mode). */
+  content?: Record<string, unknown>;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  reputation?: number;
+}
+
+/** Payload used to create a Service Data / Service Metadata opinion. */
+export interface ServiceInfoCreationInput {
+  /** Service id (content hash) the info is about — becomes R5. */
+  serviceId: string;
+  /**
+   * R9 payload: either an inline spec fragment (object) or a blake2b256 hash
+   * string pointing at the content in `sources`.
+   */
+  content: Record<string, unknown> | string;
   /** Reputation token amount to allocate to the opinion. */
   tokenAmount?: number;
   /** Optional main box used for live on-chain writes. */

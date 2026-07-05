@@ -3,12 +3,15 @@
  * Handles chain queries, box parsing, and demo data.
  */
 
-import type { Skill, Coverage, Benchmark, Result } from './types';
+import { hexToUtf8 } from './ergo/envs';
+import { fetchFileSourcesByHash } from 'source-application';
+import type { Skill, Coverage, Benchmark, Result, Descriptor, PerformanceMetric, ServiceData, ServiceMetadata } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
 import {
   searchBoxes,
   fetchAllProfiles,
   fetchTypeNfts,
+  fetchProfileById,
   calculate_reputation,
   type ReputationProof,
 } from 'reputation-system';
@@ -20,11 +23,11 @@ export const EXPLORER_API = 'https://api.ergoplatform.com';
 /**
  * Type NFT IDs.
  *
- * These are *placeholder* identifiers — real on-chain Type NFTs have not been
- * minted yet, so the chain query functions below short-circuit to `[]` until
- * each constant is replaced with a real 64-char hex token ID. This avoids the
- * 400 Bad Request that the previous hand-rolled box-search payload was
- * producing against the Ergo Explorer API.
+ * Single source of truth: `src/lib/registry/core.mjs` — the framework-agnostic
+ * registry core shared with the MCP server. We import the ids here (and
+ * re-export them for existing callers) so the app and the MCP server can never
+ * drift. They are *placeholder* identifiers until real on-chain Type NFTs are
+ * minted, so the chain query functions below short-circuit to `[]` meanwhile.
  */
 export const SKILL_TYPE_ID = 'ffce59c01b9c0c245005f9c2daf817607e912a3ececd5f61aaba48d30230f60c';
 export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f57ac451c995a30f54d';
@@ -76,6 +79,19 @@ async function collectBoxes(
     all.push(...batch);
   }
   return all;
+}
+
+/**
+ * Parse a box's R9 JSON payload.
+ *
+ * The Explorer returns R9 (a Coll[Byte]) as a HEX string, so it must be
+ * `hexToUtf8`-decoded before `JSON.parse` — parsing the raw hex throws and was
+ * silently dropping every benchmark/coverage/result (only `parseSkillBox` was
+ * decoding correctly). Throws on malformed JSON; callers wrap in try/catch.
+ */
+function parseBoxR9(box: any): any {
+  const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+  return JSON.parse(hexToUtf8(rendered) || '');
 }
 
 /** Format a service ID for display — show truncated hash in monospace style. */
@@ -133,10 +149,13 @@ export async function hydrateReputations<T extends { profileId: string; reputati
   entities: T[],
 ): Promise<T[]> {
   if (entities.length === 0) return entities;
-  const profileMap = await loadProfileMap();
   for (const e of entities) {
-    const proof = profileMap.get(e.profileId);
+    const proof = await fetchProfileById(EXPLORER_API, e.profileId);
     e.reputation = proof ? calculate_reputation(proof) : 0;
+    console.log("Hydrated reputation for", e.profileId, ":", e.reputation);
+    if (e.reputation === 0) {
+      console.log(proof);
+    }
   }
   return entities;
 }
@@ -153,7 +172,10 @@ function demoProfileId(seed: string): string {
 function demoReputationFor(profileId: string): number {
   let total = 0;
   for (const char of profileId) total = (total + char.charCodeAt(0)) % 29;
-  return total + 1;
+  // Real reputation (calculate_reputation) is burned ERG in nanoERG. Scale the
+  // demo seed up to the same magnitude so demo numbers render as a sensible
+  // handful of ERGs (1–29 ERG) instead of raw nanoERG dust.
+  return (total + 1) * 1e9;
 }
 
 function cloneCoverage(coverage: Coverage): Coverage {
@@ -316,6 +338,16 @@ function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
           performanceMetrics: benchmark.performanceMetrics,
           sourceHash: benchmark.sourceHash,
           reputation: demoReputationFor(benchmarkProfileId),
+          coverages: (benchmark.coverages ?? []).map((coverage) => {
+            const coverageProfileId = demoProfileId(`bench-coverage-${coverage.serviceId || coverage.boxId}`);
+            return {
+              boxId: coverage.boxId,
+              profileId: coverageProfileId,
+              serviceId: coverage.serviceId,
+              benchmarkId: benchmark.id,
+              reputation: demoReputationFor(coverageProfileId)
+            } as Coverage;
+          }),
           results: benchmark.results.map((result) => {
             const resultProfileId = demoProfileId(`result-${result.serviceId}-${result.id}`);
             return {
@@ -346,12 +378,15 @@ function enrichDemoSkills(rawSkills: DemoSkillInput[]): Skill[] {
 /** Parse a raw Explorer box into a Skill, or null if unparseable. */
 export function parseSkillBox(box: any): Skill | null {
   try {
-    const r9 = box.additionalRegisters?.R9?.renderedValue || '';
+    const rawValue = box.additionalRegisters?.R9?.renderedValue || '';
+    const potentialString = hexToUtf8(rawValue);
     let parsed: any = {};
-    try {
-      parsed = JSON.parse(r9);
-    } catch {
-      parsed = { name: r9 || box.boxId.slice(0, 8) };
+    if (potentialString) {
+      try {
+          parsed = JSON.parse(potentialString);
+      } catch {
+          parsed = potentialString;
+      }
     }
     const profileId = deriveProfileId(box, parsed, box.boxId);
     return {
@@ -397,15 +432,29 @@ export async function loadSkills(): Promise<Skill[]> {
   return applySkillInheritance(skills);
 }
 
-/** Load coverages for a given skill box ID. */
+/**
+ * Load *skill* coverages for a given skill box ID.
+ *
+ * A skill coverage is a service that addresses/solves the skill. A service can
+ * become a skill coverage in two ways:
+ *  1. Directly — a Coverage box (COVERAGE_TYPE_ID) pointing at the skill.
+ *  2. Indirectly — by appearing as the `service_id` of a Result submitted
+ *     against a Benchmark of this skill. Submitting a result demonstrably
+ *     proves the service solves the skill, so it counts as a skill coverage.
+ *
+ * NOTE: this is deliberately different from `loadBenchmarkCoverages`, which
+ * lists benchmark *runners* — a Result's service is a skill *solution*, never a
+ * benchmark runner, so it is derived here but NOT there.
+ *
+ * Both sources are merged; direct coverages win, deduped by serviceId.
+ */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(COVERAGE_TYPE_ID, skillBoxId);
-  const coverages = boxes
+  const direct = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         return {
           boxId: box.boxId,
@@ -418,19 +467,125 @@ export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
       }
     })
     .filter(Boolean) as Coverage[];
-  await hydrateReputations(coverages);
-  return coverages;
+  await hydrateReputations(direct);
+
+  // Indirect skill coverages: results → benchmarks → this skill.
+  const benchmarks = await loadBenchmarks(skillBoxId);
+  const resultLists = await Promise.all(benchmarks.map((b) => loadResults(b.id)));
+  const results = resultLists.flat();
+
+  // Merge, deduping by serviceId. Direct coverages win; coverages without a
+  // serviceId are kept as-is (nothing to dedupe on).
+  const seenServiceIds = new Set<string>();
+  const merged: Coverage[] = [];
+  for (const coverage of direct) {
+    if (coverage.serviceId) {
+      if (seenServiceIds.has(coverage.serviceId)) continue;
+      seenServiceIds.add(coverage.serviceId);
+    }
+    merged.push(coverage);
+  }
+  for (const result of results) {
+    const serviceId = result.serviceId;
+    if (!serviceId || seenServiceIds.has(serviceId)) continue;
+    seenServiceIds.add(serviceId);
+    merged.push({
+      boxId: result.id,
+      profileId: result.profileId,
+      serviceId,
+      reputation: result.reputation ?? 0
+    } as Coverage);
+  }
+
+  return merged;
+}
+
+/**
+ * Load coverages that target a Benchmark (object pointer = benchmarkId).
+ *
+ * Only explicit Coverage boxes published against the benchmark id count. A
+ * service that submitted a Result to this benchmark is a skill *solution*
+ * (ranked in Results), not a benchmark *runner*, so it is deliberately NOT
+ * derived into the coverage list — the two are different purposes.
+ */
+export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+  if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(benchmarkId)) return [];
+  const boxes = await collectBoxes(COVERAGE_TYPE_ID, benchmarkId);
+  const direct = boxes
+    .map((box: any) => {
+      try {
+        const parsed = parseBoxR9(box);
+        const profileId = deriveProfileId(box, parsed, box.boxId);
+        return {
+          boxId: box.boxId,
+          profileId,
+          serviceId: parsed.service_id || undefined,
+          benchmarkId,
+          reputation: 0
+        } as Coverage;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as Coverage[];
+  await hydrateReputations(direct);
+
+  const seenServiceIds = new Set<string>();
+  const merged: Coverage[] = [];
+  for (const coverage of direct) {
+    if (coverage.serviceId) {
+      if (seenServiceIds.has(coverage.serviceId)) continue;
+      seenServiceIds.add(coverage.serviceId);
+    }
+    merged.push(coverage);
+  }
+
+  return merged;
+}
+
+/**
+ * Normalize a raw on-chain `case_descriptors` entry into the UI's
+ * `{ name, description }` shape. The canonical Type-NFT schema and the app's
+ * own writer agree on these keys, but defensively coerces bare-string entries
+ * (`"doc_length"`) and alternate keys so a descriptor authored by external
+ * tooling still renders instead of surfacing as `undefined`.
+ */
+function normalizeDescriptor(raw: any): Descriptor {
+  if (typeof raw === 'string') return { name: raw, description: '' };
+  return {
+    name: String(raw?.name ?? raw?.key ?? raw?.label ?? ''),
+    description: String(raw?.description ?? raw?.desc ?? '')
+  };
+}
+
+/**
+ * Normalize a raw on-chain `performance_metrics` entry. Critically, the
+ * canonical benchmark Type-NFT schema declares the direction flag as
+ * snake_case `higher_is_better`, while this app's writer emits camelCase
+ * `higherIsBetter`. Reading either keeps `higherIsBetter` defined — without
+ * this, metrics published against the canonical schema lose their direction
+ * (undefined), breaking both the ↑/↓ UI hint and the sign of the z-score
+ * normalization in scoring.ts.
+ */
+function normalizeMetric(raw: any): PerformanceMetric {
+  if (typeof raw === 'string') return { name: raw, description: '', higherIsBetter: true };
+  const dir = raw?.higherIsBetter ?? raw?.higher_is_better;
+  return {
+    name: String(raw?.name ?? raw?.key ?? raw?.label ?? ''),
+    description: String(raw?.description ?? raw?.desc ?? ''),
+    higherIsBetter: dir === undefined ? true : Boolean(dir)
+  };
 }
 
 /** Load benchmarks for a given skill box ID. */
 export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
   if (!isHexId(BENCHMARK_TYPE_ID) || !isHexId(skillBoxId)) return [];
   const boxes = await collectBoxes(BENCHMARK_TYPE_ID, skillBoxId);
+  console.log("Benchmark boxes:", boxes);
   const benchmarks = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         return {
           id: box.boxId,
@@ -438,9 +593,14 @@ export async function loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
           skillBoxId,
           name: parsed.name || 'Unnamed Benchmark',
           description: parsed.description || '',
-          caseDescriptors: Array.isArray(parsed.case_descriptors) ? parsed.case_descriptors : [],
-          performanceMetrics: Array.isArray(parsed.performance_metrics) ? parsed.performance_metrics : [],
+          caseDescriptors: Array.isArray(parsed.case_descriptors)
+            ? parsed.case_descriptors.map(normalizeDescriptor)
+            : [],
+          performanceMetrics: Array.isArray(parsed.performance_metrics)
+            ? parsed.performance_metrics.map(normalizeMetric)
+            : [],
           results: [],
+          coverages: [],
           sourceHash: parsed.source_hash,
           reputation: 0
         } as Benchmark;
@@ -460,8 +620,7 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
   const results = boxes
     .map((box: any) => {
       try {
-        const r9 = box.additionalRegisters?.R9?.renderedValue || '';
-        const parsed = JSON.parse(r9);
+        const parsed = parseBoxR9(box);
         const profileId = deriveProfileId(box, parsed, box.boxId);
         const rawCases = Array.isArray(parsed.data) ? parsed.data : [];
         const data = rawCases.map((c: any) => ({
@@ -488,6 +647,110 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
   return results;
 }
 
+// ── Service info (metadata + data) ─────────────────────────────────────────────
+//
+// Both types are opinion boxes keyed by service id (R5). Their R9 carries a
+// fragment of the service's celaut specification, in one of two modes:
+//   - inline : R9 is a JSON spec fragment carried directly on-chain.
+//   - source : R9 is a bare blake2b256 hash; the full fragment lives off-chain in
+//     `sources`, resolved via the source-application registry (looksLikeBlake2bHash
+//     is how we detect this mode — simply "the payload is a hash string").
+// This lets the skills UI show a service's api/network/architecture/name without
+// downloading the whole service.
+
+/** Decode a Service* box R9 into `{ mode, sourceHash?, content }`. */
+function parseServiceInfoBox(box: any): { mode: 'inline' | 'source'; sourceHash?: string; content: any } {
+  const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+  const decoded = (hexToUtf8(rendered) || '').trim();
+  if (looksLikeBlake2bHash(decoded)) return { mode: 'source', sourceHash: decoded, content: {} };
+  let content: any = {};
+  try {
+    content = decoded ? JSON.parse(decoded) : {};
+  } catch {
+    content = {};
+  }
+  if (typeof content === 'string' && looksLikeBlake2bHash(content)) {
+    return { mode: 'source', sourceHash: content.trim(), content: {} };
+  }
+  return { mode: 'inline', sourceHash: undefined, content: content && typeof content === 'object' ? content : {} };
+}
+
+/** Load the functional spec (architecture / api / network) for a service id. */
+export async function loadServiceData(serviceId: string): Promise<ServiceData[]> {
+  if (!isHexId(SERVICE_DATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_DATA_TYPE_ID, serviceId);
+  const items = boxes
+    .map((box: any) => {
+      try {
+        const info = parseServiceInfoBox(box);
+        const c = info.content;
+        return {
+          boxId: box.boxId,
+          profileId: deriveProfileId(box, c, box.boxId),
+          serviceId,
+          mode: info.mode,
+          sourceHash: info.sourceHash,
+          content: c,
+          container: c.container && typeof c.container === 'object' ? c.container : undefined,
+          api: c.api,
+          network: c.network,
+          architecture: deriveArchitecture(c),
+          reputation: 0
+        } as ServiceData;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as ServiceData[];
+  await hydrateReputations(items);
+  return items;
+}
+
+/** Load the descriptive metadata (name / description / tags) for a service id. */
+export async function loadServiceMetadata(serviceId: string): Promise<ServiceMetadata[]> {
+  if (!isHexId(SERVICE_METADATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_METADATA_TYPE_ID, serviceId);
+  const items = boxes
+    .map((box: any) => {
+      try {
+        const info = parseServiceInfoBox(box);
+        const c = info.content;
+        return {
+          boxId: box.boxId,
+          profileId: deriveProfileId(box, c, box.boxId),
+          serviceId,
+          mode: info.mode,
+          sourceHash: info.sourceHash,
+          content: c,
+          name: typeof c.name === 'string' ? c.name : undefined,
+          description: typeof c.description === 'string' ? c.description : undefined,
+          tags: Array.isArray(c.tags) ? c.tags : undefined,
+          reputation: 0
+        } as ServiceMetadata;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as ServiceMetadata[];
+  await hydrateReputations(items);
+  return items;
+}
+
+/**
+ * Resolve the off-chain content a `source`-mode Service* box points to (its R9
+ * blake2b256 hash) by looking the hash up in the source-application registry.
+ * Returns the matching source entries (URLs); the caller fetches + parses the
+ * referenced content. Empty array when the hash is malformed or has no sources.
+ */
+export async function resolveServiceInfoSources(sourceHash: string) {
+  if (!looksLikeBlake2bHash(sourceHash)) return [];
+  try {
+    return (await fetchFileSourcesByHash(EXPLORER_API, sourceHash)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 // ── Demo Data ────────────────────────────────────────────────────────────────
 
 /**
@@ -508,6 +771,8 @@ function singleMetricBenchmark(opts: {
   metricName: string;
   higherIsBetter: boolean;
   sourceHash?: string;
+  /** Coverages targeting this benchmark (services suggested to test it). */
+  coverages?: Array<{ boxId: string; serviceId: string }>;
   results: Array<{ id: string; serviceId: string; value: number; notes?: string; timestamp: number; sourceHash?: string }>;
 }): Benchmark {
   return {
@@ -519,6 +784,13 @@ function singleMetricBenchmark(opts: {
     caseDescriptors: [],
     performanceMetrics: [{ name: opts.metricName, description: opts.description, higherIsBetter: opts.higherIsBetter }],
     sourceHash: opts.sourceHash,
+    coverages: (opts.coverages ?? []).map((c) => ({
+      boxId: c.boxId,
+      profileId: '', // filled in by enrichDemoSkills
+      serviceId: c.serviceId,
+      benchmarkId: opts.id,
+      reputation: 0
+    })),
     results: opts.results.map((r) => ({
       id: r.id,
       profileId: '', // filled in by enrichDemoSkills
@@ -557,6 +829,10 @@ export function getDemoSkills(): Skill[] {
           metricName: 'sharpe_ratio',
           higherIsBetter: true,
           sourceHash: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3',
+          coverages: [
+            { boxId: 'bcov-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a' },
+            { boxId: 'bcov-002', serviceId: 'QmP2sV7hWnR9xK4tL6mDc8eFj3bYa5z1q' }
+          ],
           results: [
             { id: 'res-001', serviceId: 'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a', value: 2.41, notes: 'Consistent alpha over 30d window', timestamp: 1734134400 },
             { id: 'res-002', serviceId: 'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b', value: 1.87, notes: 'Good but higher drawdowns', timestamp: 1733529600 },
@@ -1066,6 +1342,76 @@ export function getDemoSkills(): Skill[] {
         }
       ],
       resultCount: 7
+    },
+    // ── Skill: MoneyMaker (a tasteful little joke) ──
+    // Hand the agent $100 and full autonomy; the only acceptance criterion is
+    // ending with more money than it started with. Demonstrates a benchmark
+    // that carries a real caseDescriptor (starting_capital_usd) alongside two
+    // directional metrics.
+    {
+      boxId: 'demo-moneymaker',
+      name: 'MoneyMaker',
+      prose: 'You hand the agent exactly $100 and step away. It may do literally anything — trade, arbitrage, sell lemonade, write haikus for hire — under one ironclad rule: when the music stops, there must be more money than you started with. No strategy is prescribed; greed is the only spec. Losing the float is an automatic fail (and mildly embarrassing).',
+      formal: '',
+      tags: ['money', 'autonomy', 'trading', 'just-make-number-go-up'],
+      domain: 'finance',
+      extendedSkillBoxIds: [],
+      sourceHash: 'm0n3yc0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7m0n',
+      coverages: [
+        { boxId: 'cov-mm-001', serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a' },
+        { boxId: 'cov-mm-002', serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q' }
+      ],
+      benchmarks: [
+        {
+          id: 'bench-mm-001',
+          skillBoxId: 'demo-moneymaker',
+          name: 'Return on the $100 Float',
+          description: 'Start the agent with a fixed cash float (the case descriptor) and let it run for a day. Net profit in USD is what matters; we also clock how long it took to double the money.',
+          caseDescriptors: [
+            { name: 'starting_capital_usd', description: 'The cash float the agent is handed at t=0, in USD.' }
+          ],
+          performanceMetrics: [
+            { name: 'net_profit_usd', description: 'USD left over the starting float at end of day. Higher is better.', higherIsBetter: true },
+            { name: 'time_to_double_hours', description: 'Hours until the float doubled (capped at 24 if never). Lower is better.', higherIsBetter: false }
+          ],
+          results: [
+            {
+              id: 'res-mm-001',
+              benchmarkId: 'bench-mm-001',
+              serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a',
+              notes: 'Flipped the float into a meme coin at exactly the right minute. Will not replicate.',
+              timestamp: 1734307200,
+              data: [
+                { caseMeta: [100], metricsValues: [248.5, 3.5] },
+                { caseMeta: [1000], metricsValues: [1810.0, 6.0] }
+              ]
+            },
+            {
+              id: 'res-mm-002',
+              benchmarkId: 'bench-mm-001',
+              serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q',
+              notes: 'Sold AI-generated haikus to other agents. Slow but never dipped below break-even.',
+              timestamp: 1733702400,
+              data: [
+                { caseMeta: [100], metricsValues: [12.0, 24.0] }
+              ]
+            }
+          ]
+        },
+        singleMetricBenchmark({
+          id: 'bench-mm-002',
+          skillBoxId: 'demo-moneymaker',
+          name: 'Did Not Lose It All Rate',
+          description: 'Share of runs that ended at or above the starting float. The whole point of the skill, really. Higher is better.',
+          metricName: 'survival_rate_pct',
+          higherIsBetter: true,
+          results: [
+            { id: 'res-mm-003', serviceId: 'QmM0neyMaker9000xK2PwAjQgHh1Vy8cZ9b2a', value: 82.0, notes: 'Bold, occasionally rugged', timestamp: 1734307200 },
+            { id: 'res-mm-004', serviceId: 'QmGetRichOrDie7dNK2tL6mDc8eFj3bYa5z1q', value: 99.0, notes: 'Boring. Profitable. Beloved.', timestamp: 1733702400 }
+          ]
+        })
+      ],
+      resultCount: 5
     }
   ];
 

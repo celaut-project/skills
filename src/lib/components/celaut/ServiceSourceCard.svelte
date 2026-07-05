@@ -36,30 +36,37 @@
   $: if (serviceId) loadSources();
 </script>
 
-<div class:service-source-card={true} class:service-source-card-compact={compact}>
-  <div class="service-source-header">
+<!-- Collapsible Source section (default collapsed) — keeps the service-solution
+     view compact until the user opts into the on-chain source details. -->
+<details class:service-source-card={true} class:service-source-card-compact={compact}>
+  <summary class="service-source-header">
+    <svg class="service-source-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
     <span class="service-source-label">Source</span>
     <code class="service-source-id">{formatSourceHash(serviceId)}</code>
-  </div>
+  </summary>
 
-  {#if !looksLikeHash(serviceId)}
-    <p class="service-source-empty">Service id is not a file hash, so source lookup is unavailable.</p>
-  {:else if loading}
-    <p class="service-source-empty">Loading source…</p>
-  {:else}
-    <FileCard
-      fileHash={serviceId}
-      profile={$reputation_proof}
-      {sources}
-      explorerUri={$explorer_uri}
-      source_explorer_url={$source_explorer_url}
-      webExplorerUriTkn={$web_explorer_uri_token}
-    />
-    {#if $reputation_proof}
-      <button class="service-source-add" on:click={() => dispatch('addSource', serviceId)}>+ Add Source</button>
+  <div class="service-source-body">
+    {#if !looksLikeHash(serviceId)}
+      <p class="service-source-empty">Service id is not a file hash, so source lookup is unavailable.</p>
+    {:else if loading}
+      <p class="service-source-empty">Loading source…</p>
+    {:else}
+      <FileCard
+        fileHash={serviceId}
+        profile={$reputation_proof}
+        {sources}
+        explorerUri={$explorer_uri}
+        source_explorer_url={$source_explorer_url}
+        webExplorerUriTkn={$web_explorer_uri_token}
+      />
+      {#if $reputation_proof}
+        <button class="service-source-add" on:click={() => dispatch('addSource', serviceId)}>+ Add Source</button>
+      {/if}
     {/if}
-  {/if}
-</div>
+  </div>
+</details>
 
 <style lang="postcss">
   .service-source-card {
@@ -78,7 +85,26 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  /* Hide the native disclosure triangle (we render our own chevron). */
+  .service-source-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .service-source-chevron {
+    color: hsl(var(--muted-foreground));
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+  details[open] > .service-source-header .service-source-chevron {
+    transform: rotate(90deg);
+  }
+
+  .service-source-body {
+    margin-top: 0.5rem;
   }
 
   .service-source-label {

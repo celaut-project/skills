@@ -65,6 +65,25 @@ export interface ComparisonTensor {
 
 /** ── Helpers ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Format a raw benchmark/comparison value in its NATIVE unit for display.
+ *
+ * Metric values (e.g. net_profit_usd → USD, time_to_double_hours → hours,
+ * survival_rate → %) and composite z-scores are NOT ERG amounts — they carry
+ * each property's own unit (conveyed by the metric name in the column header)
+ * or are dimensionless. They must never be routed through `formatReputation`,
+ * which assumes nanoERG and divides by 1e9 + appends "ERG". This renders the
+ * number as-is with sensible precision, returning "—" for missing values.
+ */
+export function formatMetricValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  if (value === 0) return '0';
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  if (abs >= 1) return parseFloat(value.toFixed(3)).toString();
+  return parseFloat(value.toPrecision(3)).toString();
+}
+
 /** Plain median of a numeric array. Returns null on empty input. */
 export function median(values: number[]): number | null {
   if (values.length === 0) return null;

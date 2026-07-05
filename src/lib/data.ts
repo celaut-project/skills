@@ -16,7 +16,8 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
 
 /** Get the currently active data provider based on demo mode. */
@@ -32,6 +33,11 @@ export async function loadSkills(): Promise<Skill[]> {
 /** Load coverages for a given skill box ID. */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   return getProvider().loadCoverages(skillBoxId);
+}
+
+/** Load coverages that target a given benchmark ID. */
+export async function loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+  return getProvider().loadBenchmarkCoverages(benchmarkId);
 }
 
 /** Load benchmarks for a given skill box ID. */
@@ -62,4 +68,12 @@ export async function createBenchmark(input: BenchmarkCreationInput): Promise<st
 /** Create a new result opinion. */
 export async function createResult(input: ResultCreationInput): Promise<string> {
   return getProvider().createResult(input);
+}
+
+export async function createServiceData(input: ServiceInfoCreationInput): Promise<string> {
+  return getProvider().createServiceData(input);
+}
+
+export async function createServiceMetadata(input: ServiceInfoCreationInput): Promise<string> {
+  return getProvider().createServiceMetadata(input);
 }

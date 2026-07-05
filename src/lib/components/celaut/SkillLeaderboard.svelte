@@ -6,6 +6,8 @@
   import InfoTip from './InfoTip.svelte';
   import ExplorerLink from './ExplorerLink.svelte';
   import ProfileAvatar from './ProfileAvatar.svelte';
+  import RunServiceButton from './RunServiceButton.svelte';
+  import ClaimCoverageButton from './ClaimCoverageButton.svelte';
   import { toasts } from './toastStore';
   import { FileCard, fetchFileSourcesByHash } from 'source-application';
   import type { FileSource } from 'source-application';
@@ -352,9 +354,9 @@
 
 {#if benchmarks.length > 0}
   <section class="benchmarks-section">
+    <!-- No section title/count here: the surrounding tab already names this
+         view. A single discreet info icon carries the explanation. -->
     <div class="section-header">
-      <h2 class="section-title">Benchmarks</h2>
-      <span class="section-count">{benchmarks.length}</span>
       <InfoTip title="What is a Benchmark?">
         <p>A <strong>Benchmark</strong> defines how a skill is measured. It carries:</p>
         <ul>
@@ -420,24 +422,40 @@
                   {#if descriptors.length > 0}
                     <div class="schema-block">
                       <div class="schema-label">Case descriptors (problem dimensions)</div>
-                      <ul class="schema-list">
+                      <div class="metric-ghost-grid">
                         {#each descriptors as d}
-                          <li><code>{d.name}</code> — {d.description || 'no description'}</li>
+                          <div class="metric-ghost-card">
+                            <span class="metric-ghost-name">{d.name}</span>
+                            {#if d.description}
+                              <span class="metric-ghost-desc">{d.description}</span>
+                            {/if}
+                          </div>
                         {/each}
-                      </ul>
+                      </div>
                     </div>
                   {/if}
                   {#if metrics.length > 0}
                     <div class="schema-block">
                       <div class="schema-label">Performance metrics</div>
-                      <ul class="schema-list">
+                      <!-- "Ghost" metric cards: subtle surface + very soft
+                           borders, monospace metric name, muted direction
+                           label — not a raw table row. -->
+                      <div class="metric-ghost-grid">
                         {#each metrics as m}
-                          <li>
-                            <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
-                            {m.description ? `— ${m.description}` : ''}
-                          </li>
+                          <div class="metric-ghost-card">
+                            <span class="metric-ghost-name">{m.name}</span>
+                            <span
+                              class="metric-ghost-dir"
+                              title={m.higherIsBetter ? 'Higher is better' : 'Lower is better'}
+                            >
+                              {m.higherIsBetter ? '↑ higher is better' : '↓ lower is better'}
+                            </span>
+                            {#if m.description}
+                              <span class="metric-ghost-desc">{m.description}</span>
+                            {/if}
+                          </div>
                         {/each}
-                      </ul>
+                      </div>
                     </div>
                   {/if}
                 </div>
@@ -468,6 +486,18 @@
                 </details>
               {/if}
 
+              <!-- Results header — disambiguates "Result service" (a skill
+                   solution being ranked) from the "Benchmark runner" services
+                   further down (which only run the benchmark). -->
+              <div class="results-header">
+                <h4 class="results-title">Results</h4>
+                <span class="results-count">{benchmark.results.length}</span>
+                <InfoTip title="Results — skill implementations">
+                  <p>Each <strong>Result</strong> ranks a <strong>service that implements this skill</strong> — a candidate <em>solution</em> measured against the benchmark. Its <strong>Service ID</strong> identifies that solution.</p>
+                  <p>Don't confuse these with the <strong>Benchmark runner</strong> below: those are services that <em>run</em> the benchmark, not solutions to the skill.</p>
+                </InfoTip>
+              </div>
+
               <!-- Per-service leaderboard table (aggregated across cases). -->
               {#if benchmark.results.length > 0 && metrics.length > 0}
                 {@const rows = leaderboardRows(benchmark)}
@@ -476,7 +506,7 @@
                     <thead>
                       <tr>
                         <th class="th-rank">Rank</th>
-                        <th class="th-service">Service</th>
+                        <th class="th-service" title="Service that implements the skill — the solution being ranked">Solution service</th>
                         {#each metrics as m}
                           <th class="th-metric" title={m.description}>
                             <code>{m.name}</code> {m.higherIsBetter ? '↑' : '↓'}
@@ -651,6 +681,61 @@
                 <p class="no-results">No results submitted yet.</p>
               {/if}
 
+              <!-- Benchmark coverages: services that RUN this benchmark (not
+                   skill solutions). Demoted to a collapsible section — most
+                   users come for the Results above, not the runner list. -->
+              <details class="bench-coverages-details">
+                <summary class="bench-coverages-summary">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+                  </svg>
+                  Benchmark runner
+                  <span class="bench-coverages-count">{(benchmark.coverages ?? []).length}</span>
+                  <InfoTip title="Benchmark runner">
+                    <p>Services suggested to <strong>run this benchmark</strong> — they execute the test harness to generate or verify results.</p>
+                    <p>These are <em>not</em> skill solutions: the services ranked in <strong>Results</strong> above are the ones that implement the skill.</p>
+                  </InfoTip>
+                  <svg class="bench-coverages-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </summary>
+                <div class="bench-coverages-body">
+                  {#if (benchmark.coverages ?? []).length === 0}
+                    <p class="bench-coverages-empty">No services suggested for this benchmark yet.</p>
+                  {:else}
+                    <ul class="bench-coverages-list">
+                      {#each benchmark.coverages ?? [] as cov}
+                        <li class="bench-coverage-row">
+                          <ProfileAvatar profileId={cov.profileId} size={16} title={`Suggested by ${cov.profileId}`} />
+                          <code class="service-id">{cov.serviceId ? formatServiceId(cov.serviceId) : 'Unnamed service'}</code>
+                          <span role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
+                            <ExplorerLink boxId={cov.boxId} liveTooltip="View Coverage box on Ergo Explorer" />
+                          </span>
+                          <span class="bench-coverage-actions">
+                            {#if cov.serviceId}
+                              <RunServiceButton
+                                serviceId={cov.serviceId}
+                                label="Run"
+                                title="Run this service to generate or verify results for this benchmark"
+                              />
+                            {/if}
+                          </span>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                  <div class="bench-coverages-claim">
+                    <ClaimCoverageButton
+                      skillBoxId={benchmark.skillBoxId}
+                      benchmarkId={benchmark.id}
+                      label="Suggest Service"
+                      size="compact"
+                      on:created={(e) => dispatch('created', e.detail)}
+                    />
+                  </div>
+                </div>
+              </details>
+
               <!-- Benchmark discussion — opens side-rail with topic = benchmark.id. -->
               <div class="discussion-section">
                 <button
@@ -681,8 +766,33 @@
                       A Result is a list of case executions — one row of metric
                       values per case. Add as many cases as you measured.
                     </p>
+
                     <div class="form-row">
-                      <label class="form-label" for="result-service-{benchmark.id}">Service ID <span class="text-red-500">*</span></label>
+                      <label class="form-label" for="result-json-{benchmark.id}">Load result JSON</label>
+                      <input
+                        id="result-json-{benchmark.id}"
+                        class="form-input"
+                        type="file"
+                        accept="application/json,.json"
+                        on:change={(event) => handleResultJsonUpload(event, benchmark)}
+                      />
+                      {#if resultJsonFileName}
+                        <p class="form-hint">Loaded: {resultJsonFileName}</p>
+                      {/if}
+                    </div>
+
+                    <!-- Separador OR -->
+                    <div class="or-divider">
+                      <hr class="or-line" />
+                      <span class="or-text">OR</span>
+                      <hr class="or-line" />
+                    </div>
+
+                    <div class="form-row">
+                      <label class="form-label" for="result-service-{benchmark.id}">
+                        Service ID <span class="text-red-500">*</span>
+                        <span class="form-hint-inline">— the service that implements the skill (the solution you measured)</span>
+                      </label>
                       <input id="result-service-{benchmark.id}" class="form-input" bind:value={submitServiceId} placeholder="e.g. QmXf39bC4F7dNK2Pw..." required />
                     </div>
 
@@ -748,19 +858,6 @@
                     </button>
 
                     <div class="form-row">
-                      <label class="form-label" for="result-json-{benchmark.id}">Load result JSON</label>
-                      <input
-                        id="result-json-{benchmark.id}"
-                        class="form-input"
-                        type="file"
-                        accept="application/json,.json"
-                        on:change={(event) => handleResultJsonUpload(event, benchmark)}
-                      />
-                      {#if resultJsonFileName}
-                        <p class="form-hint">Loaded: {resultJsonFileName}</p>
-                      {/if}
-                    </div>
-                    <div class="form-row">
                       <label class="form-label" for="result-notes-{benchmark.id}">Notes</label>
                       <input id="result-notes-{benchmark.id}" class="form-input" bind:value={submitNotes} placeholder="Optional notes" />
                     </div>
@@ -768,6 +865,7 @@
                       <label class="form-label" for="result-source-{benchmark.id}">Source hash (optional)</label>
                       <input id="result-source-{benchmark.id}" class="form-input" bind:value={submitSourceHash} placeholder="Blake2b256 hash of off-chain source file" />
                     </div>
+
                     <div class="form-actions">
                       <button type="submit" class="btn-submit" disabled={submitting}>
                         {submitting ? 'Submitting…' : 'Submit'}
@@ -785,10 +883,6 @@
   </section>
 {:else}
   <section class="benchmarks-section">
-    <div class="section-header">
-      <h2 class="section-title">Benchmarks</h2>
-      <span class="section-count">0</span>
-    </div>
     <div class="no-benchmarks">
       <p>No benchmarks defined yet. Create one to establish performance standards.</p>
     </div>
@@ -800,32 +894,13 @@
     margin-bottom: 1.5rem;
   }
 
+  /* Title-less: only holds a discreet info icon, so no heavy border/spacing. */
   .section-header {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 0.75rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.5);
-  }
-
-  .section-title {
-    font-size: 1.125rem;
-    font-weight: 700;
-  }
-
-  .section-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    height: 24px;
-    padding: 0 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: hsl(var(--muted));
-    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.5rem;
   }
 
   .benchmarks-list {
@@ -982,6 +1057,46 @@
     background: hsl(var(--muted) / 0.5);
   }
 
+  /* ── Ghost metric cards ─────────────────────────────────────────────── */
+  .metric-ghost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.375rem;
+  }
+
+  .metric-ghost-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--border) / 0.4);
+    background: hsl(var(--muted) / 0.18);
+  }
+
+  .metric-ghost-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    line-height: 1.2;
+    word-break: break-word;
+  }
+
+  .metric-ghost-dir {
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .metric-ghost-desc {
+    font-size: 0.6875rem;
+    color: hsl(var(--muted-foreground));
+    line-height: 1.35;
+  }
+
   /* ── Source Hash ────────────────────────────────────────────────────── */
   .source-details-inline,
   .source-details-result {
@@ -1064,6 +1179,33 @@
     background: hsl(var(--muted) / 0.5);
   }
 
+  /* ── Results header ────────────────────────────────────────────────── */
+  .results-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .results-title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .results-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+
   /* ── Leaderboard Table ─────────────────────────────────────────────── */
   .leaderboard-table-wrapper {
     border: 1px solid hsl(var(--border));
@@ -1093,10 +1235,14 @@
     white-space: nowrap;
   }
 
-  .th-rank { width: 3.5rem; text-align: center; }
-  .th-metric { text-align: right; }
-  .th-runs { width: 3rem; text-align: right; }
-  .th-date { width: 6rem; text-align: right; }
+  /* Scoped under .leaderboard-table so these beat the base
+     `.leaderboard-table th { text-align: left }` on specificity — otherwise
+     the metric/runs/date headers stay left-aligned while their values are
+     right-aligned, leaving labels and numbers misaligned. */
+  .leaderboard-table .th-rank { width: 3.5rem; text-align: center; }
+  .leaderboard-table .th-metric { text-align: right; }
+  .leaderboard-table .th-runs { width: 3rem; text-align: right; }
+  .leaderboard-table .th-date { width: 6rem; text-align: right; }
 
   .leaderboard-row {
     border-top: 1px solid hsl(var(--border));
@@ -1112,7 +1258,7 @@
   }
 
   .td-rank { text-align: center; }
-  .td-runs { text-align: right; font-variant-numeric: tabular-nums; }
+  .td-runs { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
   .td-date { text-align: right; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
 
   .rank-num {
@@ -1138,7 +1284,8 @@
 
   .td-score {
     text-align: right;
-    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: hsl(var(--foreground));
   }
@@ -1219,6 +1366,7 @@
   }
   .descriptor-breakdown-table .td-score {
     text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
   }
@@ -1312,6 +1460,104 @@
     border: 1px dashed hsl(var(--border));
     border-radius: 0.5rem;
     text-align: center;
+  }
+
+  /* ── Benchmark coverages (collapsible — demoted below Results) ──────── */
+  .bench-coverages-details {
+    margin-bottom: 1rem;
+  }
+
+  /* Toggle mirrors the "Dialogue" button (.discussion-toggle) sizing. */
+  .bench-coverages-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--muted) / 0.2);
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    list-style: none;
+    transition: all 0.15s;
+  }
+
+  .bench-coverages-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .bench-coverages-summary:hover {
+    background: hsl(var(--muted) / 0.4);
+    color: hsl(var(--foreground));
+  }
+
+  .bench-coverages-chevron {
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  .bench-coverages-details[open] .bench-coverages-chevron {
+    transform: rotate(180deg);
+  }
+
+  .bench-coverages-body {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--muted) / 0.15);
+  }
+
+  .bench-coverages-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+
+  .bench-coverages-empty {
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    margin: 0.25rem 0;
+  }
+
+  .bench-coverages-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .bench-coverage-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid hsl(var(--border) / 0.5);
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+  }
+
+  .bench-coverage-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .bench-coverages-claim {
+    display: flex;
   }
 
   /* ── Discussion ────────────────────────────────────────────────────── */
@@ -1513,5 +1759,24 @@
 
   .btn-cancel:hover {
     background: hsl(var(--muted) / 0.8);
+  }
+
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .or-divider .or-line {
+    flex-grow: 1;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 0;
+  }
+  .or-divider .or-text {
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
   }
 </style>

@@ -101,6 +101,37 @@
   }
 }
 
+/* ── Ambient background plumbing ─────────────────────────────────────────────
+   The base surface colour lives on the root element so the fixed AmbientBackground
+   layer (z-index:-1) can paint above the root backdrop but behind app content.
+
+   Body MUST stay transparent so the ambient layer shows through. App.svelte ships
+   its own component style `:global(body){ background-color: hsl(var(--background)) }`
+   which ties this rule on specificity and, depending on style-injection order, can
+   re-opaque <body>. An opaque body paints (CSS 2.1 stacking step 3) directly OVER
+   the z-index:-1 ambient layer (step 2), hiding it entirely. `!important` here wins
+   over that non-important rule regardless of injection order. */
+html {
+  background-color: hsl(var(--background));
+  /* The fixed-position footer marquee animates with translateX(100vw); a fixed
+     element's overflow is clipped against the viewport/<html>, not <body>, so
+     <body>'s overflow-x:hidden can't contain it. Clip here too to kill the
+     horizontal page scroll it would otherwise create on mobile. */
+  overflow-x: hidden;
+}
+body {
+  background-color: transparent !important;
+}
+
+/* ── Always-on-top info tooltips ─────────────────────────────────────────────
+   InfoTip popovers are portalled to <body> (see InfoTip.svelte) and pinned with
+   `position: fixed`; this guarantees they overlay everything and are never
+   clipped by overflow/stacking contexts. (shadcn dialogs get their high z-index
+   directly in dialog-overlay/content.) */
+.info-tip-popover {
+  z-index: 1000;
+}
+
 /* Staggered card entrance animations */
 @keyframes fadeSlideIn {
   from {

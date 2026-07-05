@@ -21,37 +21,42 @@
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceSourceCard from "$lib/components/celaut/ServiceSourceCard.svelte";
+  import ServiceInfoCard from "$lib/components/celaut/ServiceInfoCard.svelte";
+  import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
+  import { serviceFilters, serviceInfoRegistry, serviceMatches, resetServiceInfo } from "$lib/serviceFilters";
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
   import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
   import InfoTip from "$lib/components/celaut/InfoTip.svelte";
   import ExplorerLink from "$lib/components/celaut/ExplorerLink.svelte";
   import ProfileAvatar from "$lib/components/celaut/ProfileAvatar.svelte";
-  import SkillMetadata from "$lib/components/celaut/SkillMetadata.svelte";
   import ClaimCoverageButton from "$lib/components/celaut/ClaimCoverageButton.svelte";
+  import ShareModal from "$lib/components/celaut/ShareModal.svelte";
   import ProfileDetailsCard from "$lib/components/celaut/ProfileDetailsCard.svelte";
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
   import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
-  import GameOfLife from "$lib/components/celaut/GameOfLife.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
+  import { portal } from "$lib/actions/portal";
 
   // ── API & Types ────────────────────────────────────────────────────────────
-  import { formatServiceId, formatSourceHash } from "$lib/api";
+  import { formatServiceId, formatSourceHash, EXPLORER_API } from "$lib/api";
+  import { fetchProfileById, type ReputationProof } from "reputation-system";
   import { loadSkills as loadSkillsFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
-  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation } from "$lib/reputation";
+  import { categoryIcon, categoryColor } from "$lib/categoryIcons";
+  import { calculateSkillReputation, calculateBenchmarkReputation, calculateResultReputation, formatReputation, NANOERG_PER_ERG } from "$lib/reputation";
   import {
     buildComparisonTensor,
-    pickBestService,
     aggregateMetricForService,
     bucketByDescriptor,
-    type ComparisonTensor,
-    type TensorRow
+    formatMetricValue,
+    type ComparisonTensor
   } from "$lib/scoring";
-  import { getUserProfiles, ensureUserProfile } from "$lib/profileBootstrap";
+  import { computeServiceScores, type ServiceScore } from "$lib/scoreGlobal";
+  import { getUserProfiles, ensureUserProfile, boostProfileReputation, createAdditionalProfile, updateProfileContent } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
   import { viewedProfileId } from "$lib/stores";
@@ -68,9 +73,21 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
+  // Minimum-reputation gallery filter: hide skills whose aggregate reputation
+  // falls below this threshold. 0 = show everything (default).
+  let minReputation = 0;
   // "" = no tab highlighted (used while the profile-detail view is open).
-  let activeTab: "gallery" | "submit" | "profile" | "" = "gallery";
+  let activeTab: "gallery" | "submit" | "profile" | "howitworks" | "" = "gallery";
   let detailVisible = false;
+  // When the Submit tab is reached via "Modify Skill", remember the skill the
+  // user came from so we can offer a back button to its detail view (mirrors
+  // the back-navigation the profile detail view has).
+  let returnToSkill: Skill | null = null;
+  // "Share Skill" modal (opened from the skill detail header).
+  let shareModalOpen = false;
+  // Deep-link target from `?skill=<boxId>`: resolved to a selected skill once
+  // the gallery has loaded (see the reactive block below).
+  let pendingSkillId: string | null = null;
 
   // ── Island header scroll behaviour ───────────────────────────────────────
   // Hide the floating header when scrolling down, reveal it when scrolling up
@@ -134,6 +151,16 @@
   let createProfileSubmitting = false;
   let profileSacrificeErg = "0";
   let lastProfileLookupKey = "";
+
+  // ── Reputation profile actions (burn / new profile) ──────────────────────
+  // Profile-data editing lives inside ProfileDetailsCard's own modal, which
+  // dispatches the full key/value set via `updateProfileData` (PUT semantics).
+  let showBurnModal = false;
+  let burnErgAmount = "";
+  let burnSubmitting = false;
+  let showNewProfileModal = false;
+  let newProfileSacrifice = "0";
+  let newProfileSubmitting = false;
   // Source-application state
   let skillSources: FileSource[] = [];
   let showFileSourceModal = false;
@@ -142,6 +169,16 @@
   function openFileSourceModal(hash: string) {
     modalFileHash = hash;
     showFileSourceModal = true;
+  }
+
+  async function copyToClipboard(value: string, message = 'Copied to clipboard') {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toasts.info(message);
+    } catch {
+      toasts.error('Failed to copy');
+    }
   }
 
   function handleFileSourceAdded(txId: string) {
@@ -183,8 +220,22 @@
     skillSources = [];
   }
 
-  // Compute reputation for selected skill
-  $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill) : null;
+  // Compute reputation for selected skill — label is RELATIVE to all sibling
+  // skills, so we pass the full population (thresholds built once inside).
+  $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill, skills) : null;
+
+  // Reset the per-skill service-info registry + filters whenever the opened skill
+  // changes, so stale service data from a previous skill can't leak into the
+  // coverage filters.
+  let lastServiceSkillId: string | null = null;
+  $: if ((selectedSkill?.boxId ?? null) !== lastServiceSkillId) {
+    lastServiceSkillId = selectedSkill?.boxId ?? null;
+    resetServiceInfo();
+  }
+
+  // Category glyph for the detail title — swaps the old profile avatar for the
+  // skill's category icon (with its accent color), mirroring SkillDetail.svelte.
+  $: DetailCategoryIcon = categoryIcon(selectedSkill?.domain);
 
   // ── Best service highlight ────────────────────────────────────────────────
   // Surfaces the "best" service for a skill as a prominent card with a download
@@ -193,75 +244,74 @@
   // the skill, weighted by each benchmark's own reputation (so a service that
   // wins on a heavily-vouched benchmark beats one that wins on an obscure one).
 
-  /**
-   * Aggregate profile reputation backing a composite score for one service.
-   * (Pulled from the comparison tensor — see scoring.ts.)
-   * Adds the coverage's own profile reputation on top of the tensor's
-   * compositeReputation (which only counts benchmark+result contributions),
-   * matching the pre-tensor behaviour.
-   */
-  function dataReputationForRow(skill: Skill, row: TensorRow): number {
-    const coverage = skill.coverages.find((c) => c.serviceId === row.serviceId);
-    return (coverage?.reputation ?? 0) + row.compositeWeight;
-  }
-
-  /** Pick the Coverage whose service has the highest composite tensor score. */
-  function pickBestCoverage(
-    skill: Skill,
-  ): { coverage: Coverage; score: number; dataReputation: number } | null {
-    const bestRow = pickBestService(skill);
-    if (!bestRow) return null;
-    const coverage = skill.coverages.find((c) => c.serviceId === bestRow.serviceId);
-    if (!coverage) return null;
-    if (bestRow.composite <= 0) return null;
-    return {
-      coverage,
-      score: bestRow.composite,
-      dataReputation: dataReputationForRow(skill, bestRow)
-    };
-  }
+  // A skill's "recommended" service is ranked by COMPOSITE SCORE + REPUTATION.
+  // `selectedSkill.coverages` already merges direct coverage boxes AND
+  // result-derived services (see loadCoverages), so it is the full candidate
+  // pool. Crucially we DON'T drop services that lack comparative benchmark data:
+  // the comparison tensor's z-score composite is 0 for a lone/unscored service,
+  // so a unique service that only entered via a Result (composite 0, rep 0) must
+  // still surface — it's simply the single best candidate.
 
   /**
-   * Blake2b256 hashes are exactly 64 hex chars; source-application is keyed by
-   * that hash format, so any other serviceId shape (UUIDs, type-NFT ids, etc.)
-   * has zero chance of resolving and we skip the lookup entirely.
+   * Recommended service for the selected skill. Score = tensor composite score
+   * (0 when the service has no comparative data) + the service's own reputation.
+   * Highest score wins; a sole candidate always shows. Null only when the skill
+   * has no service candidates at all.
    */
-  function looksLikeFileHash(value: string | undefined): boolean {
-    return !!value && /^[0-9a-f]{64}$/i.test(value);
-  }
-
-  $: bestCoverage = selectedSkill ? pickBestCoverage(selectedSkill) : null;
-  let bestServiceSources: FileSource[] = [];
-  let bestServiceLoading = false;
-
-  async function loadBestServiceSources(hash: string) {
-    bestServiceLoading = true;
+  // Computed in the MARKUP (via `{#each [computeRecommendedService(selectedSkill)]}`),
+  // NOT a `$:` reactive. A skill's `coverages` get populated by in-place mutation
+  // after the skill is selected (notably on a `?skill=` deep link); that mutates
+  // the existing object without reassigning `selectedSkill` or `skills`, so no
+  // reactive statement is ever invalidated and the card stayed permanently hidden.
+  // Markup expressions re-evaluate on every render, so they always see the latest
+  // coverages — the reliable place to derive this.
+  function computeRecommendedService(skill: Skill | null) {
+    if (!skill) return null;
+    const candidates = skill.coverages.filter((c) => c.serviceId);
+    if (!candidates.length) return null;
+    // Rank by the SCORE.md global score (verified performance + reputation).
+    // Wrapped defensively so sparse/edge-case data can't make the card vanish —
+    // a sole result-derived service still surfaces (it's simply the top candidate).
+    let scoreById = new Map<string, ServiceScore>();
     try {
-      bestServiceSources = await fetchFileSourcesCached(hash);
+      scoreById = new Map(computeServiceScores(skill).map((s) => [s.serviceId, s]));
     } catch {
-      bestServiceSources = [];
-    } finally {
-      bestServiceLoading = false;
+      scoreById = new Map();
     }
+    const ranked = candidates
+      .map((coverage) => {
+        const s = scoreById.get(coverage.serviceId!);
+        return {
+          coverage,
+          scoreGlobal: s?.scoreGlobal ?? 0,
+          scorePerf: s?.scorePerf ?? null,
+          reputation: coverage.reputation ?? 0,
+        };
+      })
+      .sort((a, b) => b.scoreGlobal - a.scoreGlobal || b.reputation - a.reputation);
+    return ranked[0] ?? null;
   }
 
-  // Only hit source-application when the winning service has a Blake2b256
-  // serviceId — every other shape would 404. Resets to [] otherwise so the
-  // download UI clears between selections.
-  $: if (bestCoverage && looksLikeFileHash(bestCoverage.coverage.serviceId)) {
-    loadBestServiceSources(bestCoverage.coverage.serviceId!);
-  } else {
-    bestServiceSources = [];
+  // Optional download convenience on the recommended service (NOT part of
+  // selection). Returns a STABLE promise per serviceId so the markup `{#await}`
+  // doesn't re-fetch/flicker on every render.
+  const NO_DOWNLOAD: Promise<FileSource | null> = Promise.resolve(null);
+  const recommendedDownloadCache = new Map<string, Promise<FileSource | null>>();
+  function recommendedDownloadPromise(serviceId: string | undefined): Promise<FileSource | null> {
+    if (!serviceId) return NO_DOWNLOAD;
+    let pr = recommendedDownloadCache.get(serviceId);
+    if (!pr) {
+      pr = fetchFileSourcesCached(serviceId)
+        .then((srcs) =>
+          srcs.length
+            ? [...srcs].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
+            : null,
+        )
+        .catch(() => null);
+      recommendedDownloadCache.set(serviceId, pr);
+    }
+    return pr;
   }
-
-  /**
-   * Pick the source with the highest reputationAmount (first wins on ties).
-   * Multiple uploaders can register the same hash in source-application; we
-   * surface the one the network trusts most, not just whichever arrived first.
-   */
-  $: bestServiceDownload = bestServiceSources.length
-    ? [...bestServiceSources].sort((a, b) => (b?.reputationAmount ?? 0) - (a?.reputationAmount ?? 0))[0]
-    : null;
 
   // ── Load skills from active provider ────────────────────────────────────────
   async function loadSkills() {
@@ -355,6 +405,135 @@
 
   function currentMainBox() {
     return getMainReputationBox($reputation_proof);
+  }
+
+  // ── Reputation profile action handlers ───────────────────────────────────
+  /** Guard: profile actions are on-chain writes — live mode + wallet + proof. */
+  function ensureLiveProfile(): boolean {
+    if ($demoMode) {
+      toasts.info("Switch off demo mode to manage your profile on-chain.");
+      return false;
+    }
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return false;
+    }
+    if (!$reputation_proof) {
+      toasts.error("No reputation profile loaded.");
+      return false;
+    }
+    return true;
+  }
+
+  /** The active profile's self/main box, used as the target for writes. */
+  function activeProfileBox() {
+    return getMainReputationBox($reputation_proof);
+  }
+
+  function openBurnModal() {
+    if (!ensureLiveProfile()) return;
+    burnErgAmount = "";
+    showBurnModal = true;
+  }
+
+  async function submitBurn() {
+    if (!ensureLiveProfile()) return;
+    const box = activeProfileBox();
+    if (!box) {
+      toasts.error("No profile box found to burn against.");
+      return;
+    }
+    const parsed = Number(burnErgAmount || "0");
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toasts.error("Enter a positive ERG amount to burn.");
+      return;
+    }
+    burnSubmitting = true;
+    try {
+      const nanoErg = BigInt(Math.round(parsed * 1e9));
+      await boostProfileReputation($explorer_uri, box, nanoErg);
+      toasts.success(`Burned ${parsed} ERG to your profile.`);
+      showBurnModal = false;
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Burn failed.");
+    } finally {
+      burnSubmitting = false;
+    }
+  }
+
+  /**
+   * Persist the full profile-data object (PUT semantics). The card's edit modal
+   * dispatches the complete key/value set, so we write it verbatim — this both
+   * adds and modifies fields in one update of the self/profile box.
+   */
+  async function handleUpdateProfileData(data: Record<string, unknown>) {
+    if (!ensureLiveProfile()) return;
+    const box = activeProfileBox();
+    if (!box) {
+      toasts.error("No profile box found.");
+      return;
+    }
+    try {
+      await updateProfileContent($explorer_uri, box, data);
+      toasts.success("Profile data updated.");
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Failed to update profile data.");
+    }
+  }
+
+  /** Navigate from a profile-card entity (skill/benchmark/service/result) to its skill page. */
+  function handleNavigateSkill(boxId: string) {
+    const skill = skills.find((s) => s.boxId === boxId);
+    viewedProfileId.set(null);
+    activeTab = "gallery";
+    if (skill) selectSkill(skill);
+  }
+
+  function openNewProfileModal() {
+    if ($demoMode) {
+      toasts.info("Switch off demo mode to create a profile.");
+      return;
+    }
+    if (!$walletConnected) {
+      toasts.error("Connect your wallet first.");
+      return;
+    }
+    newProfileSacrifice = "0";
+    showNewProfileModal = true;
+  }
+
+  async function submitNewProfile() {
+    if ($demoMode || !$walletConnected) {
+      toasts.error("Connect a wallet in live mode first.");
+      return;
+    }
+    const parsed = Number(newProfileSacrifice || "0");
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toasts.error("Sacrifice must be a non-negative ERG amount.");
+      return;
+    }
+    newProfileSubmitting = true;
+    try {
+      const sacrificeErg = parsed > 0 ? BigInt(Math.round(parsed * 1e9)) : 0n;
+      await createAdditionalProfile($explorer_uri, { totalSupply: 1, sacrificeErg });
+      toasts.success("New reputation profile created.");
+      showNewProfileModal = false;
+      await loadUserProfileState();
+    } catch (e: any) {
+      toasts.error(e?.message || "Failed to create profile.");
+    } finally {
+      newProfileSubmitting = false;
+    }
+  }
+
+  /** Switch the globally-active profile to another one held by the wallet. */
+  function handleSelectProfile(tokenId: string) {
+    const next = userProfiles.find((p) => p.token_id === tokenId);
+    if (!next) return;
+    reputation_proof.set(next);
+    toasts.info(`Switched to profile ${tokenId.slice(0, 6)}…`);
   }
 
   function requireProfileForWrite(): boolean {
@@ -459,14 +638,34 @@
     return Array.from(byName.values());
   }
 
+  // Apply the minimum-reputation gallery filter on top of search/category.
+  // `minErg` is entered by the user in ERG; stored reputation is nanoERG, so we
+  // convert before comparing.
+  function filterByReputation(list: Skill[], minErg: number): Skill[] {
+    if (!minErg || minErg <= 0) return list;
+    const minNanoErg = minErg * NANOERG_PER_ERG;
+    return list.filter(s => calculateSkillReputation(s).total >= minNanoErg);
+  }
+
   $: displayedSkills = sortSkills(
     pickCanonicalByName(
-      filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId))
+      filterByReputation(
+        filterByCategory(filtered, activeCategory).filter(s => !hiddenBoxIds.has(s.boxId)),
+        minReputation
+      )
     ),
     currentSort
   );
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
+
+  // Gallery counter reconciliation: the StatsBar shows every Skill on-chain, but
+  // the listing hides skills that are nested under a higher-reputation parent
+  // (extendedSkillBoxIds) or collapsed as duplicate-named submissions. When no
+  // user filter is active, the gap between the two numbers is exactly those
+  // hidden entries — surface it so the counts reconcile for the user.
+  $: galleryUnfiltered = !searchQuery && activeCategory === "all" && (!minReputation || minReputation <= 0);
+  $: hiddenFromListing = Math.max(0, skills.length - displayedSkills.length);
 
   // Track duplicate skill names to flag concurrent submissions. Anyone can post
   // a skill with the same human name as another — the chain doesn't enforce
@@ -577,6 +776,25 @@
     return `${hash.slice(0, 8)}…${hash.slice(-4)}`;
   }
 
+  // ── Skill deep-link sync ─────────────────────────────────────────────────
+  // Keep `?skill=<boxId>` in the URL in sync with the open skill-detail view so
+  // a skill page can be shared or refreshed (mirrors the `?profile=` handling).
+  // Only pushes a history entry when the param actually changes to avoid
+  // duplicate entries (e.g. when resolving an initial deep link).
+  function syncSkillParam(boxId: string | null): void {
+    if (!browser) return;
+    const current = new URL(window.location.href);
+    const currentParam = current.searchParams.get("skill");
+    if (boxId) {
+      if (currentParam === boxId) return;
+      current.searchParams.set("skill", boxId);
+    } else {
+      if (!currentParam) return;
+      current.searchParams.delete("skill");
+    }
+    window.history.pushState({}, "", current);
+  }
+
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
     detailVisible = false;
@@ -584,12 +802,14 @@
     detailTab = "benchmarks";
     selectedBenchmarkId = null;
     showCreateBenchmarkForm = false;
+    syncSkillParam(skill.boxId);
     setTimeout(() => { detailVisible = true; }, 50);
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function backToGallery() {
     detailVisible = false;
+    syncSkillParam(null);
     setTimeout(() => { selectedSkill = null; }, 200);
   }
 
@@ -606,10 +826,25 @@
     newSkillTags = skill.tags.join(', ');
     prefillRelatedBoxIds = [skill.boxId];
     relatedSkillBoxIds = [skill.boxId, ...skill.extendedSkillBoxIds];
-    // Switch to submit tab
+    // Switch to submit tab, remembering where we came from so the Submit view
+    // can offer a "Back to skill" button (Task: modify-skill back-navigation).
+    returnToSkill = skill;
     selectedSkill = null;
+    syncSkillParam(null);
     activeTab = "submit";
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Return from the Submit ("Modify Skill") view to the skill detail the user
+  // came from. Clears the remembered skill so the button only shows when
+  // relevant.
+  function backToSkillFromSubmit() {
+    const skill = returnToSkill;
+    returnToSkill = null;
+    if (skill) {
+      activeTab = "gallery";
+      selectSkill(skill);
+    }
   }
 
   // ── Submit new skill ───────────────────────────────────────────────────────
@@ -829,29 +1064,41 @@
       if (env === "demo" || env === "dev") demoMode.set(true);
       const initialProfile = url.searchParams.get("profile");
       if (initialProfile) viewedProfileId.set(initialProfile);
+      const initialSkill = url.searchParams.get("skill");
+      if (initialSkill) pendingSkillId = initialSkill;
+      // Only now that the initial deep-link params have been consumed may the
+      // reactive URL-sync touch the address bar — otherwise it runs during init
+      // (before this onMount) and strips `?profile=`/`?skill=` before they're read.
+      urlSyncEnabled = true;
       loadSkills();
 
-      // Back/forward button: keep the profile-detail view in sync with the URL.
+      // Back/forward button: keep the profile- and skill-detail views in sync
+      // with the URL (`?profile=` / `?skill=`).
       const popHandler = () => {
-        const next = new URL(window.location.href).searchParams.get("profile");
-        viewedProfileId.set(next || null);
+        const params = new URL(window.location.href).searchParams;
+        viewedProfileId.set(params.get("profile") || null);
+        const nextSkill = params.get("skill");
+        if (nextSkill) {
+          const match = skills.find((s) => s.boxId === nextSkill);
+          if (match) {
+            selectedSkill = match;
+            detailVisible = true;
+          }
+        } else {
+          selectedSkill = null;
+          detailVisible = false;
+        }
       };
       window.addEventListener("popstate", popHandler);
 
-      // Island-header scroll behaviour: hide on scroll down, reveal on scroll
-      // up. requestAnimationFrame throttles the work and a small delta
-      // threshold avoids jitter on trackpads.
-      let lastScrollY = window.scrollY;
+      // Island-header scroll behaviour: the header is shown only at the top of
+      // the page. Once the user scrolls past the threshold it stays hidden in
+      // both directions (no scroll-up reveal) — they reach it by returning to
+      // the top. requestAnimationFrame throttles the work.
       let scrollTicking = false;
-      const scrollDeltaThreshold = 6;
       const updateNav = () => {
         const y = window.scrollY;
-        const delta = y - lastScrollY;
-        if (Math.abs(delta) > scrollDeltaThreshold) {
-          // Always show near the top of the page.
-          navHidden = delta > 0 && y > 80;
-          lastScrollY = y;
-        }
+        navHidden = y > 80;
         scrollTicking = false;
       };
       const scrollHandler = () => {
@@ -869,28 +1116,59 @@
     }
   });
 
-  // Mirror `viewedProfileId` into the URL so the profile-detail view is
-  // bookmarkable and the browser back button restores the prior gallery state.
-  let lastSyncedProfileId: string | null | undefined = undefined;
-  $: if (browser && lastSyncedProfileId !== $viewedProfileId) {
+  // Mirror the active profile into the URL (`?profile=`) so the view is
+  // bookmarkable/shareable and back/forward restores it. This covers BOTH
+  // another user's profile (`viewedProfileId`) and the connected user's own
+  // Profile tab (`activeTab === "profile"`).
+  //
+  // While any profile is on screen we also drop a stale `?skill=`: the
+  // in-session "back to skill" button is driven by in-memory `returnToSkill`,
+  // not the URL, so removing the param means someone opening a shared
+  // `?profile=` link just sees the profile — no leftover skill, no dangling
+  // back-navigation that only made sense in the original user's session.
+  let lastSyncedProfileParam: string | null | undefined = undefined;
+  // Enabled at the end of onMount, once initial `?profile=`/`?skill=` deep links
+  // have been read — guards against this reactive stripping them during init.
+  let urlSyncEnabled = false;
+  $: desiredProfileParam =
+    $viewedProfileId ??
+    (activeTab === "profile" ? $reputation_proof?.token_id ?? null : null);
+  $: if (browser && urlSyncEnabled && lastSyncedProfileParam !== desiredProfileParam) {
     const current = new URL(window.location.href);
     const currentParam = current.searchParams.get("profile");
-    if ($viewedProfileId) {
-      if (currentParam !== $viewedProfileId) {
-        current.searchParams.set("profile", $viewedProfileId);
-        window.history.pushState({}, "", current);
+    let changed = false;
+    if (desiredProfileParam) {
+      if (currentParam !== desiredProfileParam) {
+        current.searchParams.set("profile", desiredProfileParam);
+        changed = true;
+      }
+      if (current.searchParams.has("skill")) {
+        current.searchParams.delete("skill");
+        changed = true;
       }
     } else if (currentParam) {
       current.searchParams.delete("profile");
-      window.history.pushState({}, "", current);
+      changed = true;
     }
-    lastSyncedProfileId = $viewedProfileId;
+    if (changed) window.history.pushState({}, "", current);
+    lastSyncedProfileParam = desiredProfileParam;
   }
 
   // Clear the tab highlight whenever a profile-detail view is open: the
   // profile view renders independently of the tabs (it short-circuits the
   // {#if $viewedProfileId} block), so no tab should appear "active".
   $: if ($viewedProfileId) activeTab = "";
+
+  // Resolve a `?skill=<boxId>` deep link once the gallery has loaded: select the
+  // matching skill so a shared link opens straight to its detail view.
+  $: if (pendingSkillId && skills.length) {
+    const match = skills.find((s) => s.boxId === pendingSkillId);
+    pendingSkillId = null;
+    if (match) {
+      activeTab = "gallery";
+      selectSkill(match);
+    }
+  }
 
   function closeProfileView(): void {
     viewedProfileId.set(null);
@@ -899,38 +1177,47 @@
     activeTab = "gallery";
   }
 
-  // ── Profile detail aggregation ─────────────────────────────────────────────
-  // Roll up every entity in `skills` authored by the viewed profile so the
-  // detail view can show the profile's full footprint without another lookup.
-  interface ProfileContributions {
-    submittedSkills: Skill[];
-    coverages: Array<{ skill: Skill; coverage: Coverage }>;
-    benchmarks: Array<{ skill: Skill; benchmark: Benchmark }>;
-    results: Array<{ skill: Skill; benchmark: Benchmark; result: Result }>;
-  }
-  $: profileContributions = ((): ProfileContributions => {
-    const empty: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
-    const pid = $viewedProfileId;
-    if (!pid) return empty;
-    const acc: ProfileContributions = { submittedSkills: [], coverages: [], benchmarks: [], results: [] };
-    for (const skill of skills) {
-      if (skill.profileId === pid) acc.submittedSkills.push(skill);
-      for (const cov of skill.coverages) {
-        if (cov.profileId === pid) acc.coverages.push({ skill, coverage: cov });
-      }
-      for (const bench of skill.benchmarks) {
-        if (bench.profileId === pid) acc.benchmarks.push({ skill, benchmark: bench });
-        for (const result of bench.results) {
-          if (result.profileId === pid) acc.results.push({ skill, benchmark: bench, result });
-        }
-      }
-    }
-    return acc;
-  })();
-</script>
+  // ── Viewed-profile reputation proof ────────────────────────────────────────
+  // Clicking a profile opens the SAME reputation-profile card the connected
+  // user sees for their own profile, but read-only when it isn't theirs. We
+  // need that profile's on-chain ReputationProof to render the card; the user's
+  // own proof is already in the store, so reuse it when ids match and otherwise
+  // fetch by id.
+  let viewedProfileProof: ReputationProof | null = null;
+  let viewedProfileLoading = false;
+  // True when the viewed profile is the connected user's own profile — the only
+  // case where the card stays editable.
+  $: isOwnViewedProfile = !!$viewedProfileId && $reputation_proof?.token_id === $viewedProfileId;
 
-<!-- Ambient Conway's Game of Life in the page side gutters (decorative). -->
-<!-- <GameOfLife /> -->
+  $: loadViewedProfileProof($viewedProfileId, $reputation_proof);
+
+  async function loadViewedProfileProof(
+    pid: string | null,
+    ownProof: ReputationProof | null,
+  ): Promise<void> {
+    if (!pid) {
+      viewedProfileProof = null;
+      viewedProfileLoading = false;
+      return;
+    }
+    if (ownProof && ownProof.token_id === pid) {
+      viewedProfileProof = ownProof;
+      viewedProfileLoading = false;
+      return;
+    }
+    viewedProfileLoading = true;
+    viewedProfileProof = null;
+    try {
+      const proof = await fetchProfileById(EXPLORER_API, pid);
+      // Guard against a stale response if the user navigated on in the meantime.
+      if (pid === $viewedProfileId) viewedProfileProof = proof ?? null;
+    } catch {
+      if (pid === $viewedProfileId) viewedProfileProof = null;
+    } finally {
+      if (pid === $viewedProfileId) viewedProfileLoading = false;
+    }
+  }
+</script>
 
 <!-- ── Demo mode topbar ───────────────────────────────────────────────────── -->
 {#if $demoMode}
@@ -946,64 +1233,49 @@
   class:navbar-hidden={navHidden}
 >
   <div class="navbar-content">
+    <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
+         in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
-      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; viewedProfileId.set(null); }}>
+      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
-      <div class="flex-1 flex items-center justify-center px-8 max-w-lg mx-auto">
-        <div class="relative w-full">
-          <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input
-            type="text"
-            bind:value={searchQuery}
-            placeholder="Search skills, tags, domains..."
-            class="search-input"
-          />
-        </div>
-      </div>
+      <nav class="navbar-tabs">
+        <button
+          class="tab-btn"
+          class:active={activeTab === "gallery"}
+          on:click={() => { activeTab = "gallery"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
+        >
+          Gallery
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "submit"}
+          on:click={() => { activeTab = "submit"; returnToSkill = null; viewedProfileId.set(null); }}
+        >
+          Submit
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "profile"}
+          on:click={() => { activeTab = "profile"; returnToSkill = null; viewedProfileId.set(null); }}
+        >
+          Profile
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "howitworks"}
+          on:click={() => { activeTab = "howitworks"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
+        >
+          How it works
+        </button>
+      </nav>
 
       <div class="flex items-center gap-3">
         <WalletButton explorerUrl={$web_explorer_uri_addr} />
         <Theme />
       </div>
     </div>
-
-    <!-- Tabs live inside the island header. -->
-    <nav class="navbar-tabs">
-      <button
-        class="tab-btn"
-        class:active={activeTab === "gallery"}
-        on:click={() => { activeTab = "gallery"; selectedSkill = null; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-        </svg>
-        Skills Gallery
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === "submit"}
-        on:click={() => { activeTab = "submit"; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-        </svg>
-        Submit Skill
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === "profile"}
-        on:click={() => { activeTab = "profile"; viewedProfileId.set(null); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-        Profile
-      </button>
-    </nav>
   </div>
 </header>
 
@@ -1025,108 +1297,38 @@
           <div class="flex items-center gap-3 mb-3">
             <ProfileAvatar profileId={$viewedProfileId} size={48} clickable={false} title={`Profile ${$viewedProfileId}`} />
             <div class="min-w-0">
-              <h1 class="text-2xl md:text-3xl font-extrabold">Profile</h1>
+              <h1 class="text-2xl md:text-3xl font-extrabold">
+                {isOwnViewedProfile ? "Your Profile" : "Profile"}
+              </h1>
               <code class="font-mono text-xs break-all text-muted-foreground">{$viewedProfileId}</code>
             </div>
-          </div>
-          <div class="profile-summary-grid">
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Skills submitted</span>
-              <span class="profile-summary-value">{profileContributions.submittedSkills.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Coverages</span>
-              <span class="profile-summary-value">{profileContributions.coverages.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Benchmarks</span>
-              <span class="profile-summary-value">{profileContributions.benchmarks.length}</span>
-            </div>
-            <div class="profile-summary-cell">
-              <span class="profile-summary-label">Results</span>
-              <span class="profile-summary-value">{profileContributions.results.length}</span>
-            </div>
+            {#if !isOwnViewedProfile}
+              <span class="profile-readonly-badge" title="You are viewing another profile — actions are disabled.">Read-only</span>
+            {/if}
           </div>
         </div>
 
-        {#if profileContributions.submittedSkills.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Skills Submitted</h2>
-              <span class="detail-count">{profileContributions.submittedSkills.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.submittedSkills as s}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{s.name}</span>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(calculateSkillReputation(s).total)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
+        <!-- Same reputation-profile card the connected user sees, but read-only
+             unless this is the user's own profile. Passing the full `skills`
+             list lets the card self-compute the same contributions (skills,
+             benchmarks, services, results) it shows for the own profile. -->
+        {#if viewedProfileLoading}
+          <div class="detail-card">
+            <p class="text-muted-foreground text-sm">Loading reputation profile…</p>
+          </div>
+        {:else if viewedProfileProof}
+          <ProfileDetailsCard
+            proof={viewedProfileProof}
+            readOnly={!isOwnViewedProfile}
+            skills={skills}
+            on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
+          />
+        {:else}
+          <div class="detail-card">
+            <p class="text-muted-foreground text-sm">No on-chain reputation profile could be loaded for this id.</p>
+          </div>
         {/if}
 
-        {#if profileContributions.coverages.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Coverages</h2>
-              <span class="detail-count">{profileContributions.coverages.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.coverages as { skill: s, coverage }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{s.name}</span>
-                  <code class="font-mono text-xs text-muted-foreground">{formatHash(coverage.serviceId || coverage.boxId)}</code>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(coverage.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.benchmarks.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Benchmarks</h2>
-              <span class="detail-count">{profileContributions.benchmarks.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.benchmarks as { skill: s, benchmark }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{benchmark.name}</span>
-                  <span class="text-xs text-muted-foreground">on {s.name}</span>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(benchmark.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.results.length > 0}
-          <section class="detail-section">
-            <div class="detail-section-header">
-              <h2 class="detail-section-title">Results</h2>
-              <span class="detail-count">{profileContributions.results.length}</span>
-            </div>
-            <div class="space-y-2">
-              {#each profileContributions.results as { skill: s, benchmark, result }}
-                <button class="detail-related-btn" on:click={() => { closeProfileView(); selectSkill(s); }}>
-                  <span class="font-medium">{benchmark.name}</span>
-                  <code class="font-mono text-xs text-muted-foreground">{formatHash(result.serviceId)}</code>
-                  <span class="text-xs text-muted-foreground ml-auto">rep {formatReputation(result.reputation ?? 0)}</span>
-                </button>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        {#if profileContributions.submittedSkills.length === 0 && profileContributions.coverages.length === 0 && profileContributions.benchmarks.length === 0 && profileContributions.results.length === 0}
-          <section class="detail-section">
-            <div class="detail-empty">
-              <p>No on-chain contributions found for this profile in the currently loaded skill set.</p>
-            </div>
-          </section>
-        {/if}
       </div>
     </div>
 
@@ -1143,11 +1345,25 @@
             Back to gallery
           </button>
 
+          <ShareModal
+            bind:open={shareModalOpen}
+            skillName={selectedSkill.name}
+            skillBoxId={selectedSkill.boxId}
+            description={selectedSkill.prose}
+          />
+
           <!-- Skill header card -->
           <div class="detail-card">
             <div class="flex flex-wrap gap-3 items-start justify-between mb-4">
-              <div class="flex items-center gap-3">
-                <ProfileAvatar profileId={selectedSkill.profileId} size={28} title={`Skill submitted by ${selectedSkill.profileId}`} />
+              <div class="flex flex-wrap items-center gap-3 min-w-0">
+                <span
+                  class="detail-category-icon"
+                  style="color: hsl({categoryColor(selectedSkill.domain)});"
+                  title={`Category: ${selectedSkill.domain || 'Other'}`}
+                  aria-hidden="true"
+                >
+                  <svelte:component this={DetailCategoryIcon} size={26} strokeWidth={1.8} />
+                </span>
                 <h1 class="text-2xl md:text-3xl font-extrabold">{selectedSkill.name}</h1>
                 <InfoTip title="What is a Skill?">
                   <p>A <strong>Skill</strong> is an on-chain declaration of a capability: a name, a prose description (what an agent must accomplish), an optional formal spec, and tags. Services <em>cover</em> a skill by claiming they can perform it, and <em>benchmarks</em> measure how well.</p>
@@ -1171,14 +1387,22 @@
               {#if selectedSkill.domain}
                 <span class="detail-domain-badge">{selectedSkill.domain}</span>
               {/if}
-              <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
-                </svg>
-                Fork Skill
-              </button>
+              <div class="detail-header-actions">
+                <button class="share-skill-btn" on:click={() => (shareModalOpen = true)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                  Share
+                </button>
+                <button class="fork-skill-btn" on:click={() => selectedSkill && forkSkill(selectedSkill)}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><line x1="12" y1="12" x2="12" y2="15"/>
+                  </svg>
+                  Modify Skill
+                </button>
+              </div>
             </div>
-            <p class="text-muted-foreground mb-5 leading-relaxed">{selectedSkill.prose || "No description."}</p>
+            <p class="skill-detail-prose">{selectedSkill.prose || "No description."}</p>
             {#if selectedSkill.sourceHash}
               <details class="source-details mb-4">
                 <summary class="source-summary">
@@ -1205,17 +1429,20 @@
                 </div>
               </details>
             {/if}
-            {#if skillNameCounts[selectedSkill.name] > 1}
-              <details class="duplicate-notice">
-                <summary class="duplicate-notice-summary">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                  </svg>
-                  <span>{skillNameCounts[selectedSkill.name]} concurrent submissions for this skill</span>
-                  <svg class="duplicate-notice-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </summary>
+            <!-- Current submissions — other on-chain submissions of this same
+                 skill (siblings: same name, different boxId). Always rendered,
+                 with an empty state when there are none. -->
+            <div class="submissions-block">
+              <div class="submissions-head">
+                <span class="submissions-label">Current submissions for this skill</span>
+                <InfoTip title="Current submissions">
+                  <p>Other on-chain <strong>submissions</strong> of this same skill — entries published with the same name but a different Box ID (alternative versions or authors).</p>
+                  <p>Each is its own Skill UTXO; select one to view its services, benchmarks and reputation.</p>
+                </InfoTip>
+              </div>
+              {#if siblingSkills.length === 0}
+                <p class="submissions-empty">No other submissions for this skill yet.</p>
+              {:else}
                 <ul class="duplicate-notice-list">
                   {#each siblingSkills as sibling (sibling.boxId)}
                     {@const sibRep = calculateSkillReputation(sibling).total}
@@ -1250,58 +1477,90 @@
                     </li>
                   {/each}
                 </ul>
-              </details>
-            {/if}
+              {/if}
+            </div>
             <div class="flex flex-wrap gap-2 mb-5">
               {#each selectedSkill.tags as tag}
                 <span class="detail-tag">{tag}</span>
               {/each}
             </div>
+
+            <!-- On-chain identifiers, folded into the main card (no separate box). -->
+            <div class="detail-meta-row">
+              <span class="detail-meta-item">
+                <span class="detail-meta-label">Box ID</span>
+                <code class="detail-meta-value">{selectedSkill.boxId}</code>
+              </span>
+              {#if selectedSkill.sourceHash}
+                <span class="detail-meta-item">
+                  <span class="detail-meta-label">Source Hash</span>
+                  <code class="detail-meta-value">{formatSourceHash(selectedSkill.sourceHash)}</code>
+                  <button
+                    class="detail-meta-copy"
+                    title="Copy full hash"
+                    on:click={() => copyToClipboard(selectedSkill?.sourceHash || '', 'Hash copied to clipboard')}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  </button>
+                </span>
+              {/if}
+              <!-- Skill creator (submitter): icon + profile id, on its own bottom row. -->
+              <span class="detail-meta-item detail-meta-creator">
+                <span class="detail-meta-label">Creator</span>
+                <ProfileAvatar profileId={selectedSkill.profileId} size={20} title={`Skill submitted by ${selectedSkill.profileId}`} />
+                <code class="detail-meta-value">{selectedSkill.profileId}</code>
+              </span>
+            </div>
           </div>
 
-          <!-- Best service highlight (top-reputation Coverage by results) -->
-          {#if bestCoverage}
+          <!-- Recommended service: ranked by composite score + reputation; the
+               sole/unscored service still surfaces (composite 0). Computed via
+               the single-element {#each} so it re-derives on every render (see
+               computeRecommendedService — coverages mutate in place and no $:
+               reactive would catch it). -->
+          {#each [computeRecommendedService(selectedSkill)] as recommendedService (recommendedService?.coverage.serviceId ?? 'none')}
+            {#if recommendedService}
             <section class="best-service-card">
               <div class="best-service-eyebrow">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                 </svg>
-                Best service for this skill
+                Recommended service for this skill
               </div>
               <div class="best-service-body">
                 <div class="best-service-text">
-                  <div class="best-service-name">{bestCoverage.coverage.serviceId ? bestCoverage.coverage.serviceId.slice(0, 8) : 'Unnamed Service'}</div>
-                  {#if bestCoverage.coverage.serviceId}
-                    <code class="best-service-id">{formatServiceId(bestCoverage.coverage.serviceId)}</code>
+                  <div class="best-service-name">{recommendedService.coverage.serviceId ? recommendedService.coverage.serviceId.slice(0, 8) : 'Unnamed Service'}</div>
+                  {#if recommendedService.coverage.serviceId}
+                    <code class="best-service-id">{formatServiceId(recommendedService.coverage.serviceId)}</code>
                   {/if}
                 </div>
                 <div class="best-service-score">
-                  <span class="best-service-score-value">{bestCoverage.score}</span>
-                  <span class="best-service-score-label">composite score</span>
-                  <InfoTip title="Why this service is the best">
-                    <p><strong>Composite score</strong> — direction-signed per-column z-score, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> averaged across metrics. Highest composite wins.</p>
-                    <p><strong>Data reputation</strong> — sum of the coverage's profile reputation plus the total composite weight (benchmark + result reputations) backing this score. Higher means more reputable on-chain profiles vouched for this service.</p>
-                  </InfoTip>
+                  <span class="best-service-score-value">{recommendedService.scoreGlobal.toFixed(2)}</span>
+                  <span class="best-service-score-label">global score</span>
                   <span class="best-service-rep">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                     </svg>
-                    <span class="best-service-rep-value">{formatReputation(bestCoverage.dataReputation)}</span>
-                    <span class="best-service-rep-label">data rep</span>
+                    <span class="best-service-rep-value">{formatReputation(recommendedService.reputation)}</span>
+                    <span class="best-service-rep-label">reputation</span>
                   </span>
+                  <InfoTip title="Why this service is recommended">
+                    <p>Ranked by its <strong>global score</strong> (0–1) from the multi-criteria scoring system: <code>β · Score_Perf + (1−β) · W_S</code> with β=0.7 — 70% verified benchmark performance (confidence-weighted by the reputation of each result, its uploader and the benchmark) and 30% the service's own reputation.</p>
+                    <p>A service still shows here when it's the only one or has no benchmark results yet — it's then scored on its reputation alone — including services that solve the skill via a submitted result rather than a coverage box. Full method: see the scoring system on the <em>How it works</em> page.</p>
+                  </InfoTip>
                 </div>
               </div>
               <div class="best-service-actions">
-                {#if bestCoverage.coverage.serviceId}
-                  <RunServiceButton serviceId={bestCoverage.coverage.serviceId} large={true} label="Run best service" />
+                {#if recommendedService.coverage.serviceId}
+                  <RunServiceButton serviceId={recommendedService.coverage.serviceId} large={true} label="Run" />
                 {/if}
-                {#if looksLikeFileHash(bestCoverage.coverage.serviceId)}
-                  {#if bestServiceLoading}
-                    <div class="best-service-download best-service-download-muted">Looking up source-application…</div>
-                  {:else if bestServiceDownload?.sourceUrl}
+                {#await recommendedDownloadPromise(recommendedService.coverage.serviceId) then dl}
+                  {#if dl?.source?.urlLink}
                     <a
                       class="best-service-download"
-                      href={bestServiceDownload.sourceUrl}
+                      href={dl.source.urlLink}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -1310,21 +1569,17 @@
                       </svg>
                       Download from source-application
                     </a>
-                  {:else if bestServiceSources.length === 0}
-                    <div class="best-service-download best-service-download-muted">No source registered for this service yet.</div>
                   {/if}
-                {/if}
+                {/await}
               </div>
             </section>
-          {/if}
-
-          <!-- Skill Metadata -->
-          <SkillMetadata boxId={selectedSkill.boxId} sourceHash={selectedSkill.sourceHash || ''} />
+            {/if}
+          {/each}
 
           {#if !$demoMode && $walletConnected && !$reputation_proof}
             <section class="detail-section">
               <div class="submit-connect-card">
-                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button> before claiming coverage or publishing benchmarks.</p>
+                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button> before adding a service solution or publishing benchmarks.</p>
               </div>
             </section>
           {/if}
@@ -1344,6 +1599,17 @@
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
               </svg>
               {showCreateBenchmarkForm ? 'Cancel' : 'Create Benchmark'}
+            </button>
+            <!-- Secondary action, grouped with the CTAs but visually quieter (ghost link). -->
+            <button
+              class="open-discussion-link"
+              type="button"
+              on:click={() => selectedSkill && openForum(selectedSkill.boxId, `Skill: ${selectedSkill.name}`)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+              </svg>
+              Open discussion
             </button>
           </div>
 
@@ -1469,7 +1735,7 @@
               class:detail-tab-active={detailTab === "coverages"}
               on:click={() => detailTab = "coverages"}
             >
-              Coverages
+              Service solutions
               <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
             </button>
             <button
@@ -1482,7 +1748,7 @@
             <InfoTip title="Three views of the same skill">
               <ul>
                 <li><strong>Benchmarks</strong> — definitions of <em>how</em> performance is measured (case descriptors + performance metrics). Submit results here.</li>
-                <li><strong>Coverages</strong> — which services claim to perform the skill, and how each scores per benchmark, grouped by descriptor.</li>
+                <li><strong>Service solutions</strong> — services that implement (solve) the skill, and how each scores per benchmark, grouped by descriptor. Not to be confused with a benchmark's <em>runner</em> services.</li>
                 <li><strong>Comparative</strong> — the full service × (benchmark → metric) tensor with a single composite score.</li>
               </ul>
             </InfoTip>
@@ -1502,11 +1768,10 @@
           <!-- Coverages Tab — per-coverage per-benchmark performance -->
           {#if detailTab === "coverages"}
             <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Services Covering This Skill</h2>
-                <span class="detail-count">{selectedSkill.coverages.length}</span>
-                <InfoTip title="What is a Coverage?">
-                  <p>A <strong>Coverage</strong> is a service's on-chain claim that it can perform the skill. Each coverage is a UTXO pointing back at the Skill box.</p>
+              <div class="detail-section-header detail-section-header-bare">
+                <InfoTip title="What is a service solution?">
+                  <p>A <strong>service solution</strong> is a service that implements (solves) this skill — its on-chain claim that it can perform the skill, recorded as a Coverage UTXO pointing back at the Skill box. (A service that has submitted a Result counts too.)</p>
+                  <p>These are distinct from a benchmark's <strong>runner</strong> services, which only execute the benchmark.</p>
                   <p>Per service, results are grouped per benchmark with two layers:</p>
                   <ul>
                     <li><strong>Aggregate row</strong> — median value across every case the service ran on that benchmark.</li>
@@ -1516,23 +1781,25 @@
               </div>
               {#if selectedSkill.coverages.length === 0}
                 <div class="detail-empty">
-                  <p>No services registered yet. Be the first to cover this skill.</p>
+                  <p>No service solutions yet. Be the first to solve this skill.</p>
                 </div>
               {:else}
+                <ServiceInfoFilterBar />
                 <div class="space-y-3">
                   {#each selectedSkill.coverages as cov}
                     {@const serviceBlocks = collectServiceResults(cov.serviceId, selectedSkill)}
                     {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
+                    {#if serviceMatches(cov.serviceId, $serviceInfoRegistry, $serviceFilters)}
                     <div class="coverage-card">
                       <div class="coverage-card-header">
-                        <ProfileAvatar profileId={cov.profileId} size={18} title={`Coverage submitted by ${cov.profileId}`} />
+                        <ProfileAvatar profileId={cov.profileId} size={18} title={`Service solution submitted by ${cov.profileId}`} />
                         <code class="font-mono text-xs px-1.5 py-0.5 rounded" style="background: hsl(var(--muted) / 0.5);">{formatHash(cov.serviceId || cov.boxId)}</code>
                         <ExplorerLink boxId={cov.boxId} liveTooltip="View Coverage box on Ergo Explorer" />
                         <span class="ml-auto coverage-score">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" class="coverage-score-icon">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                           </svg>
-                          {formatReputation(compositeScore)}
+                          {formatMetricValue(compositeScore)}
                         </span>
                         <InfoTip title="Composite score" placement="bottom">
                           <p>Cross-benchmark score for this service: direction-signed z-score per metric column, weighted by <code>max(bench_rep, 1) × max(result_rep, 1)</code> and averaged.</p>
@@ -1578,7 +1845,7 @@
                                     </td>
                                   {/if}
                                   {#each block.aggregateMetrics as a}
-                                    <td class="num">{a.value !== null ? formatReputation(a.value) : '—'}</td>
+                                    <td class="num">{formatMetricValue(a.value)}</td>
                                   {/each}
                                 </tr>
                                 {#if block.descriptors.length === 0 && (expandedAllCases[allCasesKey(cov.serviceId, block.benchmark.id)] ?? false)}
@@ -1595,7 +1862,7 @@
                                           <code class="font-mono text-xs">{formatHash(c.resultId)}</code>
                                         </td>
                                         {#each c.metricsValues as v}
-                                          <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                          <td class="num">{formatMetricValue(v)}</td>
                                         {/each}
                                       </tr>
                                     {/each}
@@ -1614,7 +1881,7 @@
                                         <td><code class="font-mono text-xs">{r.caseMeta[i] ?? '—'}</code></td>
                                       {/each}
                                       {#each r.perMetric as v}
-                                        <td class="num">{v !== null ? formatReputation(v) : '—'}</td>
+                                        <td class="num">{formatMetricValue(v)}</td>
                                       {/each}
                                     </tr>
                                   {/each}
@@ -1629,6 +1896,7 @@
                         compact={true}
                         on:addSource={(event) => openFileSourceModal(event.detail)}
                       />
+                      <ServiceInfoCard serviceId={cov.serviceId || ''} compact={true} />
                       <div class="coverage-action-row mt-3">
                         <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
                         <button
@@ -1643,6 +1911,7 @@
                         </button>
                       </div>
                     </div>
+                    {/if}
                   {/each}
                 </div>
               {/if}
@@ -1652,8 +1921,7 @@
           <!-- Comparative Tab — services × benchmarks matrix (best-reputation result per cell) -->
           {#if detailTab === "compare"}
             <section class="detail-section">
-              <div class="detail-section-header">
-                <h2 class="detail-section-title">Service × Benchmark Comparison</h2>
+              <div class="detail-section-header detail-section-header-bare">
                 <InfoTip title="How the composite is computed">
                   <p>Each row is a service, each column is a <em>(benchmark → metric)</em> pair. Cells show the <strong>median</strong> across the service's case executions.</p>
                   <p><strong>Composite</strong> per service:</p>
@@ -1667,7 +1935,7 @@
               </div>
               {#if selectedSkill.coverages.length === 0 || selectedSkill.benchmarks.length === 0}
                 <div class="detail-empty">
-                  <p>Comparison requires at least one coverage and one benchmark.</p>
+                  <p>Comparison requires at least one service solution and one benchmark.</p>
                 </div>
               {:else}
                 {@const matrix = buildComparisonMatrix(selectedSkill)}
@@ -1701,10 +1969,10 @@
                             </td>
                             {#each row.cells as cell, i}
                               <td class="num" class:comp-cell-best={cell.value !== null && cell.value === matrix.columnWinners[i]}>
-                                {cell.value !== null ? formatReputation(cell.value) : '—'}
+                                {formatMetricValue(cell.value)}
                               </td>
                             {/each}
-                            <td class="num">{formatReputation(row.composite)}</td>
+                            <td class="num">{formatMetricValue(row.composite)}</td>
                           </tr>
                         {/each}
                       </tbody>
@@ -1740,19 +2008,6 @@
             </section>
           {/if}
 
-          <!-- Forum entry point — opens the single side-rail panel. -->
-          <section class="detail-section">
-            <button
-              class="dialogue-btn dialogue-btn-lg"
-              type="button"
-              on:click={() => selectedSkill && openForum(selectedSkill.boxId, `Skill: ${selectedSkill.name}`)}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-              </svg>
-              Open discussion
-            </button>
-          </section>
         </div>
       </div>
 
@@ -1761,9 +2016,6 @@
       <HeroSection />
 
       <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- How It Works -->
-        <HowItWorks />
-
         <!-- Stats Bar -->
         <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
 
@@ -1779,10 +2031,20 @@
                 All Skills
               {/if}
             </h2>
-            <p class="text-sm text-muted-foreground mt-0.5">
-              {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
-              {searchQuery ? ` matching "${searchQuery}"` : ""}
-              {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
+            <p class="text-sm text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
+              {#if galleryUnfiltered && hiddenFromListing > 0}
+                <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
+                <InfoTip title="Why fewer cards than the total?">
+                  <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
+                  <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
+                </InfoTip>
+              {:else}
+                <span>
+                  {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
+                  {searchQuery ? ` matching "${searchQuery}"` : ""}
+                  {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
+                </span>
+              {/if}
             </p>
           </div>
           <div class="flex items-center gap-3">
@@ -1792,6 +2054,39 @@
               Refresh
             </button>
           </div>
+        </div>
+
+        <!-- Gallery search + min-reputation filter (moved out of the header). -->
+        <div class="gallery-controls">
+          <div class="gallery-search">
+            <svg class="gallery-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              bind:value={searchQuery}
+              placeholder="Search skills, tags, domains..."
+              class="search-input"
+              aria-label="Search skills"
+            />
+            {#if searchQuery}
+              <button class="gallery-search-clear" on:click={() => (searchQuery = "")} aria-label="Clear search" title="Clear search">✕</button>
+            {/if}
+          </div>
+          <label class="gallery-minrep">
+            <span class="gallery-minrep-label">Min reputation</span>
+            <span class="gallery-minrep-field">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                bind:value={minReputation}
+                class="gallery-minrep-input"
+                aria-label="Minimum reputation in ERGs"
+              />
+              <span class="gallery-minrep-suffix">ERGs</span>
+            </span>
+          </label>
         </div>
 
         {#if loading}
@@ -1822,8 +2117,8 @@
               </svg>
             </div>
             <p class="text-lg font-semibold">No skills found</p>
-            {#if searchQuery || activeCategory !== "all"}
-              <p class="text-sm text-muted-foreground mt-1">Try a different search term or category.</p>
+            {#if searchQuery || activeCategory !== "all" || minReputation > 0}
+              <p class="text-sm text-muted-foreground mt-1">Try a different search term, category, or lower the minimum reputation.</p>
             {:else}
               <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
             {/if}
@@ -1855,13 +2150,18 @@
     <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
-        <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        {#if returnToSkill}
+          <!-- Return to the skill detail this Submit view was opened from
+               ("Modify Skill" → back navigation, matching the profile view). -->
+          <button class="back-button" on:click={backToSkillFromSubmit}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
-          </div>
-          <h2 class="text-2xl font-extrabold mb-1">Submit a Skill</h2>
+            Back to {returnToSkill.name}
+          </button>
+        {/if}
+        <div class="submit-header">
+          <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
           <p class="text-muted-foreground text-sm">
             Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
           </p>
@@ -1964,14 +2264,14 @@
     <div class="container mx-auto px-8 py-8">
       <div class="w-full">
         <div class="submit-header">
-          <div class="submit-header-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-            </svg>
+          <div class="submit-header-titlerow">
+            <div class="submit-header-avatar">
+              <ProfileAvatar profileId={$reputation_proof?.token_id} size={48} clickable={false} title="Your profile" />
+            </div>
+            <h2 class="text-2xl md:text-3xl font-extrabold">Reputation Profile</h2>
           </div>
-          <h2 class="text-2xl font-extrabold mb-1">Reputation Profile</h2>
           <p class="text-muted-foreground text-sm">
-            Your on-chain reputation profile. Required before publishing skills, claiming coverage, or submitting benchmarks.
+            Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
           </p>
         </div>
 
@@ -2012,12 +2312,25 @@
             {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
           </div>
         {:else}
-          <ProfileDetailsCard proof={$reputation_proof} />
-          {#if userProfiles.length > 1}
-            <p class="text-xs text-muted-foreground mb-2">This wallet holds {userProfiles.length} profiles; showing the primary one.</p>
-          {/if}
+          <ProfileDetailsCard
+            proof={$reputation_proof}
+            profiles={userProfiles}
+            activeProfileId={$reputation_proof?.token_id}
+            skills={skills}
+            on:burn={openBurnModal}
+            on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
+            on:createProfile={openNewProfileModal}
+            on:selectProfile={(e) => handleSelectProfile(e.detail)}
+            on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
+          />
         {/if}
       </div>
+    </div>
+
+  {:else if activeTab === "howitworks"}
+    <!-- ── How it works ─────────────────────────────────────────────────────── -->
+    <div class="container mx-auto px-8 py-8">
+      <HowItWorks />
     </div>
 
   {/if}
@@ -2042,7 +2355,7 @@
 {#if showFileSourceModal}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="file-source-modal-backdrop" on:click={() => showFileSourceModal = false}>
+  <div class="file-source-modal-backdrop" use:portal on:click={() => showFileSourceModal = false}>
     <div class="file-source-modal-content" on:click|stopPropagation>
       <div class="file-source-modal-header">
         <h3 class="text-lg font-semibold">Register Download Source</h3>
@@ -2055,6 +2368,48 @@
         onSourceAdded={handleFileSourceAdded}
         hash={writable(modalFileHash)}
       />
+    </div>
+  </div>
+{/if}
+
+<!-- ── Burn More ERG modal ─────────────────────────────────────────────── -->
+{#if showBurnModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" use:portal on:click={() => (showBurnModal = false)}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Burn ERG to your profile</h3>
+        <button class="file-source-modal-close" on:click={() => (showBurnModal = false)}>✕</button>
+      </div>
+      <p class="text-sm text-muted-foreground mb-4">Sacrificed ERG is permanently burned into your reputation profile, raising its reputation. This cannot be undone.</p>
+      <div class="form-group">
+        <label class="form-label" for="burn-erg">ERG to burn</label>
+        <input id="burn-erg" class="form-input" type="number" min="0" step="0.001" placeholder="0.000" bind:value={burnErgAmount} />
+      </div>
+      <button class="submit-btn mt-4" type="button" disabled={burnSubmitting} on:click={submitBurn}>
+        {#if burnSubmitting}<div class="submit-spinner"></div>Burning…{:else}Burn ERG{/if}
+      </button>
+    </div>
+  </div>
+{/if}
+
+<!-- ── New reputation profile modal ────────────────────────────────────── -->
+{#if showNewProfileModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="file-source-modal-backdrop" use:portal on:click={() => (showNewProfileModal = false)}>
+    <div class="file-source-modal-content" on:click|stopPropagation>
+      <div class="file-source-modal-header">
+        <h3 class="text-lg font-semibold">Create a new profile</h3>
+        <button class="file-source-modal-close" on:click={() => (showNewProfileModal = false)}>✕</button>
+      </div>
+      <p class="text-sm text-muted-foreground mb-4">Mint an additional reputation profile (a new reputation token). You can optionally burn ERG into it at creation to seed its reputation.</p>
+      <div class="form-group">
+        <label class="form-label" for="new-profile-sacrifice">Optional ERG sacrifice</label>
+        <input id="new-profile-sacrifice" class="form-input" type="number" min="0" step="0.001" placeholder="0" bind:value={newProfileSacrifice} />
+      </div>
+      <button class="submit-btn mt-4" type="button" disabled={newProfileSubmitting} on:click={submitNewProfile}>
+        {#if newProfileSubmitting}<div class="submit-spinner"></div>Creating…{:else}Create profile{/if}
+      </button>
     </div>
   </div>
 {/if}
@@ -2097,9 +2452,7 @@
   }
 
   .navbar-tabs {
-    @apply flex items-center justify-center gap-2 w-full;
-    border-top: 1px solid hsl(var(--border) / 0.6);
-    padding-top: 0.5rem;
+    @apply flex items-center justify-center gap-2 flex-1;
   }
 
   .logo-container {
@@ -2139,8 +2492,9 @@
   }
 
   /* ── Tabs (inside island header) ────────────────────────────────────── */
+  /* Text-only labels (no icons) at a larger size for prominence. */
   .tab-btn {
-    @apply flex items-center gap-2 py-3 px-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
+    @apply flex items-center py-3 px-4 text-base font-semibold border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
   }
   .tab-btn.active {
     border-bottom-color: hsl(var(--foreground));
@@ -2149,6 +2503,40 @@
   .tab-btn:hover:not(.active) {
     @apply text-foreground;
     background: hsl(var(--muted) / 0.3);
+  }
+
+  /* ── Mobile header: stack logo + wallet on row 1, tabs scroll on row 2 ──────
+     On phones the single-row island overflowed its right edge (logo + 4 tabs +
+     wallet + theme don't fit at ~390px). Wrap the tabs to their own full-width
+     row and let them scroll horizontally instead of pushing past the island. */
+  @media (max-width: 640px) {
+    .navbar-content {
+      @apply px-4 py-3 gap-2;
+      border-radius: 1rem;
+    }
+    .navbar-top {
+      @apply flex-wrap gap-2;
+    }
+    .logo-text {
+      @apply text-lg;
+    }
+    .navbar-tabs {
+      order: 3;
+      flex: 1 0 100%;
+      justify-content: flex-start;
+      gap: 0.25rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .navbar-tabs::-webkit-scrollbar {
+      display: none;
+    }
+    .tab-btn {
+      @apply py-2 px-2.5 text-sm;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
   }
 
   /* ── Main content ───────────────────────────────────────────────────── */
@@ -2166,6 +2554,52 @@
 
   .gallery-title {
     @apply text-xl font-bold;
+  }
+
+  /* ── Gallery search + min-reputation controls ───────────────────────── */
+  .gallery-controls {
+    @apply flex items-center gap-3 mb-6 flex-wrap;
+  }
+  .gallery-search {
+    @apply relative flex-1;
+    min-width: 220px;
+  }
+  .gallery-search-icon {
+    @apply absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none;
+  }
+  .gallery-search .search-input {
+    @apply pr-9;
+  }
+  .gallery-search-clear {
+    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs leading-none px-1.5 py-1 rounded;
+  }
+  .gallery-search-clear:hover {
+    @apply text-foreground;
+    background: hsl(var(--muted) / 0.5);
+  }
+  .gallery-minrep {
+    @apply flex items-center gap-2 text-sm text-muted-foreground;
+  }
+  .gallery-minrep-label {
+    @apply whitespace-nowrap;
+  }
+  .gallery-minrep-field {
+    @apply relative inline-flex items-center;
+  }
+  .gallery-minrep-input {
+    @apply w-28 pl-2.5 pr-12 py-2 rounded-lg text-sm;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .gallery-minrep-input:focus {
+    @apply outline-none;
+    background: hsl(var(--background));
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
+  }
+  .gallery-minrep-suffix {
+    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none;
   }
 
   .refresh-btn {
@@ -2237,14 +2671,19 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .fork-skill-btn {
+  .detail-header-actions {
+    @apply inline-flex items-center gap-2;
+  }
+  .fork-skill-btn,
+  .share-skill-btn {
     @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200;
     background: hsl(var(--muted) / 0.5);
     border: 1px solid hsl(var(--border));
     color: hsl(var(--muted-foreground));
     cursor: pointer;
   }
-  .fork-skill-btn:hover {
+  .fork-skill-btn:hover,
+  .share-skill-btn:hover {
     background: hsl(var(--muted));
     color: hsl(var(--foreground));
     border-color: hsl(var(--foreground) / 0.2);
@@ -2268,6 +2707,70 @@
     @apply px-3 py-1 rounded-lg text-xs font-medium;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
+  }
+
+  /* On-chain identifiers folded into the main card (replaces the old box). */
+  .detail-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1.5rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    font-size: 0.75rem;
+  }
+
+  .detail-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  /* Creator sits on its own row at the bottom of the meta block. */
+  .detail-meta-creator {
+    flex-basis: 100%;
+  }
+
+  /* Category glyph next to the skill title (replaces the old profile avatar). */
+  .detail-category-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .detail-meta-label {
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .detail-meta-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    color: hsl(var(--foreground));
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-meta-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.25rem;
+    border: none;
+    background: none;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .detail-meta-copy:hover {
+    color: hsl(var(--foreground));
   }
 
   /* ── Detail sub-tabs ─────────────────────────────────────────────── */
@@ -2334,10 +2837,26 @@
     color: hsl(var(--muted-foreground));
   }
 
+  /* Tab context with no heading: just a discreet InfoTip, right-aligned,
+     no heavy divider — the sub-tab already names the section. */
+  .detail-section-header-bare {
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
   .detail-empty {
     @apply rounded-lg p-6 text-center text-sm text-muted-foreground;
     background: hsl(var(--muted) / 0.3);
     border: 1px dashed hsl(var(--border));
+  }
+
+  .profile-readonly-badge {
+    @apply ml-auto inline-flex items-center h-6 px-2.5 rounded-full text-xs font-semibold uppercase tracking-wide;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
   }
 
   .detail-item {
@@ -2478,9 +2997,14 @@
     @apply text-center mb-8;
   }
 
-  .submit-header-icon {
-    @apply inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 text-white;
-    background: hsl(var(--foreground));
+  /* Profile page: identicon avatar sits laterally next to the title (centered
+     as a group), not stacked above it. */
+  .submit-header-titlerow {
+    @apply flex items-center justify-center gap-3 mb-2;
+  }
+
+  .submit-header-avatar {
+    @apply inline-flex items-center justify-center shrink-0;
   }
 
   .submit-connect-card {
@@ -2611,12 +3135,18 @@
   /* ── Best Service Highlight ────────────────────────────────────────── */
   .best-service-card {
     @apply mb-6 p-4 rounded-lg border;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--primary) / 0.06),
-      hsl(var(--primary) / 0.02) 60%
-    );
-    border-color: hsl(var(--primary) / 0.25);
+    /* Sit on the solid card surface, then layer a clearer primary tint on top so
+       the block reads as a distinct, recommended card — the old 0.06/0.02 wash
+       was nearly invisible against the page background in light mode. */
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--primary) / 0.16),
+        hsl(var(--primary) / 0.06) 60%
+      ),
+      hsl(var(--card));
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 1px 3px hsl(var(--primary) / 0.12);
   }
   .best-service-eyebrow {
     @apply flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-2;
@@ -2651,9 +3181,7 @@
     @apply text-[0.65rem] uppercase tracking-wider mt-0.5;
     color: hsl(var(--muted-foreground));
   }
-  /* Data-reputation badge under the composite score. Visually subordinate
-     (smaller text, dimmer) — it's a "how much should I trust this number"
-     annotation, not a number to compare across services on its own. */
+  /* Reputation chip under the composite score — subordinate annotation. */
   .best-service-rep {
     @apply inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded;
     background: hsl(var(--muted) / 0.4);
@@ -2678,44 +3206,40 @@
   .best-service-download:hover {
     opacity: 0.9;
   }
-  .best-service-download-muted {
-    background: transparent;
-    color: hsl(var(--muted-foreground));
-    padding: 0;
-    font-size: 0.75rem;
-    font-weight: 400;
-  }
 
-  /* ── Duplicate Skill Notice ────────────────────────────────────────── */
-  .duplicate-notice {
-    margin-bottom: 0.75rem;
-    border-radius: 0.375rem;
-    background: hsl(40 90% 50% / 0.08);
-    border: 1px solid hsl(40 90% 50% / 0.2);
-    font-size: 0.75rem;
-    color: hsl(var(--muted-foreground));
-    width: fit-content;
-    max-width: 100%;
+  /* ── Current submissions for this skill (siblings) ─────────────────── */
+  .submissions-block {
+    margin-bottom: 0.875rem;
   }
-  .duplicate-notice-summary {
+  .submissions-head {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.75rem;
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
+    gap: 0.375rem;
+    margin-bottom: 0.5rem;
   }
-  .duplicate-notice-summary::-webkit-details-marker {
-    display: none;
+  .submissions-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
   }
-  .duplicate-notice-caret {
-    transition: transform 0.15s ease;
-    opacity: 0.6;
+  .submissions-empty {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px dashed hsl(var(--border));
   }
-  .duplicate-notice[open] .duplicate-notice-caret {
-    transform: rotate(180deg);
+  /* The sibling list reuses .duplicate-notice-list rows but lives outside the
+     old amber <details> box now, so drop its inner divider/padding. */
+  .submissions-block .duplicate-notice-list {
+    padding: 0;
+    border-top: none;
+    gap: 0.25rem;
   }
+
+  /* ── Sibling submission rows (shared by the submissions block) ───────── */
   .duplicate-notice-list {
     list-style: none;
     margin: 0;
@@ -2803,6 +3327,46 @@
     color: hsl(var(--muted-foreground));
   }
 
+  /* ── Mobile: sibling submissions become cards, not dense single-line rows ───
+     At phone widths the avatar + name + domain + rep + hash crammed onto one
+     clipped line. Wrap each into a bordered card: name on its own line next to
+     the avatar, domain/rep chips below, box hash on the final line. */
+  @media (max-width: 640px) {
+    .submissions-block .duplicate-notice-list {
+      gap: 0.5rem;
+    }
+    .duplicate-notice-row {
+      border: 1px solid hsl(var(--border));
+      border-radius: 0.5rem;
+      background: hsl(var(--muted) / 0.25);
+      align-items: stretch;
+      gap: 0;
+    }
+    .duplicate-notice-item {
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.375rem 0.5rem;
+      padding: 0.625rem 0.75rem;
+      font-size: 0.8125rem;
+    }
+    .duplicate-notice-item-name {
+      flex: 1 1 auto;
+      min-width: calc(100% - 1.75rem);
+      font-size: 0.8125rem;
+    }
+    .duplicate-notice-item-rep {
+      margin-left: 0;
+    }
+    .duplicate-notice-item-box {
+      flex: 1 1 100%;
+      word-break: break-all;
+    }
+    .duplicate-notice-discuss {
+      align-self: center;
+      margin-right: 0.375rem;
+    }
+  }
+
   /* ── Source Details (collapsible FileCard wrapper) ──────────────────── */
   .source-details {
     border: 1px solid hsl(var(--border));
@@ -2871,7 +3435,8 @@
   .file-source-modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    /* Above the sticky navbar; paired with use:portal so it covers the frame. */
+    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2921,12 +3486,47 @@
     background: hsl(var(--muted) / 0.5);
   }
 
-  /* ── Action row: Claim Coverage + Create Benchmark ─────────────────── */
+  /* ── Skill description: roomy, readable, WCAG-AA contrast ──────────── */
+  .skill-detail-prose {
+    width: 100%;
+    max-width: 84ch;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+    line-height: 1.75;
+    color: hsl(var(--foreground) / 0.85);
+    white-space: pre-wrap;
+  }
+
+  /* ── Action row: Claim Coverage + Create Benchmark + Open discussion ── */
   .action-row {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.75rem;
     margin-bottom: 1.5rem;
+  }
+  /* Secondary, quiet ghost link — grouped with the CTAs but not competing. */
+  .open-discussion-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .open-discussion-link:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+  }
+  @media (max-width: 560px) {
+    .open-discussion-link { margin-left: 0; }
   }
 
   .create-benchmark-btn {
@@ -3062,30 +3662,6 @@
   }
   .aggregate-label-row-divider {
     font-style: normal;
-  }
-  .profile-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-  }
-  .profile-summary-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.5rem;
-    background: hsl(var(--muted) / 0.4);
-  }
-  .profile-summary-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: hsl(var(--muted-foreground));
-  }
-  .profile-summary-value {
-    font-weight: 700;
-    font-size: 1.5rem;
   }
   .aggregate-row-clickable {
     cursor: pointer;

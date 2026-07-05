@@ -12,9 +12,10 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
-import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults } from './api';
+import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
 import { ApiError } from './types';
 import { create_profile, create_opinion } from 'reputation-system';
 import type { RPBox } from 'source-application';
@@ -22,7 +23,9 @@ import {
   SKILL_TYPE_ID,
   COVERAGE_TYPE_ID,
   BENCHMARK_TYPE_ID,
-  RESULT_TYPE_ID
+  RESULT_TYPE_ID,
+  SERVICE_DATA_TYPE_ID,
+  SERVICE_METADATA_TYPE_ID
 } from './api';
 
 const LOCKED: boolean = true; // For now, we lock the boxes we create. This can be changed later if needed. Esto evita que los boxes puedan actualizarse, pues cada entidad puede ser referenciada por otra, y una actualización de una entidad modificaría su propio identificador (id de la caja), ademas de que no queremos que las entidades puedan ser modificadas una vez creadas, para mantener la integridad de la reputación.
@@ -40,11 +43,52 @@ function getMainBox(inputMainBox: unknown, entityName: string): RPBox {
 
 class ErgoDataProvider implements DataProvider {
   async loadSkills(): Promise<Skill[]> {
-    return apiLoadSkills();
+    // `apiLoadSkills()` returns skills with EMPTY coverages/benchmarks — the
+    // explorer query only yields the skill boxes themselves. mockDb, by
+    // contrast, ships fully-populated skills (getDemoSkills). To reach parity
+    // we hydrate each skill's direct relations (coverages, benchmarks, and the
+    // results under each benchmark) before applying inheritance — otherwise
+    // applySkillInheritance has nothing to merge and the UI sees empty skills.
+    const skills = await apiLoadSkills();
+
+    await Promise.all(
+      skills.map(async (skill) => {
+        const [coverages, benchmarks] = await Promise.all([
+          apiLoadCoverages(skill.boxId),
+          apiLoadBenchmarks(skill.boxId)
+        ]);
+
+        await Promise.all(
+          benchmarks.map(async (benchmark) => {
+            const [results, benchmarkCoverages] = await Promise.all([
+              apiLoadResults(benchmark.id),
+              apiLoadBenchmarkCoverages(benchmark.id)
+            ]);
+            benchmark.results = results;
+            benchmark.coverages = benchmarkCoverages;
+          })
+        );
+
+        skill.coverages = coverages;
+        skill.benchmarks = benchmarks;
+        skill.resultCount = benchmarks.reduce(
+          (sum, benchmark) => sum + benchmark.results.length,
+          0
+        );
+      })
+    );
+
+    // Now that direct relations are loaded, merge inherited coverages/benchmarks
+    // from extended skills (same logic mockDb relies on).
+    return applySkillInheritance(skills);
   }
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     return apiLoadCoverages(skillBoxId);
+  }
+
+  async loadBenchmarkCoverages(benchmarkId: string): Promise<Coverage[]> {
+    return apiLoadBenchmarkCoverages(benchmarkId);
   }
 
   async loadBenchmarks(skillBoxId: string): Promise<Benchmark[]> {
@@ -59,7 +103,7 @@ class ErgoDataProvider implements DataProvider {
     // Nota: create_opinion suele requerir un tokenAmount (usamos reputationSupply o 1 por defecto)
     // y, opcionalmente, un objeto al que hace referencia. Si es una habilidad raíz, se suele apuntar a sí misma o usar un ID vacío.
     const txId = await create_opinion(
-      'https://ergoplatform.com',
+      'https://api.ergoplatform.com',
       input.tokenAmount ?? 1,
       SKILL_TYPE_ID,
       '', // ID del objetivo. Una skill no apunta a nada en concreto.
@@ -86,14 +130,20 @@ class ErgoDataProvider implements DataProvider {
   }
 
   async createCoverage(input: CoverageCreationInput): Promise<string> {
+    // A coverage may target either the skill (default) or one of its
+    // benchmarks. When `benchmarkId` is set, the opinion points at the
+    // benchmark box and records the benchmark id in its payload.
+    const targetBenchmark = !!input.benchmarkId;
+    const objectPointer = targetBenchmark ? input.benchmarkId! : input.skillBoxId;
     const txId = await create_opinion(
       'https://api.ergoplatform.com',
       input.tokenAmount ?? 1,
       COVERAGE_TYPE_ID,
-      input.skillBoxId,
+      objectPointer,
       true,
       {
         skill_box_id: input.skillBoxId,
+        benchmark_id: input.benchmarkId ?? null,
         service_id: input.serviceId ?? null
       },
       LOCKED,
@@ -118,8 +168,18 @@ class ErgoDataProvider implements DataProvider {
         skill_box_id: input.skillBoxId,
         name: input.name,
         description: input.description,
-        case_descriptors: input.caseDescriptors,
-        performance_metrics: input.performanceMetrics,
+        case_descriptors: input.caseDescriptors.map((d) => ({
+          name: d.name,
+          description: d.description
+        })),
+        // Emit the canonical snake_case `higher_is_better` declared by the
+        // benchmark Type-NFT schema so external tooling (and our own reader)
+        // resolve the metric direction instead of seeing `undefined`.
+        performance_metrics: input.performanceMetrics.map((m) => ({
+          name: m.name,
+          description: m.description,
+          higher_is_better: m.higherIsBetter
+        })),
         source_hash: input.sourceHash ?? null
       },
       LOCKED,
@@ -160,6 +220,46 @@ class ErgoDataProvider implements DataProvider {
 
     if (!txId) {
       throw new ApiError('Failed to create result on-chain.', 'CREATE_RESULT_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createServiceData(input: ServiceInfoCreationInput): Promise<string> {
+    // R5 = service id; R9 = the spec fragment (object) OR a blake2b hash string
+    // pointing at the content in `sources`. create_opinion accepts either.
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      SERVICE_DATA_TYPE_ID,
+      input.serviceId,
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'service data')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create service data on-chain.', 'CREATE_SERVICE_DATA_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createServiceMetadata(input: ServiceInfoCreationInput): Promise<string> {
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      SERVICE_METADATA_TYPE_ID,
+      input.serviceId,
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'service metadata')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create service metadata on-chain.', 'CREATE_SERVICE_METADATA_FAILED');
     }
 
     return txId;

@@ -16,14 +16,30 @@ The server speaks MCP over stdio. Point any MCP-aware client at
 
 Optional env: `CELAUT_EXPLORER_API` (defaults to `https://api.ergoplatform.com`).
 
-## Data source
+## Architecture — one data layer, no duplication
 
-All tools query the Ergo Explorer via `searchBoxes` from the `reputation-system`
-package and parse the same on-chain shape the web app uses (`src/lib/api.ts`).
+`mcp/server.mjs` is a **thin wrapper**. It contains only the MCP tool registry
+and handlers; it implements no chain logic of its own. Every `load_*` function,
+the Type NFT ids, the Explorer box search, and the R9 parsers live once in the
+shared, framework-agnostic core:
 
-> Note: the Type NFT IDs in `mcp/server.mjs` mirror the placeholder values in
-> `src/lib/api.ts`. Until real Type NFTs are minted, these queries return
-> empty arrays — the same behaviour as the web app's live mode.
+```
+src/lib/registry/core.mjs   ← single source of truth (plain ESM, no Svelte/Vite)
+├─ imported by  src/lib/api.ts      (the web app re-exports the Type NFT ids)
+└─ imported by  mcp/server.mjs      (the MCP server maps load_* → tools)
+```
+
+Because the core is dependency-free ESM (only `@fleet-sdk/serializer` + global
+`fetch`), it runs unchanged under both Vite and bare Node. The server therefore
+**cannot drift** from the app: the load functions and ids are literally the same
+module, not a hand-copied mirror.
+
+> Note: the Type NFT ids are placeholders until real Type NFTs are minted, so
+> these queries return empty arrays — the same behaviour as the web app's live
+> mode. The web app's *transport* differs (it uses `reputation-system`'s
+> `searchBoxes` in the browser); the core inlines the equivalent register search
+> so it works under Node. Everything else — ids, parsing, `load_*` shapes — is
+> shared.
 
 ## Tools
 
@@ -37,7 +53,10 @@ List every registered Skill (capability marker).
 
 ### `load_coverages`
 
-Coverages for one Skill (services that claim to address it).
+Coverages for one Skill — the services that address it. Includes both **direct**
+coverages (Coverage boxes pointing at the skill) and services that **indirectly**
+cover it by appearing as the `service_id` of a Result under one of the skill's
+Benchmarks. The list is deduped by `serviceId` (direct coverages win).
 
 - **Args:** `{ skillBoxId: string }` (hex box id).
 - **Returns:** array of `{ boxId, profileId, serviceId? }`.
