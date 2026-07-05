@@ -37,7 +37,6 @@
 
   let kind: 'data' | 'metadata' = 'data';
   let payload = '';
-  let tokenAmount = 1;
   let submitting = false;
   let submitTx: string | null = null;
   let error: string | null = null;
@@ -86,7 +85,7 @@
       const input = {
         serviceId: serviceId.trim(),
         content,
-        tokenAmount: Number(tokenAmount) || 1,
+        tokenAmount: 1,
         mainBox: currentMainBox()
       };
       const txId = kind === 'data'
@@ -115,9 +114,6 @@
     <button class:active={kind === 'metadata'} type="button" on:click={() => (kind = 'metadata')}>Service Metadata</button>
   </div>
 
-  <label class="sif-label" for="sif-service-id">Service id</label>
-  <input id="sif-service-id" class="sif-input" bind:value={serviceId} placeholder="service content hash" />
-
   <label class="sif-label" for="sif-payload">
     R9 payload — JSON object{kind === 'data' ? ' (container / api / network)' : ' (any JSON)'} or a blake2b256 hash
   </label>
@@ -125,9 +121,6 @@
   {#if isHashMode}
     <p class="sif-hint">Detected a hash → published in <strong>source mode</strong> (content resolved from sources).</p>
   {/if}
-
-  <label class="sif-label" for="sif-amount">Reputation tokens</label>
-  <input id="sif-amount" class="sif-input sif-amount" type="number" min="1" bind:value={tokenAmount} />
 
   {#if error}<p class="sif-error">{error}</p>{/if}
   {#if submitTx}<p class="sif-ok">Published — tx <code>{submitTx.slice(0, 10)}…</code></p>{/if}
@@ -189,9 +182,6 @@
   .sif-textarea {
     font-family: ui-monospace, monospace;
     resize: vertical;
-  }
-  .sif-amount {
-    max-width: 8rem;
   }
   .sif-hint {
     font-size: 0.75rem;
