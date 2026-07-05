@@ -12,7 +12,8 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
 import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
 import { ApiError } from './types';
@@ -22,7 +23,9 @@ import {
   SKILL_TYPE_ID,
   COVERAGE_TYPE_ID,
   BENCHMARK_TYPE_ID,
-  RESULT_TYPE_ID
+  RESULT_TYPE_ID,
+  SERVICE_DATA_TYPE_ID,
+  SERVICE_METADATA_TYPE_ID
 } from './api';
 
 const LOCKED: boolean = true; // For now, we lock the boxes we create. This can be changed later if needed. Esto evita que los boxes puedan actualizarse, pues cada entidad puede ser referenciada por otra, y una actualización de una entidad modificaría su propio identificador (id de la caja), ademas de que no queremos que las entidades puedan ser modificadas una vez creadas, para mantener la integridad de la reputación.
@@ -217,6 +220,46 @@ class ErgoDataProvider implements DataProvider {
 
     if (!txId) {
       throw new ApiError('Failed to create result on-chain.', 'CREATE_RESULT_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createServiceData(input: ServiceInfoCreationInput): Promise<string> {
+    // R5 = service id; R9 = the spec fragment (object) OR a blake2b hash string
+    // pointing at the content in `sources`. create_opinion accepts either.
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      SERVICE_DATA_TYPE_ID,
+      input.serviceId,
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'service data')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create service data on-chain.', 'CREATE_SERVICE_DATA_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createServiceMetadata(input: ServiceInfoCreationInput): Promise<string> {
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      SERVICE_METADATA_TYPE_ID,
+      input.serviceId,
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'service metadata')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create service metadata on-chain.', 'CREATE_SERVICE_METADATA_FAILED');
     }
 
     return txId;

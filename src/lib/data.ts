@@ -16,7 +16,8 @@ import type {
   SkillCreationInput,
   CoverageCreationInput,
   BenchmarkCreationInput,
-  ResultCreationInput
+  ResultCreationInput,
+  ServiceInfoCreationInput
 } from './types';
 
 /** Get the currently active data provider based on demo mode. */
@@ -67,4 +68,12 @@ export async function createBenchmark(input: BenchmarkCreationInput): Promise<st
 /** Create a new result opinion. */
 export async function createResult(input: ResultCreationInput): Promise<string> {
   return getProvider().createResult(input);
+}
+
+export async function createServiceData(input: ServiceInfoCreationInput): Promise<string> {
+  return getProvider().createServiceData(input);
+}
+
+export async function createServiceMetadata(input: ServiceInfoCreationInput): Promise<string> {
+  return getProvider().createServiceMetadata(input);
 }

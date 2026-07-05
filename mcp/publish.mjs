@@ -34,6 +34,8 @@ import {
   COVERAGE_TYPE_ID,
   BENCHMARK_TYPE_ID,
   RESULT_TYPE_ID,
+  SERVICE_DATA_TYPE_ID,
+  SERVICE_METADATA_TYPE_ID,
   DEFAULT_EXPLORER_API
 } from '../src/lib/registry/core.mjs';
 
@@ -203,6 +205,29 @@ export async function createResult(input) {
       timestamp: input.timestamp ?? null,
       source_hash: input.sourceHash ?? null
     },
+    input.mainBoxId,
+    input.tokenAmount
+  );
+}
+
+// Service info: R5 = service id, R9 = the spec fragment (object) OR a blake2b
+// hash string pointing at the content in `sources`. `content` is passed through
+// verbatim so callers can publish either mode.
+export async function createServiceData(input) {
+  return publishOpinion(
+    SERVICE_DATA_TYPE_ID,
+    input.serviceId,
+    input.content,
+    input.mainBoxId,
+    input.tokenAmount
+  );
+}
+
+export async function createServiceMetadata(input) {
+  return publishOpinion(
+    SERVICE_METADATA_TYPE_ID,
+    input.serviceId,
+    input.content,
     input.mainBoxId,
     input.tokenAmount
   );

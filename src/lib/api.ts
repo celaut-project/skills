@@ -4,7 +4,8 @@
  */
 
 import { hexToUtf8 } from './ergo/envs';
-import type { Skill, Coverage, Benchmark, Result, Descriptor, PerformanceMetric } from './types';
+import { fetchFileSourcesByHash } from 'source-application';
+import type { Skill, Coverage, Benchmark, Result, Descriptor, PerformanceMetric, ServiceData, ServiceMetadata } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
 import {
   searchBoxes,
@@ -32,9 +33,22 @@ import {
   SKILL_TYPE_ID,
   BENCHMARK_TYPE_ID,
   RESULT_TYPE_ID,
-  COVERAGE_TYPE_ID
+  COVERAGE_TYPE_ID,
+  SERVICE_DATA_TYPE_ID,
+  SERVICE_METADATA_TYPE_ID,
+  looksLikeBlake2bHash,
+  deriveArchitecture
 } from './registry/core.mjs';
-export { SKILL_TYPE_ID, BENCHMARK_TYPE_ID, RESULT_TYPE_ID, COVERAGE_TYPE_ID };
+export {
+  SKILL_TYPE_ID,
+  BENCHMARK_TYPE_ID,
+  RESULT_TYPE_ID,
+  COVERAGE_TYPE_ID,
+  SERVICE_DATA_TYPE_ID,
+  SERVICE_METADATA_TYPE_ID,
+  looksLikeBlake2bHash,
+  deriveArchitecture
+};
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -641,6 +655,110 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
     .filter(Boolean) as Result[];
   await hydrateReputations(results);
   return results;
+}
+
+// ── Service info (metadata + data) ─────────────────────────────────────────────
+//
+// Both types are opinion boxes keyed by service id (R5). Their R9 carries a
+// fragment of the service's celaut specification, in one of two modes:
+//   - inline : R9 is a JSON spec fragment carried directly on-chain.
+//   - source : R9 is a bare blake2b256 hash; the full fragment lives off-chain in
+//     `sources`, resolved via the source-application registry (looksLikeBlake2bHash
+//     is how we detect this mode — simply "the payload is a hash string").
+// This lets the skills UI show a service's api/network/architecture/name without
+// downloading the whole service.
+
+/** Decode a Service* box R9 into `{ mode, sourceHash?, content }`. */
+function parseServiceInfoBox(box: any): { mode: 'inline' | 'source'; sourceHash?: string; content: any } {
+  const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+  const decoded = (hexToUtf8(rendered) || '').trim();
+  if (looksLikeBlake2bHash(decoded)) return { mode: 'source', sourceHash: decoded, content: {} };
+  let content: any = {};
+  try {
+    content = decoded ? JSON.parse(decoded) : {};
+  } catch {
+    content = {};
+  }
+  if (typeof content === 'string' && looksLikeBlake2bHash(content)) {
+    return { mode: 'source', sourceHash: content.trim(), content: {} };
+  }
+  return { mode: 'inline', sourceHash: undefined, content: content && typeof content === 'object' ? content : {} };
+}
+
+/** Load the functional spec (architecture / api / network) for a service id. */
+export async function loadServiceData(serviceId: string): Promise<ServiceData[]> {
+  if (!isHexId(SERVICE_DATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_DATA_TYPE_ID, serviceId);
+  const items = boxes
+    .map((box: any) => {
+      try {
+        const info = parseServiceInfoBox(box);
+        const c = info.content;
+        return {
+          boxId: box.boxId,
+          profileId: deriveProfileId(box, c, box.boxId),
+          serviceId,
+          mode: info.mode,
+          sourceHash: info.sourceHash,
+          content: c,
+          container: c.container && typeof c.container === 'object' ? c.container : undefined,
+          api: c.api,
+          network: c.network,
+          architecture: deriveArchitecture(c),
+          reputation: 0
+        } as ServiceData;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as ServiceData[];
+  await hydrateReputations(items);
+  return items;
+}
+
+/** Load the descriptive metadata (name / description / tags) for a service id. */
+export async function loadServiceMetadata(serviceId: string): Promise<ServiceMetadata[]> {
+  if (!isHexId(SERVICE_METADATA_TYPE_ID) || !isHexId(serviceId)) return [];
+  const boxes = await collectBoxes(SERVICE_METADATA_TYPE_ID, serviceId);
+  const items = boxes
+    .map((box: any) => {
+      try {
+        const info = parseServiceInfoBox(box);
+        const c = info.content;
+        return {
+          boxId: box.boxId,
+          profileId: deriveProfileId(box, c, box.boxId),
+          serviceId,
+          mode: info.mode,
+          sourceHash: info.sourceHash,
+          content: c,
+          name: typeof c.name === 'string' ? c.name : undefined,
+          description: typeof c.description === 'string' ? c.description : undefined,
+          tags: Array.isArray(c.tags) ? c.tags : undefined,
+          reputation: 0
+        } as ServiceMetadata;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as ServiceMetadata[];
+  await hydrateReputations(items);
+  return items;
+}
+
+/**
+ * Resolve the off-chain content a `source`-mode Service* box points to (its R9
+ * blake2b256 hash) by looking the hash up in the source-application registry.
+ * Returns the matching source entries (URLs); the caller fetches + parses the
+ * referenced content. Empty array when the hash is malformed or has no sources.
+ */
+export async function resolveServiceInfoSources(sourceHash: string) {
+  if (!looksLikeBlake2bHash(sourceHash)) return [];
+  try {
+    return (await fetchFileSourcesByHash(EXPLORER_API, sourceHash)) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // ── Demo Data ────────────────────────────────────────────────────────────────

@@ -21,6 +21,9 @@
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceSourceCard from "$lib/components/celaut/ServiceSourceCard.svelte";
+  import ServiceInfoCard from "$lib/components/celaut/ServiceInfoCard.svelte";
+  import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
+  import { serviceFilters, serviceInfoRegistry, serviceMatches, resetServiceInfo } from "$lib/serviceFilters";
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
   import HowItWorks from "$lib/components/celaut/HowItWorks.svelte";
   import SkillLeaderboard from "$lib/components/celaut/SkillLeaderboard.svelte";
@@ -220,6 +223,15 @@
   // Compute reputation for selected skill — label is RELATIVE to all sibling
   // skills, so we pass the full population (thresholds built once inside).
   $: selectedSkillReputation = selectedSkill ? calculateSkillReputation(selectedSkill, skills) : null;
+
+  // Reset the per-skill service-info registry + filters whenever the opened skill
+  // changes, so stale service data from a previous skill can't leak into the
+  // coverage filters.
+  let lastServiceSkillId: string | null = null;
+  $: if ((selectedSkill?.boxId ?? null) !== lastServiceSkillId) {
+    lastServiceSkillId = selectedSkill?.boxId ?? null;
+    resetServiceInfo();
+  }
 
   // Category glyph for the detail title — swaps the old profile avatar for the
   // skill's category icon (with its accent color), mirroring SkillDetail.svelte.
@@ -1772,10 +1784,12 @@
                   <p>No service solutions yet. Be the first to solve this skill.</p>
                 </div>
               {:else}
+                <ServiceInfoFilterBar />
                 <div class="space-y-3">
                   {#each selectedSkill.coverages as cov}
                     {@const serviceBlocks = collectServiceResults(cov.serviceId, selectedSkill)}
                     {@const compositeScore = computeServiceCompositeScore(cov.serviceId, selectedSkill)}
+                    {#if serviceMatches(cov.serviceId, $serviceInfoRegistry, $serviceFilters)}
                     <div class="coverage-card">
                       <div class="coverage-card-header">
                         <ProfileAvatar profileId={cov.profileId} size={18} title={`Service solution submitted by ${cov.profileId}`} />
@@ -1882,6 +1896,7 @@
                         compact={true}
                         on:addSource={(event) => openFileSourceModal(event.detail)}
                       />
+                      <ServiceInfoCard serviceId={cov.serviceId || ''} compact={true} />
                       <div class="coverage-action-row mt-3">
                         <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
                         <button
@@ -1896,6 +1911,7 @@
                         </button>
                       </div>
                     </div>
+                    {/if}
                   {/each}
                 </div>
               {/if}

@@ -73,6 +73,20 @@ Las cajas reales son **Reputation Boxes** con estructura fija:
 **Type NFT** → R4 = `"celaut:coverage:v1"`  
 **Cajas**: R5 = `skill_box_id`, R6 = `false`, R9 =  `Coverage`
 
+#### 5. Service Data (`celaut:service-data:v1`)
+**Type NFT** → R4 = `"celaut:service-data:v1"`  
+**Cajas**: R5 = `service_id`, R9 = fragmento **funcional** de la especificación del servicio: un JSON que puede contener **`container`** (arquitectura, …), **`api`** y **`network`** con sus respectivos campos — o bien un hash blake2b.
+
+#### 6. Service Metadata (`celaut:service-metadata:v1`)
+**Type NFT** → R4 = `"celaut:service-metadata:v1"`  
+**Cajas**: R5 = `service_id`, R9 = **JSON arbitrario** con metadata descriptiva del servicio (p. ej. `name` / `description` / `tags`) — o bien un hash blake2b.
+
+> **Service Data + Service Metadata** ponen *parte* de la especificación de un servicio on-chain (indexada por `service_id` en R5) para que los clientes puedan mostrar la api/red/arquitectura/nombre de un servicio en la UI de skills **sin descargar el servicio completo**. Se pueden **publicar** desde la app (formulario en la tarjeta de servicio) y la UI pondera las asertaciones en competencia por su **reputación**.
+>
+> **Modo de R9 (para ambos):**
+> - **inline** — R9 es el JSON directamente on-chain (Data: `container`/`api`/`network`; Metadata: JSON libre).
+> - **source** — R9 es un hash **blake2b256** de un contenido cualquiera; el cliente busca ese contenido en `sources` (source-application). Este modo se detecta simplemente porque el payload de R9 es una cadena hash.
+
 ---
 
 ### Integración del Wallet (wallet-svelte-component)
