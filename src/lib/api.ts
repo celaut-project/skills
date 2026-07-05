@@ -29,26 +29,16 @@ export const EXPLORER_API = 'https://api.ergoplatform.com';
  * drift. They are *placeholder* identifiers until real on-chain Type NFTs are
  * minted, so the chain query functions below short-circuit to `[]` meanwhile.
  */
-import {
-  SKILL_TYPE_ID,
-  BENCHMARK_TYPE_ID,
-  RESULT_TYPE_ID,
-  COVERAGE_TYPE_ID,
-  SERVICE_DATA_TYPE_ID,
-  SERVICE_METADATA_TYPE_ID,
-  looksLikeBlake2bHash,
-  deriveArchitecture
-} from './registry/core.mjs';
-export {
-  SKILL_TYPE_ID,
-  BENCHMARK_TYPE_ID,
-  RESULT_TYPE_ID,
-  COVERAGE_TYPE_ID,
-  SERVICE_DATA_TYPE_ID,
-  SERVICE_METADATA_TYPE_ID,
-  looksLikeBlake2bHash,
-  deriveArchitecture
-};
+export const SKILL_TYPE_ID = 'ffce59c01b9c0c245005f9c2daf817607e912a3ececd5f61aaba48d30230f60c';
+export const BENCHMARK_TYPE_ID = 'f6480184daf3b7750a58e58319e12adc5266bd986eec0f57ac451c995a30f54d';
+export const RESULT_TYPE_ID = '49b26dc06b1680769477264d2e8e9bf561005236cde3097630bffcff631b7aef';
+export const COVERAGE_TYPE_ID = '1da6799e935cbb0fb14d359f06f23854c3d1bd509508948cc01b7b018dbbbdf5';
+// Not yet minted on-chain — placeholders are gated by isHexId() below, so chain
+// queries stay dormant until the real Type NFT ids are deployed.
+/** Strict Definition (Tag-Prose-Formal): an improvable formalization of any concept — skill, benchmark space, or network. */
+export const STRICT_DEFINITION_TYPE_ID = 'celaut:strict-definition:v1';
+/** Dependency and Trust Framework: Sigmaverse-standard KyA assessment; R5 → Strict Definition, R9 → trust/access structure. Scores derived off-chain. */
+export const DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID = 'celaut:dependency-trust-framework:v1';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
