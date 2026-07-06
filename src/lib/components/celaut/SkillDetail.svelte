@@ -7,6 +7,7 @@
   import ProfileAvatar from './ProfileAvatar.svelte';
   import InfoTip from './InfoTip.svelte';
   import RunServiceButton from './RunServiceButton.svelte';
+  import BackButton from './BackButton.svelte';
   import { openForum } from './forumSidebar';
   import { categoryIcon } from '$lib/categoryIcons';
   import { formatServiceId } from '$lib/api';
@@ -117,8 +118,8 @@
   $: recommended = pickRecommended(skill.coverages, sourceCounts);
 </script>
 
-<div class="max-w-3xl mx-auto">
-  <button class="back-link" on:click={goBack}>← Back to gallery</button>
+<div class="w-full">
+  <BackButton label="Back to gallery" on:click={goBack} />
 
   <div class="card detail-head">
     <div class="title-row">
@@ -250,19 +251,6 @@
     border-radius: 0.75rem;
     border: 1px solid hsl(var(--border));
     background: hsl(var(--card));
-  }
-
-  .back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    color: hsl(var(--muted-foreground));
-    margin-bottom: 1.5rem;
-    transition: color 0.15s ease;
-  }
-  .back-link:hover {
-    color: hsl(var(--foreground));
   }
 
   .detail-head {

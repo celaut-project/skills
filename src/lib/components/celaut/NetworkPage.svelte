@@ -33,6 +33,7 @@
   import { networkPageReturn, serviceDataFormState, viewedNetworkId } from '$lib/stores';
   import ExplorerLink from './ExplorerLink.svelte';
   import InfoTip from './InfoTip.svelte';
+  import BackButton from './BackButton.svelte';
 
   export let networkId: string = '';
 
@@ -210,12 +211,10 @@
 
 <div class="np-container">
   <div class="np-header">
-    <button class="back-button" type="button" on:click={handleBack}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M19 12H5M12 19l-7-7 7-7"/>
-      </svg>
-      {$networkPageReturn?.type === 'serviceForm' ? 'Back to service form' : 'Back'}
-    </button>
+    <BackButton
+      label={$networkPageReturn?.type === 'serviceForm' ? 'Back to service form' : 'Back'}
+      on:click={handleBack}
+    />
     <h1 class="np-title">Network Definitions</h1>
     <InfoTip title="What are network definitions?">
       <p>A <strong>Strict Definition</strong> (network kind) formally describes a reusable network — its protocol stack, peer-discovery mechanism, and the fundamental actions that can be assessed for trust.</p>
@@ -555,17 +554,6 @@
     padding: 0.45rem 0.8rem;
     border-radius: 0.5rem;
     border: 1px solid hsl(var(--border));
-    background: transparent;
-    cursor: pointer;
-  }
-  .back-button {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.82rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 0.6rem;
-    border: 1px solid hsl(var(--border) / 0.7);
     background: transparent;
     cursor: pointer;
   }

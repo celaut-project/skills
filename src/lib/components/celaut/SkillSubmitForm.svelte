@@ -89,7 +89,7 @@
   $: if (newSkillDomain) { delete validationErrors['domain']; validationErrors = validationErrors; }
 </script>
 
-<div class="max-w-lg mx-auto">
+<div class="w-full">
   <h2 class="text-2xl font-bold mb-2">Submit a Skill</h2>
   <p class="text-muted-foreground mb-6 text-sm">
     Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.

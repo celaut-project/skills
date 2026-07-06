@@ -45,6 +45,16 @@ export const DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID = 'aeece0a2352363d9b232d9a21c6a3
 export const SERVICE_DATA_TYPE_ID = 'fbc12d505e5e397efec69da4fb2c5200fdddcf7fbe236f47d67e9656ba015838';
 export const SERVICE_METADATA_TYPE_ID = '84f5b7a9211bf47d54fb5e395d829fea087bb7e2a9a1598c40d9eaa3f3c061bd';
 
+/** Derive the architecture string from a Service Data content object. */
+function deriveArchitecture(content: Record<string, unknown> | null | undefined): string | undefined {
+  const c = content || {};
+  if (c.container && typeof c.container === 'object') {
+    const arch = (c.container as Record<string, unknown>).architecture;
+    if (typeof arch === 'string') return arch;
+  }
+  return typeof c.architecture === 'string' ? c.architecture : undefined;
+}
+
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 /** Convert a UTF-8 string to its hex representation. */
