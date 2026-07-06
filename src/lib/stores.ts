@@ -58,3 +58,34 @@ export const totalResults = derived(skills, ($skills) =>
  * URL parameter) and consumed by App.svelte to render the profile screen.
  */
 export const viewedProfileId = writable<string | null>(null);
+
+/**
+ * Network box id for the ?network= page, or null.
+ * Set to a box id to view/manage a specific network definition,
+ * or 'new' to open the create-network form.
+ */
+export const viewedNetworkId = writable<string | null>(null);
+
+/**
+ * Service id for the ?service= page, or null.
+ */
+export const viewedServiceId = writable<string | null>(null);
+
+/**
+ * Where to return when leaving the network page. Null when the user
+ * navigated directly (e.g. shared URL).
+ */
+export const networkPageReturn = writable<{ type: 'service'; serviceId: string } | { type: 'serviceForm' } | null>(null);
+
+/** Preserved service data form state — survives navigation to the network page. */
+export interface ServiceDataFormState {
+  serviceId: string;
+  prose: string;
+  containerArchitecture: string;
+  apiSlots: Array<{ port: string; transport: string[]; protocol: string[] }>;
+  networkItems: Array<{ type: 'inline'; tags: string[] } | { type: 'ref'; boxId: string }>;
+  metadataJson: string;
+  kind: 'data' | 'metadata';
+}
+
+export const serviceDataFormState = writable<ServiceDataFormState | null>(null);

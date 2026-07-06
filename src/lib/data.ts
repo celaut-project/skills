@@ -17,7 +17,9 @@ import type {
   CoverageCreationInput,
   BenchmarkCreationInput,
   ResultCreationInput,
-  ServiceInfoCreationInput
+  ServiceInfoCreationInput,
+  StrictDefinitionCreationInput,
+  TrustFrameworkCreationInput
 } from './types';
 
 /** Get the currently active data provider based on demo mode. */
@@ -76,4 +78,12 @@ export async function createServiceData(input: ServiceInfoCreationInput): Promis
 
 export async function createServiceMetadata(input: ServiceInfoCreationInput): Promise<string> {
   return getProvider().createServiceMetadata(input);
+}
+
+export async function createStrictDefinition(input: StrictDefinitionCreationInput): Promise<string> {
+  return getProvider().createStrictDefinition(input);
+}
+
+export async function createTrustFramework(input: TrustFrameworkCreationInput): Promise<string> {
+  return getProvider().createTrustFramework(input);
 }

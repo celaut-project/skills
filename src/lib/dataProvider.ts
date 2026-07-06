@@ -13,7 +13,9 @@ import type {
   CoverageCreationInput,
   BenchmarkCreationInput,
   ResultCreationInput,
-  ServiceInfoCreationInput
+  ServiceInfoCreationInput,
+  StrictDefinitionCreationInput,
+  TrustFrameworkCreationInput
 } from './types';
 
 export interface DataProvider {
@@ -49,4 +51,10 @@ export interface DataProvider {
 
   /** Publish a Service Metadata opinion (descriptive info for a service). */
   createServiceMetadata(input: ServiceInfoCreationInput): Promise<string>;
+
+  /** Publish a Strict Definition (Tag-Prose-Formal) box on-chain. */
+  createStrictDefinition(input: StrictDefinitionCreationInput): Promise<string>;
+
+  /** Publish a Dependency Trust Framework box pointing at a Strict Definition. */
+  createTrustFramework(input: TrustFrameworkCreationInput): Promise<string>;
 }
