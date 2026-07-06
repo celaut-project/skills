@@ -59,7 +59,9 @@
   import { getUserProfiles, ensureUserProfile, boostProfileReputation, createAdditionalProfile, updateProfileContent } from "$lib/profileBootstrap";
   import { getMainReputationBox } from "$lib/reputationContext";
   import { demoMode } from "$lib/config";
-  import { viewedProfileId } from "$lib/stores";
+  import { viewedProfileId, viewedNetworkId, viewedServiceId, networkPageReturn } from "$lib/stores";
+  import NetworkPage from "$lib/components/celaut/NetworkPage.svelte";
+  import ServicePage from "$lib/components/celaut/ServicePage.svelte";
 
   // ── Reputation threshold for hiding related skills ─────────────────────────
   // If skill A references skill B via extendedSkillBoxIds, and A's reputation >= this
@@ -1066,6 +1068,10 @@
       if (initialProfile) viewedProfileId.set(initialProfile);
       const initialSkill = url.searchParams.get("skill");
       if (initialSkill) pendingSkillId = initialSkill;
+      const initialNetwork = url.searchParams.get("network");
+      if (initialNetwork) viewedNetworkId.set(initialNetwork);
+      const initialService = url.searchParams.get("service");
+      if (initialService) viewedServiceId.set(initialService);
       // Only now that the initial deep-link params have been consumed may the
       // reactive URL-sync touch the address bar — otherwise it runs during init
       // (before this onMount) and strips `?profile=`/`?skill=` before they're read.
@@ -1077,6 +1083,8 @@
       const popHandler = () => {
         const params = new URL(window.location.href).searchParams;
         viewedProfileId.set(params.get("profile") || null);
+        viewedNetworkId.set(params.get("network") || null);
+        viewedServiceId.set(params.get("service") || null);
         const nextSkill = params.get("skill");
         if (nextSkill) {
           const match = skills.find((s) => s.boxId === nextSkill);
@@ -1282,7 +1290,58 @@
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
 <main class="main-content">
 
-  {#if $viewedProfileId}
+  {#if $viewedNetworkId}
+    <!-- ── Network Definition Page (?network=<box_id|"new">) ─────────────── -->
+    <div class="detail-view detail-visible">
+      <NetworkPage
+        networkId={$viewedNetworkId}
+        on:back={() => {
+          const ret = $networkPageReturn;
+          viewedNetworkId.set(null);
+          if (typeof window !== 'undefined') {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('network');
+            window.history.pushState({}, '', u);
+          }
+          if (ret?.type === 'service' && ret.serviceId) {
+            viewedServiceId.set(ret.serviceId);
+            if (typeof window !== 'undefined') {
+              const u = new URL(window.location.href);
+              u.searchParams.set('service', ret.serviceId);
+              window.history.pushState({}, '', u);
+            }
+          }
+        }}
+      />
+    </div>
+
+  {:else if $viewedServiceId}
+    <!-- ── Service Page (?service=<serviceId>) ───────────────────────────── -->
+    <div class="detail-view detail-visible">
+      <ServicePage
+        serviceId={$viewedServiceId}
+        {skills}
+        on:back={() => {
+          viewedServiceId.set(null);
+          if (typeof window !== 'undefined') {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('service');
+            window.history.pushState({}, '', u);
+          }
+        }}
+        on:navigateSkill={(e) => {
+          viewedServiceId.set(null);
+          if (typeof window !== 'undefined') {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('service');
+            window.history.pushState({}, '', u);
+          }
+          handleNavigateSkill(e.detail);
+        }}
+      />
+    </div>
+
+  {:else if $viewedProfileId}
     <!-- ── Profile Detail (?profile=<token_id>) ─────────────────────────── -->
     <div class="detail-view detail-visible">
       <div class="detail-container">
@@ -1899,6 +1958,20 @@
                       <ServiceInfoCard serviceId={cov.serviceId || ''} compact={true} />
                       <div class="coverage-action-row mt-3">
                         <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
+                        {#if cov.serviceId}
+                          <button
+                            class="dialogue-btn"
+                            type="button"
+                            on:click={() => {
+                              viewedServiceId.set(cov.serviceId || '');
+                              const u = new URL(window.location.href);
+                              u.searchParams.set('service', cov.serviceId || '');
+                              window.history.pushState({}, '', u);
+                            }}
+                          >
+                            View service →
+                          </button>
+                        {/if}
                         <button
                           class="dialogue-btn"
                           type="button"

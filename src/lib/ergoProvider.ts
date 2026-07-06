@@ -13,7 +13,9 @@ import type {
   CoverageCreationInput,
   BenchmarkCreationInput,
   ResultCreationInput,
-  ServiceInfoCreationInput
+  ServiceInfoCreationInput,
+  StrictDefinitionCreationInput,
+  TrustFrameworkCreationInput
 } from './types';
 import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
 import { ApiError } from './types';
@@ -25,7 +27,9 @@ import {
   BENCHMARK_TYPE_ID,
   RESULT_TYPE_ID,
   SERVICE_DATA_TYPE_ID,
-  SERVICE_METADATA_TYPE_ID
+  SERVICE_METADATA_TYPE_ID,
+  STRICT_DEFINITION_TYPE_ID,
+  DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID
 } from './api';
 
 const LOCKED: boolean = true; // For now, we lock the boxes we create. This can be changed later if needed. Esto evita que los boxes puedan actualizarse, pues cada entidad puede ser referenciada por otra, y una actualización de una entidad modificaría su propio identificador (id de la caja), ademas de que no queremos que las entidades puedan ser modificadas una vez creadas, para mantener la integridad de la reputación.
@@ -260,6 +264,46 @@ class ErgoDataProvider implements DataProvider {
 
     if (!txId) {
       throw new ApiError('Failed to create service metadata on-chain.', 'CREATE_SERVICE_METADATA_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createStrictDefinition(input: StrictDefinitionCreationInput): Promise<string> {
+    // Strict Definitions are self-contained (R5 empty — no object pointer).
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      STRICT_DEFINITION_TYPE_ID,
+      '',
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'strict definition')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create strict definition on-chain.', 'CREATE_STRICT_DEFINITION_FAILED');
+    }
+
+    return txId;
+  }
+
+  async createTrustFramework(input: TrustFrameworkCreationInput): Promise<string> {
+    // DTF boxes point at their Strict Definition via R5 (object_pointer).
+    const txId = await create_opinion(
+      'https://api.ergoplatform.com',
+      input.tokenAmount ?? 1,
+      DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID,
+      input.strictDefinitionBoxId,
+      true,
+      input.content,
+      LOCKED,
+      getMainBox(input.mainBox, 'trust framework')
+    );
+
+    if (!txId) {
+      throw new ApiError('Failed to create trust framework on-chain.', 'CREATE_TRUST_FRAMEWORK_FAILED');
     }
 
     return txId;

@@ -14,7 +14,9 @@ import type {
   CoverageCreationInput,
   BenchmarkCreationInput,
   ResultCreationInput,
-  ServiceInfoCreationInput
+  ServiceInfoCreationInput,
+  StrictDefinitionCreationInput,
+  TrustFrameworkCreationInput
 } from './types';
 import { applySkillInheritance, getDemoSkills } from './api';
 
@@ -218,6 +220,14 @@ class MockDatabase implements DataProvider {
 
   async createServiceMetadata(_input: ServiceInfoCreationInput): Promise<string> {
     return this.createTxId('service-metadata');
+  }
+
+  async createStrictDefinition(_input: StrictDefinitionCreationInput): Promise<string> {
+    return this.createTxId('strict-definition');
+  }
+
+  async createTrustFramework(_input: TrustFrameworkCreationInput): Promise<string> {
+    return this.createTxId('trust-framework');
   }
 
   /** Reset the database to initial demo data. */

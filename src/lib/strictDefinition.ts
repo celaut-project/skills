@@ -126,7 +126,7 @@ export function decodeStrictDefinitionR9(rawContent: string): StrictDefinitionCo
 
 /** Type guard: is this Strict Definition about a network? */
 export function isNetworkDefinition(def: StrictDefinitionContent): def is NetworkDefinition {
-  return def.kind === ConceptKind.Network;
+  return def.kind === ConceptKind.Network && def.formal != null;
 }
 
 /**

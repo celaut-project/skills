@@ -652,6 +652,82 @@ export async function loadResults(benchmarkId: string): Promise<Result[]> {
   return results;
 }
 
+// ── Strict Definitions & Trust Frameworks ────────────────────────────────────
+
+import type { StrictDefinitionBox, TrustFrameworkBox } from './types';
+import { decodeStrictDefinitionR9 } from './strictDefinition';
+import { decodeFrameworkR9 } from './trustFramework';
+
+function parseStrictDefinitionBox(box: any): StrictDefinitionBox | null {
+  try {
+    const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+    const rawContent = hexToUtf8(rendered) || '';
+    if (!rawContent) return null;
+    const content = decodeStrictDefinitionR9(rawContent);
+    const profileId = deriveProfileId(box, content, box.boxId);
+    return { boxId: box.boxId, profileId, content, reputation: 0 };
+  } catch {
+    return null;
+  }
+}
+
+function parseTrustFrameworkBox(box: any): TrustFrameworkBox | null {
+  try {
+    const rendered = box?.additionalRegisters?.R9?.renderedValue || '';
+    const rawContent = hexToUtf8(rendered) || '';
+    if (!rawContent) return null;
+    const fw = decodeFrameworkR9(rawContent);
+    const strictDefinitionBoxId =
+      box?.additionalRegisters?.R5?.renderedValue
+        ? hexToUtf8(box.additionalRegisters.R5.renderedValue) || ''
+        : (box?.additionalRegisters?.R5?.serializedValue || '');
+    const profileId = deriveProfileId(box, {}, box.boxId);
+    return {
+      boxId: box.boxId,
+      profileId,
+      strictDefinitionBoxId,
+      actions: fw.actions,
+      reputation: 0
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Load all Strict Definition boxes from the chain. */
+export async function loadStrictDefinitions(): Promise<StrictDefinitionBox[]> {
+  if (!isHexId(STRICT_DEFINITION_TYPE_ID)) return [];
+  const boxes = await collectBoxes(STRICT_DEFINITION_TYPE_ID, undefined);
+  const items = boxes.map(parseStrictDefinitionBox).filter(Boolean) as StrictDefinitionBox[];
+  await hydrateReputations(items);
+  return items;
+}
+
+/** Load a single Strict Definition box by its box ID. */
+export async function loadStrictDefinition(boxId: string): Promise<StrictDefinitionBox | null> {
+  if (!isHexId(STRICT_DEFINITION_TYPE_ID) || !isHexId(boxId)) return null;
+  try {
+    const res = await fetch(`${EXPLORER_API}/api/v1/boxes/${boxId}`);
+    if (!res.ok) return null;
+    const box = await res.json();
+    const item = parseStrictDefinitionBox(box);
+    if (!item) return null;
+    const hydrated = await hydrateReputations([item]);
+    return hydrated[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Load Dependency Trust Framework boxes pointing at the given Strict Definition box. */
+export async function loadTrustFrameworks(strictDefBoxId: string): Promise<TrustFrameworkBox[]> {
+  if (!isHexId(DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID) || !isHexId(strictDefBoxId)) return [];
+  const boxes = await collectBoxes(DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID, strictDefBoxId);
+  const items = boxes.map(parseTrustFrameworkBox).filter(Boolean) as TrustFrameworkBox[];
+  await hydrateReputations(items);
+  return items;
+}
+
 // ── Service info (metadata + data) ─────────────────────────────────────────────
 //
 // Both types are opinion boxes keyed by service id (R5). Their R9 carries a

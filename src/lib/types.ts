@@ -256,6 +256,43 @@ export interface ServiceMetadata {
   reputation?: number;
 }
 
+import type { StrictDefinitionContent } from './strictDefinition';
+import type { ActionAssessment } from './trustFramework';
+
+/** On-chain Strict Definition box (Tag-Prose-Formal). */
+export interface StrictDefinitionBox {
+  boxId: string;
+  profileId: string;
+  content: StrictDefinitionContent;
+  reputation?: number;
+}
+
+/** On-chain Dependency Trust Framework box. */
+export interface TrustFrameworkBox {
+  boxId: string;
+  profileId: string;
+  /** R5: the Strict Definition box this framework assesses. */
+  strictDefinitionBoxId: string;
+  actions: ActionAssessment[];
+  reputation?: number;
+}
+
+/** Input for publishing a Strict Definition box on-chain. */
+export interface StrictDefinitionCreationInput {
+  content: string | Record<string, unknown>;
+  tokenAmount?: number;
+  mainBox?: unknown;
+}
+
+/** Input for publishing a Dependency Trust Framework box on-chain. */
+export interface TrustFrameworkCreationInput {
+  /** R5: the Strict Definition box this framework assesses. */
+  strictDefinitionBoxId: string;
+  content: string | Record<string, unknown>;
+  tokenAmount?: number;
+  mainBox?: unknown;
+}
+
 /** Payload used to create a Service Data / Service Metadata opinion. */
 export interface ServiceInfoCreationInput {
   /** Service id (content hash) the info is about — becomes R5. */
