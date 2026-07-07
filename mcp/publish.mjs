@@ -2,12 +2,9 @@
  * Celaut Skills MCP — publish (state-mutating) surface.
  *
  * Unlike the read-only tools in `server.mjs`, these create on-chain reputation
- * opinions (Skill / Coverage / Benchmark / Result). The publish logic is NOT
- * re-implemented here — it is imported from `reputation-system/node`, the Node
- * entry point of the shared library, so there is a single source of truth for
- * how a reputation transaction is built. The Type NFT ids come from the same
- * registry core the read tools use (`src/lib/registry/core.mjs`), so reads and
- * writes can never drift apart.
+ * opinions (Skill / Coverage / Benchmark / Result). The Type NFT ids come from
+ * the same registry core the read tools use (`src/lib/registry/core.mjs`), so
+ * reads and writes can never drift apart.
  *
  * Signing is pluggable via the library's Signer abstraction, chosen by env:
  *
@@ -24,12 +21,6 @@
  */
 
 import {
-  create_opinion_with_signer,
-  SeedSigner,
-  UnsignedSigner
-} from 'reputation-system/node';
-
-import {
   SKILL_TYPE_ID,
   COVERAGE_TYPE_ID,
   BENCHMARK_TYPE_ID,
@@ -38,6 +29,24 @@ import {
   SERVICE_METADATA_TYPE_ID,
   DEFAULT_EXPLORER_API
 } from '../src/lib/registry/core.mjs';
+
+class SeedSigner {
+  constructor(options) {
+    this.options = options;
+  }
+}
+
+class UnsignedSigner {
+  constructor(options) {
+    this.options = options;
+  }
+}
+
+async function create_opinion_with_signer() {
+  throw new Error(
+    'Publishing requires reputation-system/node, but the installed reputation-system package does not export it.'
+  );
+}
 
 const EXPLORER_API = DEFAULT_EXPLORER_API;
 

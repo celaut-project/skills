@@ -36,6 +36,7 @@
   import SubmitFormEnhancements from "$lib/components/celaut/SubmitFormEnhancements.svelte";
   import FormalSpecEditor from "$lib/components/celaut/FormalSpecEditor.svelte";
   import ForumSidebar from "$lib/components/celaut/ForumSidebar.svelte";
+  import BackButton from "$lib/components/celaut/BackButton.svelte";
   import { openForum } from "$lib/components/celaut/forumSidebar";
   import { toasts } from "$lib/components/celaut/toastStore";
   import { portal } from "$lib/actions/portal";
@@ -79,7 +80,7 @@
   // falls below this threshold. 0 = show everything (default).
   let minReputation = 0;
   // "" = no tab highlighted (used while the profile-detail view is open).
-  let activeTab: "gallery" | "submit" | "profile" | "howitworks" | "" = "gallery";
+  let activeTab: "gallery" | "submit" | "profile" | "networks" | "howitworks" | "" = "gallery";
   let detailVisible = false;
   // When the Submit tab is reached via "Modify Skill", remember the skill the
   // user came from so we can offer a back button to its detail view (mirrors
@@ -491,6 +492,42 @@
     viewedProfileId.set(null);
     activeTab = "gallery";
     if (skill) selectSkill(skill);
+  }
+
+  function openTab(tab: "gallery" | "submit" | "profile" | "howitworks") {
+    activeTab = tab;
+    if (tab === "gallery" || tab === "howitworks") {
+      selectedSkill = null;
+      syncSkillParam(null);
+    }
+    returnToSkill = null;
+    viewedProfileId.set(null);
+    viewedNetworkId.set(null);
+    viewedServiceId.set(null);
+    networkPageReturn.set(null);
+    if (browser) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("network");
+      u.searchParams.delete("service");
+      window.history.pushState({}, "", u);
+    }
+  }
+
+  function openNetworksTab() {
+    activeTab = "networks";
+    selectedSkill = null;
+    returnToSkill = null;
+    syncSkillParam(null);
+    viewedProfileId.set(null);
+    viewedServiceId.set(null);
+    networkPageReturn.set(null);
+    viewedNetworkId.set("browse");
+    if (browser) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("service");
+      u.searchParams.set("network", "browse");
+      window.history.pushState({}, "", u);
+    }
   }
 
   function openNewProfileModal() {
@@ -1069,7 +1106,10 @@
       const initialSkill = url.searchParams.get("skill");
       if (initialSkill) pendingSkillId = initialSkill;
       const initialNetwork = url.searchParams.get("network");
-      if (initialNetwork) viewedNetworkId.set(initialNetwork);
+      if (initialNetwork) {
+        viewedNetworkId.set(initialNetwork);
+        activeTab = "networks";
+      }
       const initialService = url.searchParams.get("service");
       if (initialService) viewedServiceId.set(initialService);
       // Only now that the initial deep-link params have been consumed may the
@@ -1083,7 +1123,9 @@
       const popHandler = () => {
         const params = new URL(window.location.href).searchParams;
         viewedProfileId.set(params.get("profile") || null);
-        viewedNetworkId.set(params.get("network") || null);
+        const nextNetwork = params.get("network");
+        viewedNetworkId.set(nextNetwork || null);
+        if (nextNetwork) activeTab = "networks";
         viewedServiceId.set(params.get("service") || null);
         const nextSkill = params.get("skill");
         if (nextSkill) {
@@ -1244,7 +1286,7 @@
     <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
          in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
-      <a href="/" class="logo-container" on:click|preventDefault={() => { activeTab = 'gallery'; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}>
+      <a href="/" class="logo-container" on:click|preventDefault={() => openTab("gallery")}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
@@ -1252,28 +1294,35 @@
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
-          on:click={() => { activeTab = "gallery"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
+          on:click={() => openTab("gallery")}
         >
           Gallery
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "submit"}
-          on:click={() => { activeTab = "submit"; returnToSkill = null; viewedProfileId.set(null); }}
+          on:click={() => openTab("submit")}
         >
           Submit
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "profile"}
-          on:click={() => { activeTab = "profile"; returnToSkill = null; viewedProfileId.set(null); }}
+          on:click={() => openTab("profile")}
         >
           Profile
         </button>
         <button
           class="tab-btn"
+          class:active={activeTab === "networks"}
+          on:click={openNetworksTab}
+        >
+          Networks
+        </button>
+        <button
+          class="tab-btn"
           class:active={activeTab === "howitworks"}
-          on:click={() => { activeTab = "howitworks"; selectedSkill = null; returnToSkill = null; syncSkillParam(null); viewedProfileId.set(null); }}
+          on:click={() => openTab("howitworks")}
         >
           How it works
         </button>
@@ -1310,6 +1359,8 @@
               u.searchParams.set('service', ret.serviceId);
               window.history.pushState({}, '', u);
             }
+          } else {
+            activeTab = "gallery";
           }
         }}
       />
@@ -1345,12 +1396,7 @@
     <!-- ── Profile Detail (?profile=<token_id>) ─────────────────────────── -->
     <div class="detail-view detail-visible">
       <div class="detail-container">
-        <button class="back-button" on:click={closeProfileView}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-          Close profile
-        </button>
+        <BackButton label="Close profile" on:click={closeProfileView} />
 
         <div class="detail-card">
           <div class="flex items-center gap-3 mb-3">
@@ -1397,12 +1443,7 @@
       <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
       <div class="detail-view" class:detail-visible={detailVisible}>
         <div class="detail-container">
-          <button class="back-button" on:click={backToGallery}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Back to gallery
-          </button>
+          <BackButton label="Back to gallery" on:click={backToGallery} />
 
           <ShareModal
             bind:open={shareModalOpen}
@@ -2226,12 +2267,7 @@
         {#if returnToSkill}
           <!-- Return to the skill detail this Submit view was opened from
                ("Modify Skill" → back navigation, matching the profile view). -->
-          <button class="back-button" on:click={backToSkillFromSubmit}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Back to {returnToSkill.name}
-          </button>
+          <BackButton label="Back to {returnToSkill.name}" on:click={backToSkillFromSubmit} />
         {/if}
         <div class="submit-header">
           <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
@@ -2722,14 +2758,6 @@
 
   .detail-container {
     width: 100%;
-  }
-
-  .back-button {
-    @apply flex items-center gap-2 text-sm text-muted-foreground mb-6 px-3 py-1.5 -ml-3 rounded-lg transition-all duration-200;
-  }
-  .back-button:hover {
-    @apply text-foreground;
-    background: hsl(var(--muted) / 0.5);
   }
 
   .detail-card {
