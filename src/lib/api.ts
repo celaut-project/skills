@@ -4,6 +4,8 @@
  */
 
 import { hexToUtf8 } from './ergo/envs';
+import { get } from 'svelte/store';
+import { demoMode } from './config';
 import { fetchFileSourcesByHash } from 'source-application';
 import type { Skill, Coverage, Benchmark, Result, Descriptor, PerformanceMetric, ServiceData, ServiceMetadata } from './types';
 import { ApiError, NetworkError, ParseError } from './types';
@@ -706,6 +708,7 @@ function parseTrustFrameworkBox(box: any): TrustFrameworkBox | null {
 
 /** Load all Strict Definition boxes from the chain. */
 export async function loadStrictDefinitions(): Promise<StrictDefinitionBox[]> {
+  if (get(demoMode)) return getDemoStrictDefinitions();
   if (!isHexId(STRICT_DEFINITION_TYPE_ID)) return [];
   const boxes = await collectBoxes(STRICT_DEFINITION_TYPE_ID, undefined);
   const items = boxes.map(parseStrictDefinitionBox).filter(Boolean) as StrictDefinitionBox[];
@@ -731,6 +734,7 @@ export async function loadStrictDefinition(boxId: string): Promise<StrictDefinit
 
 /** Load Dependency Trust Framework boxes pointing at the given Strict Definition box. */
 export async function loadTrustFrameworks(strictDefBoxId: string): Promise<TrustFrameworkBox[]> {
+  if (get(demoMode)) return getDemoTrustFrameworks(strictDefBoxId);
   if (!isHexId(DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID) || !isHexId(strictDefBoxId)) return [];
   const boxes = await collectBoxes(DEPENDENCY_TRUST_FRAMEWORK_TYPE_ID, strictDefBoxId);
   const items = boxes.map(parseTrustFrameworkBox).filter(Boolean) as TrustFrameworkBox[];
@@ -768,6 +772,7 @@ function parseServiceInfoBox(box: any): { mode: 'inline' | 'source'; sourceHash?
 
 /** Load the functional spec (architecture / api / network) for a service id. */
 export async function loadServiceData(serviceId: string): Promise<ServiceData[]> {
+  if (get(demoMode)) return getDemoServiceData(serviceId);
   if (!isHexId(SERVICE_DATA_TYPE_ID) || !isHexId(serviceId)) return [];
   const boxes = await collectBoxes(SERVICE_DATA_TYPE_ID, serviceId);
   const items = boxes
@@ -799,6 +804,7 @@ export async function loadServiceData(serviceId: string): Promise<ServiceData[]>
 
 /** Load the descriptive metadata (name / description / tags) for a service id. */
 export async function loadServiceMetadata(serviceId: string): Promise<ServiceMetadata[]> {
+  if (get(demoMode)) return getDemoServiceMetadata(serviceId);
   if (!isHexId(SERVICE_METADATA_TYPE_ID) || !isHexId(serviceId)) return [];
   const boxes = await collectBoxes(SERVICE_METADATA_TYPE_ID, serviceId);
   const items = boxes
@@ -841,6 +847,196 @@ export async function resolveServiceInfoSources(sourceHash: string) {
     return [];
   }
 }
+
+// ── Demo data: Strict Definitions, Trust Frameworks, Service info ────────────
+
+/** Representative demo network strict definitions for demo mode. */
+function getDemoStrictDefinitions(): StrictDefinitionBox[] {
+  const defs: StrictDefinitionBox[] = [
+    {
+      boxId: 'demo-strictdef-001',
+      profileId: demoProfileId('strictdef-celaut-comm'),
+      content: {
+        kind: 'network' as any,
+        tag: 'network:celaut-comm-domain',
+        prose:
+          'The native celaut communication domain — gRPC over the celaut-v1 protocol. Services that carry this network descriptor accept celaut calls via the gRPC transport stack and resolve peers through environment-variable injection provided by the nodo executor.',
+        formal: {
+          protocol: 'grpc/celaut-v1',
+          peerDiscovery: 'environment_variable',
+          actions: ['send_request', 'receive_response', 'stream_data']
+        }
+      },
+      reputation: demoReputationFor(demoProfileId('strictdef-celaut-comm'))
+    },
+    {
+      boxId: 'demo-strictdef-002',
+      profileId: demoProfileId('strictdef-ergo-explorer'),
+      content: {
+        kind: 'network' as any,
+        tag: 'network:ergo-explorer-rest',
+        prose:
+          'The public Ergo Explorer REST API (api.ergoplatform.com). Services that reference this network make outbound HTTPS requests to the Explorer for box lookups, transaction broadcasting, and chain state queries. Peer discovery is static (the well-known base URL).',
+        formal: {
+          protocol: 'https/rest-json',
+          peerDiscovery: 'static',
+          actions: ['query_boxes', 'broadcast_tx', 'get_block_info']
+        }
+      },
+      reputation: demoReputationFor(demoProfileId('strictdef-ergo-explorer'))
+    },
+    {
+      boxId: 'demo-strictdef-003',
+      profileId: demoProfileId('strictdef-ipfs-content'),
+      content: {
+        kind: 'network' as any,
+        tag: 'network:ipfs-content-addressing',
+        prose:
+          'IPFS content-addressed networking. Services that reference this network fetch or publish blobs by CID using the IPFS DHT. Celaut uses IPFS hashes as service identifiers, so any service that resolves its own binary this way participates in this network.',
+        formal: {
+          protocol: 'ipfs/bitswap',
+          peerDiscovery: 'dht',
+          actions: ['fetch_content', 'publish_content', 'resolve_cid']
+        }
+      },
+      reputation: demoReputationFor(demoProfileId('strictdef-ipfs-content'))
+    }
+  ];
+  return defs;
+}
+
+/** Demo trust frameworks for each demo network strict definition. */
+function getDemoTrustFrameworks(strictDefBoxId: string): TrustFrameworkBox[] {
+  // Each demo strict def box gets one trust framework.
+  const map: Record<string, TrustFrameworkBox> = {
+    'demo-strictdef-001': {
+      boxId: 'demo-dtf-001',
+      profileId: demoProfileId('dtf-celaut-comm'),
+      strictDefinitionBoxId: 'demo-strictdef-001',
+      actions: [
+        { name: 'send_request',     trust: 1, access: 1 },
+        { name: 'receive_response', trust: 1, access: 1 },
+        { name: 'stream_data',      trust: 2, access: 1 }
+      ],
+      reputation: demoReputationFor(demoProfileId('dtf-celaut-comm'))
+    },
+    'demo-strictdef-002': {
+      boxId: 'demo-dtf-002',
+      profileId: demoProfileId('dtf-ergo-explorer'),
+      strictDefinitionBoxId: 'demo-strictdef-002',
+      actions: [
+        { name: 'query_boxes',    trust: 2, access: 2 },
+        { name: 'broadcast_tx',   trust: 1, access: 2 },
+        { name: 'get_block_info', trust: 2, access: 2 }
+      ],
+      reputation: demoReputationFor(demoProfileId('dtf-ergo-explorer'))
+    },
+    'demo-strictdef-003': {
+      boxId: 'demo-dtf-003',
+      profileId: demoProfileId('dtf-ipfs'),
+      strictDefinitionBoxId: 'demo-strictdef-003',
+      actions: [
+        { name: 'fetch_content',   trust: 1, access: 1 },
+        { name: 'publish_content', trust: 2, access: 1 },
+        { name: 'resolve_cid',     trust: 1, access: 1 }
+      ],
+      reputation: demoReputationFor(demoProfileId('dtf-ipfs'))
+    }
+  };
+  const fw = map[strictDefBoxId];
+  return fw ? [fw] : [];
+}
+
+/** Demo functional service data for demo service IDs. */
+function getDemoServiceData(serviceId: string): ServiceData[] {
+  const demoMap: Record<string, Omit<ServiceData, 'boxId' | 'profileId' | 'serviceId' | 'reputation'>> = {
+    'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a': {
+      mode: 'inline',
+      content: { container: { architecture: 'x86_64', entrypoint: ['/service'] }, api: [{ port: 8080, transport: ['grpc'], protocol: ['celaut-v1'] }], network: ['network:celaut-comm-domain'] },
+      container: { architecture: 'x86_64', entrypoint: ['/service'] },
+      api: [{ port: 8080, transport: ['grpc'], protocol: ['celaut-v1'] }],
+      network: ['network:celaut-comm-domain'],
+      architecture: 'x86_64'
+    },
+    'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b': {
+      mode: 'inline',
+      content: { container: { architecture: 'x86_64', entrypoint: ['/agent'] }, api: [{ port: 9090, transport: ['grpc'], protocol: ['celaut-v1'] }], network: ['network:celaut-comm-domain', 'network:ergo-explorer-rest'] },
+      container: { architecture: 'x86_64', entrypoint: ['/agent'] },
+      api: [{ port: 9090, transport: ['grpc'], protocol: ['celaut-v1'] }],
+      network: ['network:celaut-comm-domain', 'network:ergo-explorer-rest'],
+      architecture: 'x86_64'
+    },
+    'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1': {
+      mode: 'inline',
+      content: { container: { architecture: 'aarch64', entrypoint: ['/bin/service'] }, api: [{ port: 8080, transport: ['grpc'], protocol: ['celaut-v1'] }], network: ['network:celaut-comm-domain'] },
+      container: { architecture: 'aarch64', entrypoint: ['/bin/service'] },
+      api: [{ port: 8080, transport: ['grpc'], protocol: ['celaut-v1'] }],
+      network: ['network:celaut-comm-domain'],
+      architecture: 'aarch64'
+    },
+    'QmW9xK3pNfD4VyL8tB2mRa6jUc5gYe1h4': {
+      mode: 'source',
+      sourceHash: 'a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd',
+      content: {}
+    }
+  };
+  const data = demoMap[serviceId];
+  if (!data) return [];
+  const profileId = demoProfileId(`service-data-${serviceId}`);
+  return [{
+    boxId: `demo-svcdata-${serviceId.slice(0, 8)}`,
+    profileId,
+    serviceId,
+    reputation: demoReputationFor(profileId),
+    ...data
+  }];
+}
+
+/** Demo descriptive service metadata for demo service IDs. */
+function getDemoServiceMetadata(serviceId: string): ServiceMetadata[] {
+  const demoMap: Record<string, { name: string; description: string; tags: string[] }> = {
+    'QmXf39bC4F7dNK2PwAjQgHh1Vy8cZ9b2a': {
+      name: 'AlphaXAU Optimizer',
+      description: 'Risk-adjusted XAU/BTC trading agent using multi-regime detection and dynamic position sizing. Verifiable via on-chain result proofs.',
+      tags: ['trading', 'gold', 'bitcoin', 'risk-management', 'ergo-native']
+    },
+    'QmR7kL5mTnWqP3xJvE8uYs4dFa6wN9c3b': {
+      name: 'ErgoQuant Pairs',
+      description: 'Statistical arbitrage between XAU and BTC with Ergo-native settlement. Focuses on mean-reversion signals with reputation-weighted position limits.',
+      tags: ['arbitrage', 'quant', 'ergo-native', 'pairs-trading']
+    },
+    'QmT4nP8vLkR2WxJ6sC9mUq5eHb3yZd7f1': {
+      name: 'Trend Follower v2',
+      description: 'Momentum-based trend following across commodity pairs. Lower Sharpe ratio offset by broader market coverage.',
+      tags: ['momentum', 'trend', 'commodity']
+    },
+    'QmW9xK3pNfD4VyL8tB2mRa6jUc5gYe1h4': {
+      name: 'Hedgebot Lite',
+      description: 'Lightweight delta-neutral hedge bot. Source spec published off-chain via source-application registry.',
+      tags: ['hedge', 'delta-neutral', 'lightweight']
+    },
+    'QmJ5wN8kFpL3VyR2tC7mXq9eDf4bZa6h3': {
+      name: 'Latency Zero',
+      description: 'Sub-millisecond execution service optimized for MEV protection on centralized-decentralized arbitrage routes.',
+      tags: ['latency', 'mev', 'arbitrage', 'high-frequency']
+    }
+  };
+  const md = demoMap[serviceId];
+  if (!md) return [];
+  const profileId = demoProfileId(`service-meta-${serviceId}`);
+  return [{
+    boxId: `demo-svcmeta-${serviceId.slice(0, 8)}`,
+    profileId,
+    serviceId,
+    mode: 'inline',
+    content: md,
+    name: md.name,
+    description: md.description,
+    tags: md.tags,
+    reputation: demoReputationFor(profileId)
+  }];
+}
+
 
 // ── Demo Data ────────────────────────────────────────────────────────────────
 
