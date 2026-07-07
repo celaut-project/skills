@@ -193,7 +193,7 @@ export interface ResultCreationInput {
  *
  * Type NFT definitions:
  *  - `celaut:service-data:v1`     → the functional spec: architecture / api / network.
- *  - `celaut:service-metadata:v1` → descriptive metadata: name / description / tags.
+ *  - `celaut:service-metadata:v1` → descriptive metadata: name / description / tags / etc...
  *
  * R9 encoding is one of two modes (see `parseServiceInfoR9`):
  *  - `inline` — R9 is a JSON spec fragment carried directly on-chain.

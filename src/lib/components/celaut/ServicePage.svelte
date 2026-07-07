@@ -10,14 +10,12 @@
   import type { ServiceData, ServiceMetadata } from '$lib/types';
   import type { Skill } from '$lib/types';
   import type { StrictDefinitionBox } from '$lib/types';
-  import { isNetworkDefinition } from '$lib/strictDefinition';
-  import { reputation_proof } from '$lib/common/store';
   import { toasts } from './toastStore';
   import { openForum } from './forumSidebar';
   import { viewedNetworkId, networkPageReturn } from '$lib/stores';
   import ServiceSourceCard from './ServiceSourceCard.svelte';
   import ExplorerLink from './ExplorerLink.svelte';
-  import InfoTip from './InfoTip.svelte';
+  import ServiceInfoCard from './ServiceInfoCard.svelte';
 
   export let serviceId: string = '';
   export let skills: Skill[] = [];
@@ -131,145 +129,11 @@
       <!-- Left column: data + metadata -->
       <div class="sp-main">
 
-        <!-- Service Data -->
-        {#if topData}
-          <section class="sp-card">
-            <div class="sp-card-head">
-              <h2 class="sp-section-title">Service Data</h2>
-              <InfoTip title="Service Data">
-                <p>On-chain opinion describing this service's container, API, and network dependencies.</p>
-                <p>When multiple opinions exist, the highest-reputation one is shown.</p>
-              </InfoTip>
-              {#if data.length > 1}
-                <span class="sp-multi-badge">{data.length} opinions</span>
-              {/if}
-              <ExplorerLink boxId={topData.boxId} liveTooltip="View Service Data box on Explorer" />
-            </div>
-
-            {#if topData.mode === 'source'}
-              <p class="sp-hash-note">Content published by hash: <code class="sp-hash">{topData.sourceHash}</code></p>
-            {:else}
-              <!-- Prose -->
-              {#if topData.content?.prose}
-                <div class="sp-field">
-                  <span class="sp-field-label">Prose</span>
-                  <p class="sp-prose">{topData.content.prose}</p>
-                </div>
-              {/if}
-
-              <!-- Container -->
-              {#if topData.content?.container}
-                <div class="sp-field">
-                  <span class="sp-field-label">Container</span>
-                  <div class="sp-kv-list">
-                    {#each Object.entries(topData.content.container) as [k, v]}
-                      <div class="sp-kv-row">
-                        <code class="sp-kv-key">{k}</code>
-                        <code class="sp-kv-val">{v}</code>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-
-              <!-- API -->
-              {#if topData.content?.api}
-                <div class="sp-field">
-                  <span class="sp-field-label">API Slots</span>
-                  <div class="sp-api-list">
-                    {#each asArray(topData.content.api) as slot}
-                      <div class="sp-api-slot">
-                        {#if slot.port !== undefined}<span class="sp-api-badge">:{slot.port}</span>{/if}
-                        {#if slot.transport}<span class="sp-api-badge sp-api-transport">{[].concat(slot.transport).join(' / ')}</span>{/if}
-                        {#if slot.protocol}<span class="sp-api-badge sp-api-protocol">{[].concat(slot.protocol).join(' / ')}</span>{/if}
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-
-              <!-- Network -->
-              {#if networkItems.length > 0}
-                <div class="sp-field">
-                  <span class="sp-field-label">Network</span>
-                  <div class="sp-network-list">
-                    {#each networkItems as item}
-                      {#if typeof item === 'string'}
-                        <!-- Box ID reference -->
-                        <div class="sp-network-ref">
-                          {#if resolvingNetworks.has(item)}
-                            <span class="sp-network-resolving">Resolving…</span>
-                          {:else if resolvedNetworks[item]}
-                            {@const def = resolvedNetworks[item]}
-                            <span class="sp-network-tag">{def.content.tag}</span>
-                            {#if isNetworkDefinition(def.content)}
-                              <code class="sp-network-protocol">{def.content.formal.protocol}</code>
-                            {/if}
-                            <button class="sp-network-jump" type="button" on:click={() => openNetworkPage(item)}>
-                              View Network →
-                            </button>
-                          {:else if resolvedNetworks[item] === null}
-                            <code class="sp-hash-mini">{item.slice(0, 12)}…</code>
-                            <span class="sp-network-unresolved">Could not resolve</span>
-                          {:else}
-                            <code class="sp-hash-mini">{item.slice(0, 12)}…</code>
-                          {/if}
-                          <ExplorerLink boxId={item} liveTooltip="View network definition box" />
-                        </div>
-                      {:else if item && typeof item === 'object'}
-                        <!-- Inline tags object -->
-                        <div class="sp-network-inline">
-                          {#if item.tags}
-                            {#each [].concat(item.tags) as tag}
-                              <span class="sp-network-tag-inline">{tag}</span>
-                            {/each}
-                          {:else}
-                            <code class="sp-kv-val">{JSON.stringify(item)}</code>
-                          {/if}
-                        </div>
-                      {/if}
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {/if}
-          </section>
-        {:else}
-          <section class="sp-card sp-empty-card">
-            <p>No service data published on-chain yet.</p>
-          </section>
-        {/if}
-
-        <!-- Service Metadata -->
-        {#if topMeta}
-          <section class="sp-card">
-            <div class="sp-card-head">
-              <h2 class="sp-section-title">Metadata</h2>
-              {#if metadata.length > 1}
-                <span class="sp-multi-badge">{metadata.length} opinions</span>
-              {/if}
-              <ExplorerLink boxId={topMeta.boxId} liveTooltip="View Metadata box on Explorer" />
-            </div>
-            {#if topMeta.mode === 'source'}
-              <p class="sp-hash-note">Published by hash: <code class="sp-hash">{topMeta.sourceHash}</code></p>
-            {:else}
-              <div class="sp-kv-list">
-                {#each Object.entries(topMeta.content ?? {}) as [k, v]}
-                  <div class="sp-kv-row">
-                    <code class="sp-kv-key">{k}</code>
-                    <code class="sp-kv-val">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</code>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-          </section>
-        {/if}
+        <!-- Service data and metadata -->
+        <ServiceInfoCard serviceId={serviceId || ''} compact={true} />
 
         <!-- Sources -->
-        <section class="sp-card">
-          <h2 class="sp-section-title">Sources</h2>
-          <ServiceSourceCard {serviceId} compact={false} />
-        </section>
+        <ServiceSourceCard {serviceId} compact={false} />
       </div>
 
       <!-- Right column: associated skills -->
@@ -298,7 +162,7 @@
 
 <style lang="postcss">
   .sp-container {
-    max-width: 1100px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 1.5rem 2rem;
     display: flex;
@@ -332,7 +196,7 @@
     font-size: 0.82rem;
     padding: 0.4rem 0.8rem;
     border-radius: 0.6rem;
-    border: 1px solid hsl(var(--border) / 0.7);
+    border: 0px solid hsl(var(--border) / 0.7);
     background: transparent;
     cursor: pointer;
   }

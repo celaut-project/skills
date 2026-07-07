@@ -20,8 +20,6 @@
   import StatsBar from "$lib/components/celaut/StatsBar.svelte";
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
-  import ServiceSourceCard from "$lib/components/celaut/ServiceSourceCard.svelte";
-  import ServiceInfoCard from "$lib/components/celaut/ServiceInfoCard.svelte";
   import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
   import { serviceFilters, serviceInfoRegistry, serviceMatches, resetServiceInfo } from "$lib/serviceFilters";
   import SortDropdown from "$lib/components/celaut/SortDropdown.svelte";
@@ -1312,13 +1310,14 @@
         >
           Profile
         </button>
-        <button
+        <!-- Network list could be added in an optional advance mode -->
+        <!-- <button
           class="tab-btn"
           class:active={activeTab === "networks"}
           on:click={openNetworksTab}
         >
           Networks
-        </button>
+        </button> -->
         <button
           class="tab-btn"
           class:active={activeTab === "howitworks"}
@@ -1991,12 +1990,6 @@
                           </div>
                         {/each}
                       {/if}
-                      <ServiceSourceCard
-                        serviceId={cov.serviceId || ''}
-                        compact={true}
-                        on:addSource={(event) => openFileSourceModal(event.detail)}
-                      />
-                      <ServiceInfoCard serviceId={cov.serviceId || ''} compact={true} />
                       <div class="coverage-action-row mt-3">
                         <RunServiceButton serviceId={cov.serviceId || ''} label="Run" />
                         {#if cov.serviceId}
@@ -2010,10 +2003,11 @@
                               window.history.pushState({}, '', u);
                             }}
                           >
-                            View service →
+                            View service details →
                           </button>
                         {/if}
-                        <button
+                        <!-- En caso de que convenga mostrar el dialogo del servicio desde esta parte -->
+                        <!-- <button
                           class="dialogue-btn"
                           type="button"
                           on:click={() => openForum(cov.boxId, `Coverage: ${formatServiceId(cov.serviceId || cov.boxId)}`)}
@@ -2022,7 +2016,7 @@
                             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                           </svg>
                           Dialogue
-                        </button>
+                        </button> -->
                       </div>
                     </div>
                     {/if}
