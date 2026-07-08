@@ -6,9 +6,10 @@
    * and inline validation hints. Emits a structured payload on submit.
    */
   import { createEventDispatcher } from 'svelte';
+  import InfoTip from '../InfoTip.svelte';
 
   const dispatch = createEventDispatcher<{
-    submit: { slug: string; prose: string; protocol: string; peerDiscovery: string; actions: string[] };
+    submit: { slug: string; prose: string; protocol: string; peerDiscovery: string; actions: Record<string, string> };
     cancel: void;
   }>();
 
@@ -16,18 +17,41 @@
   let prose = '';
   let protocol = '';
   let peerDiscovery = '';
-  let actionsRaw = '';
+  // Actions are a dict (name → description). Edited as an ordered list of rows
+  // and collapsed into a Record on submit.
+  let actionRows: Array<{ name: string; description: string }> = [
+    { name: '', description: '' }
+  ];
   let submitting = false;
+
+  function addActionRow() {
+    actionRows = [...actionRows, { name: '', description: '' }];
+  }
+
+  function removeActionRow(i: number) {
+    actionRows = actionRows.filter((_, idx) => idx !== i);
+    if (actionRows.length === 0) actionRows = [{ name: '', description: '' }];
+  }
+
+  /** Collapse the row list into a { name: description } dict, dropping blank names. */
+  function collectActions(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const row of actionRows) {
+      const name = row.name.trim();
+      if (name) out[name] = row.description.trim();
+    }
+    return out;
+  }
 
   function handleSubmit() {
     const trimmedSlug = slug.trim();
     const trimmedProse = prose.trim();
     const trimmedProtocol = protocol.trim();
     const trimmedPeer = peerDiscovery.trim();
-    const actions = actionsRaw.split(',').map(s => s.trim()).filter(Boolean);
+    const actions = collectActions();
 
     if (!trimmedSlug || !trimmedProse || !trimmedProtocol || !trimmedPeer) return;
-    if (actions.length === 0) return;
+    if (Object.keys(actions).length === 0) return;
 
     submitting = true;
     dispatch('submit', {
@@ -46,7 +70,7 @@
   }
 
   $: isValid = slug.trim() && prose.trim() && protocol.trim() && peerDiscovery.trim() &&
-    actionsRaw.split(',').map(s => s.trim()).filter(Boolean).length > 0;
+    actionRows.some(r => r.name.trim());
 </script>
 
 <div class="create-card">
@@ -121,20 +145,65 @@
     </div>
 
     <div class="field">
-      <label class="field__label" for="create-actions">
+      <span class="field__label" id="create-actions-label">
         Actions
         <span class="field__required" aria-label="required">*</span>
-      </label>
-      <input
-        id="create-actions"
-        class="field__input"
-        type="text"
-        bind:value={actionsRaw}
-        placeholder="peer-discovery, message-delivery, service-launch"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <span class="field__hint">Comma-separated action names to be assessed in the Trust Framework</span>
+        <InfoTip title="Network actions" placement="right">
+          <p>
+            The fundamental operations a service performs on this network — each
+            one is later scored on the Sigmaverse Quality Standard in a Trust
+            Framework.
+          </p>
+          <p>
+            Give every action a machine <strong>name</strong> and a short
+            <strong>description</strong> of what it does. They're stored as a
+            <code>name → description</code> dict, not a flat list.
+          </p>
+        </InfoTip>
+      </span>
+
+      <div class="actions-editor" role="group" aria-labelledby="create-actions-label">
+        {#each actionRows as row, i (i)}
+          <div class="action-row">
+            <input
+              class="field__input action-row__name"
+              type="text"
+              bind:value={row.name}
+              placeholder="action_name"
+              aria-label={`Action ${i + 1} name`}
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <input
+              class="field__input action-row__desc"
+              type="text"
+              bind:value={row.description}
+              placeholder="What this action does"
+              aria-label={`Action ${i + 1} description`}
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              class="action-row__remove"
+              on:click={() => removeActionRow(i)}
+              aria-label={`Remove action ${i + 1}`}
+              title="Remove action"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        {/each}
+        <button type="button" class="actions-editor__add" on:click={addActionRow}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add action
+        </button>
+      </div>
+      <span class="field__hint">Each action is assessed for trust &amp; access in the Trust Framework</span>
     </div>
 
     <div class="create-card__actions">
@@ -233,6 +302,68 @@
     gap: 12px;
   }
 
+  /* Keep the InfoTip aligned with the label text */
+  .field__label :global(.info-tip-wrap) {
+    margin-left: 2px;
+  }
+
+  /* ── Actions editor (name → description rows) ──────────────────────────── */
+  .actions-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .action-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.9fr) minmax(0, 2fr) auto;
+    gap: 8px;
+    align-items: center;
+  }
+  .action-row__name {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+  }
+  .action-row__remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid hsl(var(--border) / 0.5);
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .action-row__remove:hover {
+    background: hsl(0 80% 60% / 0.1);
+    border-color: hsl(0 80% 60% / 0.4);
+    color: hsl(0 80% 60%);
+  }
+  .actions-editor__add {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    align-self: flex-start;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px dashed hsl(var(--border) / 0.6);
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .actions-editor__add:hover {
+    background: hsl(var(--muted) / 0.2);
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+
   /* ── Action buttons ────────────────────────────────────────────────────── */
   .create-card__actions {
     display: flex;
@@ -288,6 +419,12 @@
     }
     .field-row {
       grid-template-columns: 1fr;
+    }
+    .action-row {
+      grid-template-columns: 1fr auto;
+    }
+    .action-row__desc {
+      grid-column: 1 / -1;
     }
   }
 </style>

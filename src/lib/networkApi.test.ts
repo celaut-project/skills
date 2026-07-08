@@ -34,8 +34,13 @@ import {
 const SPEC: NetworkFormalSpec = {
   protocol: 'grpc/celaut-v1',
   peerDiscovery: 'environment_variable',
-  actions: ['peer-discovery', 'message-delivery', 'service-launch']
+  actions: {
+    'peer-discovery': 'Locate other peers on the domain.',
+    'message-delivery': 'Deliver a message to a peer.',
+    'service-launch': 'Request a peer to launch a service.'
+  }
 };
+const ACTION_NAMES = Object.keys(SPEC.actions);
 
 // ── Full creation flow: make → encode → decode → isNetwork ───────────────────
 describe('network definition creation flow (NetworkPage path)', () => {
@@ -61,6 +66,7 @@ describe('network definition creation flow (NetworkPage path)', () => {
     const def = makeNetworkDefinition('my-net', 'My network.', SPEC);
     if (isNetworkDefinition(def)) {
       expect(def.formal.actions).toEqual(SPEC.actions);
+      expect(Object.keys(def.formal.actions)).toEqual(ACTION_NAMES);
     } else {
       throw new Error('Expected isNetworkDefinition to be true');
     }
@@ -80,13 +86,13 @@ describe('trust framework creation flow (NetworkPage trust-framework form)', () 
     const encoded = encodeFrameworkR9(fw.actions);
     const decoded = decodeFrameworkR9(encoded);
 
-    expect(decoded.actions.map((a) => a.name)).toEqual(SPEC.actions);
+    expect(decoded.actions.map((a) => a.name)).toEqual(ACTION_NAMES);
     expect(decoded.actions[0].trust).toBe(TrustLevel.CryptoEconomic);
     expect(decoded.actions[2].access).toBe(AccessLevel.CentralizedService);
   });
 
   it('computeFrameworkScores reflects the selected trust/access levels', () => {
-    const allTrustMinimized = SPEC.actions.map((name) => ({
+    const allTrustMinimized = ACTION_NAMES.map((name) => ({
       name,
       trust: TrustLevel.TrustMinimized,
       access: AccessLevel.VerifiableArtifact

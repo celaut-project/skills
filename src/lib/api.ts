@@ -864,7 +864,11 @@ function getDemoStrictDefinitions(): StrictDefinitionBox[] {
         formal: {
           protocol: 'grpc/celaut-v1',
           peerDiscovery: 'environment_variable',
-          actions: ['send_request', 'receive_response', 'stream_data']
+          actions: {
+            send_request: 'Issue a unary gRPC call to a peer service resolved via the nodo-injected address.',
+            receive_response: 'Accept and decode the unary gRPC response returned by the peer.',
+            stream_data: 'Open a bidirectional gRPC stream to exchange a sequence of messages with a peer.'
+          }
         }
       },
       reputation: demoReputationFor(demoProfileId('strictdef-celaut-comm'))
@@ -880,7 +884,11 @@ function getDemoStrictDefinitions(): StrictDefinitionBox[] {
         formal: {
           protocol: 'https/rest-json',
           peerDiscovery: 'static',
-          actions: ['query_boxes', 'broadcast_tx', 'get_block_info']
+          actions: {
+            query_boxes: 'Fetch UTXO boxes by address, token, or box id from the Explorer REST API.',
+            broadcast_tx: 'Submit a signed transaction to the network through the Explorer endpoint.',
+            get_block_info: 'Read block headers and chain state (height, difficulty) from the Explorer.'
+          }
         }
       },
       reputation: demoReputationFor(demoProfileId('strictdef-ergo-explorer'))
@@ -896,7 +904,11 @@ function getDemoStrictDefinitions(): StrictDefinitionBox[] {
         formal: {
           protocol: 'ipfs/bitswap',
           peerDiscovery: 'dht',
-          actions: ['fetch_content', 'publish_content', 'resolve_cid']
+          actions: {
+            fetch_content: 'Retrieve a content-addressed blob by CID over the IPFS bitswap exchange.',
+            publish_content: 'Pin and announce a blob to the DHT so other peers can resolve it by CID.',
+            resolve_cid: 'Look up which peers can serve a given CID through the IPFS DHT.'
+          }
         }
       },
       reputation: demoReputationFor(demoProfileId('strictdef-ipfs-content'))
