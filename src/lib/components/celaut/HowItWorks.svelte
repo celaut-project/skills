@@ -1,9 +1,11 @@
 <script lang="ts">
   import "katex/dist/katex.min.css";
   import { scoreDocHtml } from "$lib/renderScoreDoc";
+  import { networkDocHtml } from "$lib/renderNetworkDoc";
 
-  // Lower container has two tabs: the formal scoring spec and a plain-English FAQ.
-  type LearnTab = "scoring" | "faq";
+  // Lower container has three tabs: the formal scoring spec, the Networks &
+  // Trust Framework explainer, and a plain-English FAQ.
+  type LearnTab = "scoring" | "network" | "faq";
   let activeTab: LearnTab = "scoring";
 
   // FAQ content (English — the whole site is English). Each answer is an array
@@ -58,6 +60,27 @@
       q: "What's the main advantage?",
       a: [
         "Guaranteed reproducibility plus real competition on verifiable results instead of marketing claims. You choose tools by what they have provably done, not by what they say they can do."
+      ]
+    },
+    {
+      q: "What is a Network Definition?",
+      a: [
+        "A Service is sealed, but it still talks to the outside world — a gRPC comm domain, a REST API, an IPFS swarm. A Network Definition is a brand-free, formal description of one such network: its protocol, how peers are discovered, and the fundamental actions performed on it (each a name with a short description).",
+        "It's an improvable, self-contained object anyone can publish — the same idea as a Skill, applied to networks instead of problems."
+      ]
+    },
+    {
+      q: "What is a Trust Framework?",
+      a: [
+        "A Trust Framework is a Know-Your-Assumptions assessment of a Network Definition. It scores every declared action on the Sigmaverse Quality Standard across two axes — Trust (how the action is authorized) and Access (how much sovereignty the user keeps).",
+        "Anyone can publish a framework for a network, and anyone can review it. Two derived scores — Weakest Link and Average Risk — summarize the assumptions at a glance."
+      ]
+    },
+    {
+      q: "How are the trust scores calculated?",
+      a: [
+        "Every action gets a Trust level (1 Trust-Minimized, 2 Crypto-Economic, 3 Fiduciary) and an Access level (1 Verifiable Artifact, 2 Centralized Service). Lower is better on both.",
+        "Weakest Link is the single worst level anywhere in the system; Average Risk is the mean of every level assigned. Both are computed off-chain from the box, so anyone can recompute and verify them — nothing is trusted or stored. See the “Networks & Trust” tab for the full standard."
       ]
     }
   ];
@@ -198,6 +221,15 @@
     </button>
     <button
       class="learn-tab"
+      class:active={activeTab === "network"}
+      role="tab"
+      aria-selected={activeTab === "network"}
+      on:click={() => (activeTab = "network")}
+    >
+      Networks &amp; Trust
+    </button>
+    <button
+      class="learn-tab"
       class:active={activeTab === "faq"}
       role="tab"
       aria-selected={activeTab === "faq"}
@@ -215,6 +247,15 @@
       </div>
       <!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted in-repo doc (SCORE.md), math pre-rendered with KaTeX -->
       <div class="score-doc-body">{@html scoreDocHtml}</div>
+    </section>
+  {:else if activeTab === "network"}
+    <section class="score-doc">
+      <div class="score-doc-head">
+        <span class="contrast-label">Networks &amp; Trust</span>
+        <p class="score-doc-sub">How the networks a service depends on are formally defined and assessed for trust.</p>
+      </div>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- trusted in-repo doc (NETWORK_TRUST.md) -->
+      <div class="score-doc-body">{@html networkDocHtml}</div>
     </section>
   {:else}
     <section class="faq">
@@ -692,6 +733,29 @@
 
   .score-doc-body :global(em) {
     color: hsl(var(--muted-foreground));
+  }
+
+  /* Tables (used by NETWORK_TRUST.md — Trust / Access category matrices). */
+  .score-doc-body :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.9rem 0;
+    font-size: 0.85rem;
+  }
+  .score-doc-body :global(th),
+  .score-doc-body :global(td) {
+    padding: 0.5rem 0.7rem;
+    border: 1px solid hsl(var(--border) / 0.6);
+    text-align: left;
+    vertical-align: top;
+  }
+  .score-doc-body :global(thead th) {
+    background: hsl(var(--muted) / 0.25);
+    color: hsl(var(--foreground));
+    font-weight: 700;
+  }
+  .score-doc-body :global(tbody tr:nth-child(even)) {
+    background: hsl(var(--muted) / 0.08);
   }
 
   /* Block math: let long formulas scroll instead of overflowing the card. */

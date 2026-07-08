@@ -50,11 +50,12 @@ export interface NetworkFormalSpec {
   /** How peers discover each other, e.g. "static", "environment_variable", "dht". */
   peerDiscovery: string;
   /**
-   * The fundamental network actions that the Trust Framework assesses. Every
-   * name here should appear as an ActionAssessment in the DTF that points at
-   * this definition, so the two boxes stay in lockstep.
+   * The fundamental network actions that the Trust Framework assesses, as a
+   * dict mapping each action's machine name → a human-readable description of
+   * what it does. Every key here should appear as an ActionAssessment in the
+   * DTF that points at this definition, so the two boxes stay in lockstep.
    */
-  actions: string[];
+  actions: Record<string, string>;
 }
 
 /** The R9 payload of a Strict Definition box (JSON, utf8). */
@@ -96,7 +97,7 @@ export function makeNetworkDefinition(
   if (formal.protocol.trim().length === 0 || formal.peerDiscovery.trim().length === 0) {
     throw new Error('makeNetworkDefinition: protocol and peerDiscovery are required');
   }
-  if (formal.actions.length === 0) {
+  if (Object.keys(formal.actions).length === 0) {
     throw new Error('makeNetworkDefinition: at least one network action is required');
   }
   return {
@@ -141,7 +142,7 @@ export function assessNetwork(
   def: NetworkDefinition,
   levels: Record<string, Omit<ActionAssessment, 'name'>>
 ): FrameworkContent {
-  const declared = def.formal.actions;
+  const declared = Object.keys(def.formal.actions);
   const supplied = Object.keys(levels);
   const missing = declared.filter((a) => !(a in levels));
   const extra = supplied.filter((a) => !declared.includes(a));

@@ -13,7 +13,11 @@ import { TrustLevel, AccessLevel, computeFrameworkScores } from './trustFramewor
 const SPEC: NetworkFormalSpec = {
   protocol: 'grpc/celaut-v1',
   peerDiscovery: 'environment_variable',
-  actions: ['peer-discovery', 'message-delivery', 'service-launch']
+  actions: {
+    'peer-discovery': 'Locate other peers on the domain.',
+    'message-delivery': 'Deliver a message to a peer.',
+    'service-launch': 'Request a peer to launch a service.'
+  }
 };
 
 describe('makeNetworkDefinition', () => {
@@ -27,7 +31,7 @@ describe('makeNetworkDefinition', () => {
   it('rejects non-kebab slugs, blank prose, and empty action sets', () => {
     expect(() => makeNetworkDefinition('Bad_Slug', 'x', SPEC)).toThrow(/kebab-case/);
     expect(() => makeNetworkDefinition('ok', '   ', SPEC)).toThrow(/prose/);
-    expect(() => makeNetworkDefinition('ok', 'x', { ...SPEC, actions: [] })).toThrow(/action/);
+    expect(() => makeNetworkDefinition('ok', 'x', { ...SPEC, actions: {} })).toThrow(/action/);
     expect(() => makeNetworkDefinition('ok', 'x', { ...SPEC, protocol: '' })).toThrow(/protocol/);
   });
 });
@@ -53,7 +57,7 @@ describe('assessNetwork → trust framework', () => {
       'message-delivery': { trust: TrustLevel.TrustMinimized, access: AccessLevel.VerifiableArtifact },
       'service-launch': { trust: TrustLevel.Fiduciary, access: AccessLevel.CentralizedService }
     });
-    expect(content.actions.map((a) => a.name)).toEqual(SPEC.actions);
+    expect(content.actions.map((a) => a.name)).toEqual(Object.keys(SPEC.actions));
 
     const scores = computeFrameworkScores(content.actions);
     // worst level present is Fiduciary (3); mean of [2,1,1,1,3,2] = 10/6 = 1.67
@@ -62,7 +66,7 @@ describe('assessNetwork → trust framework', () => {
   });
 
   it('rejects level maps that miss or overshoot the declared actions', () => {
-    const def = makeNetworkDefinition('n', 'x', { ...SPEC, actions: ['a', 'b'] });
+    const def = makeNetworkDefinition('n', 'x', { ...SPEC, actions: { a: 'A.', b: 'B.' } });
     expect(() =>
       assessNetwork(def, { a: { trust: TrustLevel.TrustMinimized, access: AccessLevel.VerifiableArtifact } })
     ).toThrow(/missing: \[b\]/);

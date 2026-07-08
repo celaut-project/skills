@@ -111,7 +111,7 @@
     prose: string;
     protocol: string;
     peerDiscovery: string;
-    actions: string[];
+    actions: Record<string, string>;
   }) {
     if (!$walletConnected && !$demoMode) {
       toasts.error('Connect your wallet first.');
@@ -211,7 +211,7 @@
     <main class="np-main">
       {#if showCreateForm}
         <NetworkCreateForm
-          on:submit={handleCreateNetwork}
+          on:submit={(e) => handleCreateNetwork(e.detail)}
           on:cancel={() => (showCreateForm = false)}
         />
 
@@ -222,7 +222,7 @@
           network={selectedNetwork}
           {selectedFrameworks}
           {loadingFrameworks}
-          on:create={handleCreateTf}
+          on:create={(e) => handleCreateTf(e.detail)}
         />
 
       {:else}
