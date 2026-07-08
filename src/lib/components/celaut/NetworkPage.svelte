@@ -191,7 +191,7 @@
           Network Definitions
 
           <InfoTip title="What are network definitions?">
-              ...
+              A service specification declares the communication domains a service depends on. These networks may represent anything from storage systems and distributed ledgers to peer-to-peer overlays or specific on-chain protocols.
           </InfoTip>
       </h1>
   </header>
