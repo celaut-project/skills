@@ -23,16 +23,31 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.875rem;
+
+    padding: 0.4rem 0.8rem;
+
+    font-size: 0.82rem;
+    font-weight: 500;
+
     color: hsl(var(--muted-foreground));
-    margin-bottom: 1.5rem;
-    padding: 0.375rem 0.75rem;
-    margin-left: -0.75rem;
-    border-radius: 0.5rem;
-    transition: color 0.2s ease, background 0.2s ease;
+
+    background: transparent;
+    border: none;
+    border-radius: 0.6rem;
+
+    cursor: pointer;
+
+    transition:
+      background-color .15s ease,
+      color .15s ease;
   }
+
   .back-button:hover {
-    color: hsl(var(--foreground));
     background: hsl(var(--muted) / 0.5);
+    color: hsl(var(--foreground));
+  }
+
+  .back-button svg {
+    flex-shrink: 0;
   }
 </style>

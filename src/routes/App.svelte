@@ -1312,13 +1312,13 @@
           Profile
         </button>
         <!-- Network list could be added in an optional advance mode -->
-        <!-- <button
+        <button
           class="tab-btn"
           class:active={activeTab === "networks"}
           on:click={openNetworksTab}
         >
           Networks
-        </button> -->
+        </button>
         <button
           class="tab-btn"
           class:active={activeTab === "howitworks"}
