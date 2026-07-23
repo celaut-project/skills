@@ -17,7 +17,6 @@
 
   // ── Feature expansion components ───────────────────────────────────────────
   import Toast from "$lib/components/celaut/Toast.svelte";
-  import StatsBar from "$lib/components/celaut/StatsBar.svelte";
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
@@ -80,6 +79,8 @@
   let minReputation = 0;
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "networks" | "howitworks" | "" = "gallery";
+  // Hero suggestion chips + focus state for the primary search surface.
+  let heroSearchFocused = false;
   let detailVisible = false;
   // When the Submit tab is reached via "Modify Skill", remember the skill the
   // user came from so we can offer a back button to its detail view (mirrors
@@ -497,6 +498,8 @@
   // The homepage is one continuous page of stacked <section> anchors. Nav items
   // smooth-scroll to a section; any open overlay (skill/network/service/profile
   // detail) is closed first so the scroll page is on screen to scroll within.
+  // Primary marketing anchors. Profile stays on-page but is reached from the
+  // account control (not the main nav) so the header stays product-first.
   const scrollSectionIds = ["gallery", "networks", "howitworks", "profile", "submit"] as const;
 
   function clearOverlays() {
@@ -520,7 +523,10 @@
     clearOverlays();
     if (browser) {
       await tick();
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+      // Gallery nav lands on the skills grid (proof of product), not empty hero void.
+      const targetId = id === "gallery" ? "skills-section" : id;
+      const el = document.getElementById(targetId) || document.getElementById(id);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
@@ -533,10 +539,25 @@
     }
   }
 
-  // Hero search submit: the input already filters live via `searchQuery`, so the
-  // arrow/Enter simply scrolls the results (skills grid) into view.
+  // Hero search submit: input already filters live via `searchQuery`; arrow/Enter
+  // scrolls the filtered gallery into view with a sticky offset for the island nav.
   function submitHeroSearch() {
-    if (browser) document.getElementById("skills-section")?.scrollIntoView({ behavior: "smooth" });
+    if (!browser) return;
+    const el = document.getElementById("skills-section");
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY - 96;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }
+
+  function applyHeroChip(chip: string) {
+    // Chips are domain/tag shortcuts — set as search so the existing filter pipeline runs.
+    searchQuery = chip;
+    activeCategory = "all";
+    submitHeroSearch();
+  }
+
+  function clearHeroSearch() {
+    searchQuery = "";
   }
 
   function openNewProfileModal() {
@@ -714,6 +735,27 @@
   // hidden entries — surface it so the counts reconcile for the user.
   $: galleryUnfiltered = !searchQuery && activeCategory === "all" && (!minReputation || minReputation <= 0);
   $: hiddenFromListing = Math.max(0, skills.length - displayedSkills.length);
+
+  // Suggestion chips for the hero: real domains from loaded skills, seeded with
+  // the marketplace defaults so the first paint never looks empty.
+  $: heroSuggestionChips = (() => {
+    const counts = new Map<string, number>();
+    const seeds = ["finance", "security", "analytics", "ai/ml", "infrastructure", "image"];
+    for (const seed of seeds) counts.set(seed, 0);
+    for (const s of skills) {
+      const d = s.domain?.trim().toLowerCase();
+      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+      for (const raw of s.tags ?? []) {
+        const t = raw?.trim().toLowerCase();
+        if (t && t.length <= 18) counts.set(t, (counts.get(t) ?? 0) + 0.35);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([value]) => value)
+      .filter((v, i, arr) => arr.indexOf(v) === i)
+      .slice(0, 6);
+  })();
 
   // Track duplicate skill names to flag concurrent submissions. Anyone can post
   // a skill with the same human name as another — the chain doesn't enforce
@@ -1152,14 +1194,16 @@
       };
       window.addEventListener("popstate", popHandler);
 
-      // Island-header scroll behaviour: the header is shown only at the top of
-      // the page. Once the user scrolls past the threshold it stays hidden in
-      // both directions (no scroll-up reveal) — they reach it by returning to
-      // the top. requestAnimationFrame throttles the work.
+      // Island-header: hide on scroll-down, reveal on scroll-up (always show near top).
       let scrollTicking = false;
+      let lastScrollY = window.scrollY;
       const updateNav = () => {
         const y = window.scrollY;
-        navHidden = y > 80;
+        const goingDown = y > lastScrollY;
+        lastScrollY = y;
+        if (y < 48) navHidden = false;
+        else if (goingDown && y > 120) navHidden = true;
+        else if (!goingDown) navHidden = false;
         // Scroll-spy: while the single-scroll page is on screen (no overlay),
         // highlight the nav item for the section under the upper viewport.
         const overlayOpen =
@@ -1315,9 +1359,8 @@
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
-      <!-- Single-scroll nav: each item smooth-scrolls to its section anchor.
-           Order: Gallery · Networks · How it works · Profile · Submit. -->
-      <nav class="navbar-tabs">
+      <!-- Product nav only. Profile lives under the account control. -->
+      <nav class="navbar-tabs" aria-label="Primary">
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
@@ -1340,14 +1383,7 @@
           How it works
         </button>
         <button
-          class="tab-btn"
-          class:active={activeTab === "profile"}
-          on:click={() => scrollToSection("profile")}
-        >
-          Profile
-        </button>
-        <button
-          class="tab-btn"
+          class="tab-btn tab-btn-cta"
           class:active={activeTab === "submit"}
           on:click={() => scrollToSection("submit")}
         >
@@ -1355,7 +1391,24 @@
         </button>
       </nav>
 
-      <div class="flex items-center gap-3">
+      <div class="navbar-actions">
+        <button
+          type="button"
+          class="account-btn"
+          class:active={activeTab === "profile"}
+          on:click={() => scrollToSection("profile")}
+          title="Reputation profile"
+          aria-label="Open reputation profile"
+        >
+          {#if $reputation_proof?.token_id}
+            <ProfileAvatar profileId={$reputation_proof.token_id} size={28} clickable={false} title="Your profile" />
+          {:else}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          {/if}
+          <span class="account-btn-label">Profile</span>
+        </button>
         <WalletButton explorerUrl={$web_explorer_uri_addr} />
         <Theme />
       </div>
@@ -1509,354 +1562,428 @@
       />
 
     {:else}
-      <!-- ══ Single-scroll landing page ═══════════════════════════════════
-           One continuous page: a full-height search hero, then the gallery,
-           networks, how-it-works, profile and submit sections stacked in that
-           order. Nav items smooth-scroll to each #anchor. Detail/overlay views
-           above still REPLACE this whole page when active. -->
+      <!-- ══ Single-scroll landing ═══════════════════════════════════════
+           Narrative: hero search → skills proof → networks → how it works
+           summary → publish CTA. Profile stays on-page but out of primary
+           nav. Detail overlays above still REPLACE this whole page. -->
 
-      <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
-      <section id="gallery">
-        <!-- Above-the-fold: only the centered heading + search. Everything else
-             (filters, stats, cards) sits below the fold via min-height:100vh. -->
+      <section id="gallery" class="landing-gallery">
+        <!-- Hero: compact, product-first. Gallery peeks below. -->
         <div class="scroll-hero">
+          <div class="scroll-hero-glow" aria-hidden="true"></div>
           <div class="scroll-hero-inner">
+            <div class="scroll-hero-kicker">
+              <span class="scroll-hero-kicker-dot" aria-hidden="true"></span>
+              Decentralized skill registry on Ergo
+            </div>
             <h1 class="scroll-hero-title">What skill are you looking for?</h1>
-            <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
-            <div class="scroll-hero-search">
+            <p class="scroll-hero-sub">
+              Search a verifiable marketplace of AI capabilities — skills define the problem, services prove they can solve it.
+            </p>
+
+            <div
+              class="scroll-hero-search"
+              class:scroll-hero-search-focused={heroSearchFocused}
+              class:scroll-hero-search-filled={!!searchQuery}
+            >
               <svg class="scroll-hero-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input
-                type="text"
+                type="search"
                 bind:value={searchQuery}
                 placeholder="Search skills, tags, domains..."
                 class="scroll-hero-input"
                 aria-label="Search skills"
+                autocomplete="off"
+                spellcheck="false"
+                on:focus={() => (heroSearchFocused = true)}
+                on:blur={() => (heroSearchFocused = false)}
                 on:keydown={(e) => { if (e.key === 'Enter') submitHeroSearch(); }}
               />
-              <button class="scroll-hero-submit" type="button" on:click={submitHeroSearch} aria-label="Search skills" title="Search">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              {#if searchQuery}
+                <button
+                  type="button"
+                  class="scroll-hero-clear"
+                  on:click={clearHeroSearch}
+                  aria-label="Clear search"
+                  title="Clear"
+                >✕</button>
+              {/if}
+              <button
+                class="scroll-hero-submit"
+                type="button"
+                on:click={submitHeroSearch}
+                aria-label="Show search results"
+                title="Show results"
+              >
+                <span class="scroll-hero-submit-label">Search</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
               </button>
             </div>
-          </div>
-        </div>
 
-      <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- Stats Bar -->
-        <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
-
-        <!-- Category Filter -->
-        <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
-
-        <div class="gallery-header">
-          <div>
-            <h2 class="gallery-title">
-              {#if searchQuery}
-                Search Results
-              {:else}
-                All Skills
-              {/if}
-            </h2>
-            <p class="text-sm text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
-              {#if galleryUnfiltered && hiddenFromListing > 0}
-                <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
-                <InfoTip title="Why fewer cards than the total?">
-                  <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
-                  <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
-                </InfoTip>
-              {:else}
-                <span>
-                  {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
-                  {searchQuery ? ` matching "${searchQuery}"` : ""}
-                  {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
-                </span>
-              {/if}
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
-            <button class="refresh-btn" on:click={loadSkills}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        <!-- Gallery search + min-reputation filter (moved out of the header). -->
-        <div class="gallery-controls">
-          <div class="gallery-search">
-            <svg class="gallery-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              bind:value={searchQuery}
-              placeholder="Search skills, tags, domains..."
-              class="search-input"
-              aria-label="Search skills"
-            />
             {#if searchQuery}
-              <button class="gallery-search-clear" on:click={() => (searchQuery = "")} aria-label="Clear search" title="Clear search">✕</button>
+              <p class="scroll-hero-live" aria-live="polite">
+                {displayedSkills.length} result{displayedSkills.length === 1 ? "" : "s"}
+                {#if !loading}
+                  <button type="button" class="scroll-hero-live-link" on:click={submitHeroSearch}>View below ↓</button>
+                {/if}
+              </p>
+            {:else}
+              <div class="scroll-hero-chips" role="list" aria-label="Popular searches">
+                {#each heroSuggestionChips as chip}
+                  <button type="button" class="scroll-hero-chip" role="listitem" on:click={() => applyHeroChip(chip)}>
+                    {chip}
+                  </button>
+                {/each}
+              </div>
             {/if}
+
+            <div class="scroll-hero-stats">
+              <div class="scroll-hero-stat">
+                <span class="scroll-hero-stat-value">{loading ? "—" : skills.length}</span>
+                <span class="scroll-hero-stat-label">Skills</span>
+              </div>
+              <span class="scroll-hero-stat-sep" aria-hidden="true"></span>
+              <div class="scroll-hero-stat">
+                <span class="scroll-hero-stat-value">{loading ? "—" : totalServices}</span>
+                <span class="scroll-hero-stat-label">Services</span>
+              </div>
+              <span class="scroll-hero-stat-sep" aria-hidden="true"></span>
+              <div class="scroll-hero-stat">
+                <span class="scroll-hero-stat-value">{loading ? "—" : totalResults}</span>
+                <span class="scroll-hero-stat-label">Results</span>
+              </div>
+            </div>
           </div>
-          <label class="gallery-minrep">
-            <span class="gallery-minrep-label">Min reputation</span>
-            <span class="gallery-minrep-field">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                bind:value={minReputation}
-                class="gallery-minrep-input"
-                aria-label="Minimum reputation in ERGs"
-              />
-              <span class="gallery-minrep-suffix">ERGs</span>
-            </span>
-          </label>
+
+          <button type="button" class="scroll-hero-peek" on:click={submitHeroSearch} aria-label="Browse skills">
+            <span>Browse skills</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
         </div>
 
-        {#if loading}
-          <div class="skills-grid">
-            {#each [0, 1, 2, 3, 4, 5] as i}
-              <SkeletonCard index={i} />
-            {/each}
-          </div>
-        {:else if error}
-          <div class="empty-state">
-            <div class="empty-state-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
+        <div id="skills-section" class="container mx-auto px-8 pb-10 skills-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">Marketplace</p>
+              <h2 class="section-title">
+                {#if searchQuery}
+                  Results for “{searchQuery}”
+                {:else if activeCategory !== "all"}
+                  {activeCategory} skills
+                {:else}
+                  Explore skills
+                {/if}
+              </h2>
+              <p class="section-sub text-sm text-muted-foreground mt-1 inline-flex items-center gap-1 flex-wrap">
+                {#if galleryUnfiltered && hiddenFromListing > 0}
+                  <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
+                  <InfoTip title="Why fewer cards than the total?">
+                    <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
+                    <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
+                  </InfoTip>
+                {:else}
+                  <span>
+                    {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
+                    {searchQuery ? ` matching “${searchQuery}”` : ""}
+                    {activeCategory !== "all" ? ` in ${activeCategory}` : " with on-chain reputation"}
+                  </span>
+                {/if}
+              </p>
             </div>
-            <p class="text-lg font-semibold">Couldn't load skills</p>
-            <p class="text-sm text-muted-foreground mt-1">{error}</p>
-            <button class="refresh-btn mt-3" on:click={loadSkills}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
-              Retry
-            </button>
-          </div>
-        {:else if displayedSkills.length === 0}
-          <div class="empty-state">
-            <div class="empty-state-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
+            <div class="flex items-center gap-3">
+              <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
+              <button class="refresh-btn" on:click={loadSkills}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+                Refresh
+              </button>
             </div>
-            <p class="text-lg font-semibold">No skills found</p>
+          </div>
+
+          <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
+
+          <!-- Single search surface lives in the hero; gallery keeps filters only. -->
+          <div class="gallery-controls gallery-controls-compact">
+            <label class="gallery-minrep">
+              <span class="gallery-minrep-label">Min reputation</span>
+              <span class="gallery-minrep-field">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  bind:value={minReputation}
+                  class="gallery-minrep-input"
+                  aria-label="Minimum reputation in ERGs"
+                />
+                <span class="gallery-minrep-suffix">ERGs</span>
+              </span>
+            </label>
             {#if searchQuery || activeCategory !== "all" || minReputation > 0}
-              <p class="text-sm text-muted-foreground mt-1">Try a different search term, category, or lower the minimum reputation.</p>
-            {:else}
-              <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
+              <button
+                type="button"
+                class="gallery-reset"
+                on:click={() => { searchQuery = ""; activeCategory = "all"; minReputation = 0; }}
+              >
+                Clear filters
+              </button>
             {/if}
           </div>
-        {:else}
-          <div class="skills-grid">
-            {#each displayedSkills as skill, i (skill.boxId)}
-              <SkillCard
-                name={skill.name}
-                prose={skill.prose}
-                tags={skill.tags}
-                domain={skill.domain}
-                coverageCount={skill.coverages.length}
-                benchmarkCount={skill.benchmarks.length}
-                resultCount={skill.resultCount}
-                isDuplicate={skillNameCounts[skill.name] > 1}
-                reputation={calculateSkillReputation(skill).total}
-                profileId={skill.profileId}
-                index={i}
-                on:click={() => selectSkill(skill)}
-              />
-            {/each}
+
+          {#if loading}
+            <div class="skills-grid">
+              {#each [0, 1, 2, 3, 4, 5] as i}
+                <SkeletonCard index={i} />
+              {/each}
+            </div>
+          {:else if error}
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+              </div>
+              <p class="text-lg font-semibold">Couldn't load skills</p>
+              <p class="text-sm text-muted-foreground mt-1">{error}</p>
+              <button class="refresh-btn mt-3" on:click={loadSkills}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+                Retry
+              </button>
+            </div>
+          {:else if displayedSkills.length === 0}
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <p class="text-lg font-semibold">No skills found</p>
+              {#if searchQuery || activeCategory !== "all" || minReputation > 0}
+                <p class="text-sm text-muted-foreground mt-1">Try a different search term, category, or lower the minimum reputation.</p>
+              {:else}
+                <p class="text-sm text-muted-foreground mt-1">Be the first to submit a skill!</p>
+              {/if}
+            </div>
+          {:else}
+            <div class="skills-grid">
+              {#each displayedSkills as skill, i (skill.boxId)}
+                <SkillCard
+                  name={skill.name}
+                  prose={skill.prose}
+                  tags={skill.tags}
+                  domain={skill.domain}
+                  coverageCount={skill.coverages.length}
+                  benchmarkCount={skill.benchmarks.length}
+                  resultCount={skill.resultCount}
+                  isDuplicate={skillNameCounts[skill.name] > 1}
+                  reputation={calculateSkillReputation(skill).total}
+                  profileId={skill.profileId}
+                  index={i}
+                  on:click={() => selectSkill(skill)}
+                />
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </section>
+
+      <!-- Networks -->
+      <section id="networks" class="landing-section">
+        <div class="container mx-auto px-8">
+          <div class="section-heading section-heading-stack">
+            <p class="section-kicker">Infrastructure</p>
+            <h2 class="section-title">Networks</h2>
+            <p class="section-lead">Brand-free definitions of the networks services talk to — plus trust frameworks that score the assumptions.</p>
           </div>
-        {/if}
-      </div>
+          <div class="section-panel">
+            <NetworkPage networkId="browse" on:back={scrollToTop} />
+          </div>
+        </div>
       </section>
 
-      <!-- b. #networks — decentralized network definitions. NetworkPage self-loads
-           its list on mount, so this section is populated without a tab click. -->
-      <section id="networks" class="container mx-auto px-8 py-8">
-        <NetworkPage networkId="browse" on:back={scrollToTop} />
+      <!-- How it works -->
+      <section id="howitworks" class="landing-section landing-section-muted">
+        <div class="container mx-auto px-8">
+          <HowItWorks />
+        </div>
       </section>
 
-      <!-- c. #howitworks ─────────────────────────────────────────────────────── -->
-      <section id="howitworks" class="container mx-auto px-8 py-8">
-        <HowItWorks />
-      </section>
-
-      <!-- d. #profile — reputation profile (loads reactively on wallet change) ── -->
-      <section id="profile" class="container mx-auto px-8 py-8">
-        <div class="w-full">
-          <div class="submit-header">
+      <!-- Profile (account destination; not primary nav) -->
+      <section id="profile" class="landing-section">
+        <div class="container mx-auto px-8">
+          <div class="section-heading section-heading-stack">
+            <p class="section-kicker">Account</p>
             <div class="submit-header-titlerow">
               <div class="submit-header-avatar">
                 <ProfileAvatar profileId={$reputation_proof?.token_id} size={48} clickable={false} title="Your profile" />
               </div>
-              <h2 class="text-2xl md:text-3xl font-extrabold">Reputation Profile</h2>
+              <h2 class="section-title">Reputation profile</h2>
             </div>
-            <p class="text-muted-foreground text-sm">
-              Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
-            </p>
+            <p class="section-lead">Required before publishing skills, adding a service solution, or submitting benchmarks.</p>
           </div>
 
-          {#if $demoMode}
-            <div class="submit-connect-card">
-              <p class="text-muted-foreground">Profile management is only available in live mode. Switch off demo mode to connect a wallet and create a reputation profile.</p>
-            </div>
-          {:else if !$walletConnected}
-            <div class="submit-connect-card">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
-                <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
-              </svg>
-              <p class="text-muted-foreground mb-4">Connect your wallet to view or create a reputation profile.</p>
-              <WalletButton explorerUrl={$web_explorer_uri_addr} />
-            </div>
-          {:else if profileLoading}
-            <div class="submit-connect-card">
-              <p class="text-muted-foreground">Loading reputation profile…</p>
-            </div>
-          {:else if !$reputation_proof}
-            <div class="submit-connect-card">
-              <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one to start publishing on-chain (optionally sacrifice ERG to seed reputation).</p>
-              <div class="w-full grid gap-3" style="max-width: 28rem;">
-                <div class="form-group">
-                  <label class="form-label" for="profile-tab-sacrifice">Optional ERG sacrifice</label>
-                  <input id="profile-tab-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
-                </div>
-                <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
-                  {#if createProfileSubmitting}
-                    <div class="submit-spinner"></div>
-                    Creating profile...
-                  {:else}
-                    Create Reputation Profile
-                  {/if}
-                </button>
+          <div class="section-panel section-panel-narrow">
+            {#if $demoMode}
+              <div class="submit-connect-card">
+                <p class="text-muted-foreground">Profile management is only available in live mode. Switch off demo mode to connect a wallet and create a reputation profile.</p>
               </div>
-              {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
-              {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
-            </div>
-          {:else}
-            <ProfileDetailsCard
-              proof={$reputation_proof}
-              profiles={userProfiles}
-              activeProfileId={$reputation_proof?.token_id}
-              skills={skills}
-              on:burn={openBurnModal}
-              on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
-              on:createProfile={openNewProfileModal}
-              on:selectProfile={(e) => handleSelectProfile(e.detail)}
-              on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
-            />
-          {/if}
+            {:else if !$walletConnected}
+              <div class="submit-connect-card">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+                  <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
+                </svg>
+                <p class="text-muted-foreground mb-4">Connect your wallet to view or create a reputation profile.</p>
+                <WalletButton explorerUrl={$web_explorer_uri_addr} />
+              </div>
+            {:else if profileLoading}
+              <div class="submit-connect-card">
+                <p class="text-muted-foreground">Loading reputation profile…</p>
+              </div>
+            {:else if !$reputation_proof}
+              <div class="submit-connect-card">
+                <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one to start publishing on-chain (optionally sacrifice ERG to seed reputation).</p>
+                <div class="w-full grid gap-3" style="max-width: 28rem;">
+                  <div class="form-group">
+                    <label class="form-label" for="profile-tab-sacrifice">Optional ERG sacrifice</label>
+                    <input id="profile-tab-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+                  </div>
+                  <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
+                    {#if createProfileSubmitting}
+                      <div class="submit-spinner"></div>
+                      Creating profile...
+                    {:else}
+                      Create Reputation Profile
+                    {/if}
+                  </button>
+                </div>
+                {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
+                {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+              </div>
+            {:else}
+              <ProfileDetailsCard
+                proof={$reputation_proof}
+                profiles={userProfiles}
+                activeProfileId={$reputation_proof?.token_id}
+                skills={skills}
+                on:burn={openBurnModal}
+                on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
+                on:createProfile={openNewProfileModal}
+                on:selectProfile={(e) => handleSelectProfile(e.detail)}
+                on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
+              />
+            {/if}
+          </div>
         </div>
       </section>
 
-      <!-- e. #submit — publish a new skill on-chain ──────────────────────────── -->
-      <section id="submit" class="container mx-auto px-8 py-8">
-        <div class="w-full">
-          {#if returnToSkill}
-            <!-- Return to the skill detail this Submit view was opened from
-                 ("Modify Skill" → back navigation, matching the profile view). -->
-            <BackButton label="Back to {returnToSkill.name}" on:click={backToSkillFromSubmit} />
-          {/if}
-          <div class="submit-header">
-            <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
-            <p class="text-muted-foreground text-sm">
-              Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
-            </p>
+      <!-- Submit -->
+      <section id="submit" class="landing-section landing-section-cta">
+        <div class="container mx-auto px-8">
+          <div class="section-heading section-heading-stack">
+            <p class="section-kicker">Publish</p>
+            <h2 class="section-title">Submit a skill</h2>
+            <p class="section-lead">Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.</p>
           </div>
 
-          {#if !$demoMode && !$walletConnected}
-            <div class="submit-connect-card">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
-                <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
-              </svg>
-              <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
-              <WalletButton explorerUrl={$web_explorer_uri_addr} />
-            </div>
-          {:else if !$demoMode && !$reputation_proof}
-            <div class="submit-connect-card">
-              <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => scrollToSection('profile')}>Profile section</button>.</p>
-            </div>
-          {:else}
-            <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
-              <div class="form-group">
-                <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
-                <input id="skill-name" class="form-input" class:form-input-error={validationErrors["name"]} bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
-                {#if validationErrors["name"]}
-                  <p class="field-error-msg">{validationErrors["name"]}</p>
-                {/if}
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="skill-prose">Description</label>
-                <textarea id="skill-prose" class="form-input form-textarea" class:form-input-error={validationErrors["prose"]} bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
-                {#if validationErrors["prose"]}
-                  <p class="field-error-msg">{validationErrors["prose"]}</p>
-                {/if}
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional, JSON)</span></label>
-                <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="skill-domain">Domain</label>
-                <input id="skill-domain" class="form-input" class:form-input-error={validationErrors["domain"]} bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
-                {#if validationErrors["domain"]}
-                  <p class="field-error-msg">{validationErrors["domain"]}</p>
-                {/if}
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
-                <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
-              </div>
+          <div class="section-panel section-panel-narrow">
+            {#if returnToSkill}
+              <BackButton label="Back to {returnToSkill.name}" on:click={backToSkillFromSubmit} />
+            {/if}
 
-              <SubmitFormEnhancements
-                bind:this={enhancementsRef}
-                {skills}
-                name={newSkillName}
-                prose={newSkillProse}
-                domain={newSkillDomain}
-                tags={newSkillTags}
-                errors={validationErrors}
-                {prefillRelatedBoxIds}
-                on:relatedChange={(event) => relatedSkillBoxIds = event.detail}
-              />
-
-              <button type="submit" class="submit-btn" disabled={submitting}>
-                {#if submitting}
-                  <div class="submit-spinner"></div>
-                  Publishing...
-                {:else}
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                  </svg>
-                  Publish Skill On-Chain
-                {/if}
-              </button>
-            </form>
-
-            {#if submitTx}
-              <div class="submit-success">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            {#if !$demoMode && !$walletConnected}
+              <div class="submit-connect-card">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+                  <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
                 </svg>
-                <div>
-                  <p class="font-semibold">Skill submitted!</p>
-                  <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(var(--primary));">{submitTx}</a>
+                <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
+                <WalletButton explorerUrl={$web_explorer_uri_addr} />
+              </div>
+            {:else if !$demoMode && !$reputation_proof}
+              <div class="submit-connect-card">
+                <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => scrollToSection('profile')}>Profile section</button>.</p>
+              </div>
+            {:else}
+              <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
+                <div class="form-group">
+                  <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
+                  <input id="skill-name" class="form-input" class:form-input-error={validationErrors["name"]} bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+                  {#if validationErrors["name"]}
+                    <p class="field-error-msg">{validationErrors["name"]}</p>
+                  {/if}
                 </div>
-              </div>
+                <div class="form-group">
+                  <label class="form-label" for="skill-prose">Description</label>
+                  <textarea id="skill-prose" class="form-input form-textarea" class:form-input-error={validationErrors["prose"]} bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+                  {#if validationErrors["prose"]}
+                    <p class="field-error-msg">{validationErrors["prose"]}</p>
+                  {/if}
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional, JSON)</span></label>
+                  <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="skill-domain">Domain</label>
+                  <input id="skill-domain" class="form-input" class:form-input-error={validationErrors["domain"]} bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+                  {#if validationErrors["domain"]}
+                    <p class="field-error-msg">{validationErrors["domain"]}</p>
+                  {/if}
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
+                  <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+                </div>
+
+                <SubmitFormEnhancements
+                  bind:this={enhancementsRef}
+                  {skills}
+                  name={newSkillName}
+                  prose={newSkillProse}
+                  domain={newSkillDomain}
+                  tags={newSkillTags}
+                  errors={validationErrors}
+                  {prefillRelatedBoxIds}
+                  on:relatedChange={(event) => relatedSkillBoxIds = event.detail}
+                />
+
+                <button type="submit" class="submit-btn" disabled={submitting}>
+                  {#if submitting}
+                    <div class="submit-spinner"></div>
+                    Publishing...
+                  {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                    Publish Skill On-Chain
+                  {/if}
+                </button>
+              </form>
+
+              {#if submitTx}
+                <div class="submit-success">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <div>
+                    <p class="font-semibold">Skill submitted!</p>
+                    <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(var(--primary));">{submitTx}</a>
+                  </div>
+                </div>
+              {/if}
+              {#if submitError}
+                <div class="submit-warning">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <span>{submitError}</span>
+                </div>
+              {/if}
             {/if}
-            {#if submitError}
-              <div class="submit-warning">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <span>{submitError}</span>
-              </div>
-            {/if}
-          {/if}
+          </div>
         </div>
       </section>
     {/if}
@@ -1992,10 +2119,11 @@
 
   /* ── Demo mode topbar ─────────────────────────────────────────────── */
   .demo-bar {
-    @apply fixed top-0 left-0 right-0 z-50 text-center text-xs font-bold py-1 px-4 shadow-sm;
-    background: hsl(45 95% 55% / 0.95);
-    color: hsl(0 0% 10%);
-    backdrop-filter: blur(4px);
+    @apply fixed top-0 left-0 right-0 z-50 text-center text-[11px] font-semibold py-1 px-4;
+    background: hsl(45 90% 55% / 0.82);
+    color: hsl(0 0% 12%);
+    backdrop-filter: blur(6px);
+    letter-spacing: 0.04em;
   }
   .navbar-with-demo-bar {
     margin-top: 1.5rem;
@@ -2072,69 +2200,308 @@
     @apply min-h-[60vh] pb-12;
   }
 
-  /* ── Full-viewport search hero (single-scroll landing) ──────────────────
-     The first screen is ONLY the centered heading + search. min-height:100vh
-     guarantees the gallery/filters/cards below it start under the fold. */
+  /* ── Landing hero ───────────────────────────────────────────────────────
+     Compact, product-first hero. Not a full empty 100vh void — height is
+     tuned so the skills section peeks and search feels primary. */
   .scroll-hero {
-    @apply flex flex-col items-center justify-center text-center px-4;
-    min-height: 100vh;
+    @apply relative flex flex-col items-center justify-center text-center px-4;
+    min-height: calc(100vh - 7.5rem);
+    min-height: calc(100dvh - 7.5rem);
+    padding-top: 4.5rem;
+    padding-bottom: 3.5rem;
+  }
+
+  .scroll-hero-glow {
+    position: absolute;
+    inset: 10% 15% auto;
+    height: 55%;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 40%, hsl(var(--primary) / 0.16), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 70% 60%, hsl(179 39% 30% / 0.12), transparent 70%);
+    filter: blur(8px);
   }
 
   .scroll-hero-inner {
-    @apply w-full flex flex-col items-center;
-    max-width: 42rem;
-    /* Nudge the block up slightly so it reads as optically centred beneath the
-       floating header rather than mathematically centred. */
-    margin-top: -3rem;
+    @apply relative z-10 w-full flex flex-col items-center;
+    max-width: 46rem;
+  }
+
+  .scroll-hero-kicker {
+    @apply inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] mb-4;
+    color: hsl(var(--muted-foreground));
+  }
+  .scroll-hero-kicker-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.18);
   }
 
   .scroll-hero-title {
-    @apply text-3xl md:text-5xl font-extrabold leading-tight mb-3;
-    letter-spacing: -0.03em;
+    @apply text-4xl md:text-6xl font-extrabold leading-[1.05] mb-4;
+    letter-spacing: -0.035em;
+    max-width: 18ch;
   }
 
   .scroll-hero-sub {
-    @apply text-sm md:text-base text-muted-foreground mb-8 leading-relaxed;
+    @apply text-sm md:text-lg text-muted-foreground mb-8 leading-relaxed;
     font-family: var(--font-body);
-    max-width: 32rem;
+    max-width: 36rem;
   }
 
   .scroll-hero-search {
     @apply relative w-full flex items-center;
-    max-width: 40rem;
+    max-width: 44rem;
+    border-radius: 9999px;
+    background: hsl(var(--card) / 0.82);
+    border: 1px solid hsl(var(--border));
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.04),
+      0 18px 50px -28px hsl(0 0% 0% / 0.35);
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .scroll-hero-search-focused,
+  .scroll-hero-search:focus-within {
+    border-color: hsl(var(--primary) / 0.7);
+    box-shadow:
+      0 0 0 4px hsl(var(--primary) / 0.14),
+      0 22px 55px -26px hsl(0 0% 0% / 0.4);
   }
 
   .scroll-hero-search-icon {
-    @apply absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none;
+    @apply absolute left-5 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none;
   }
 
   .scroll-hero-input {
-    @apply w-full rounded-full text-base transition-all duration-200;
-    padding: 0.95rem 3.5rem 0.95rem 3rem;
-    background: hsl(var(--muted) / 0.5);
-    border: 1px solid hsl(var(--border));
+    @apply w-full rounded-full text-base md:text-lg bg-transparent;
+    padding: 1.05rem 9.5rem 1.05rem 3.25rem;
+    border: 0;
     color: hsl(var(--foreground));
   }
   .scroll-hero-input::placeholder {
-    color: hsl(var(--muted-foreground));
+    color: hsl(var(--muted-foreground) / 0.9);
   }
   .scroll-hero-input:focus {
     @apply outline-none;
-    background: hsl(var(--background));
-    border-color: hsl(var(--foreground) / 0.3);
-    box-shadow: 0 0 0 4px hsl(var(--foreground) / 0.06);
+  }
+  /* Hide native search clear so we control chrome */
+  .scroll-hero-input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .scroll-hero-clear {
+    @apply absolute top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full text-muted-foreground;
+    right: 7.25rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.75rem;
+    background: hsl(var(--muted) / 0.7);
+  }
+  .scroll-hero-clear:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted));
   }
 
   .scroll-hero-submit {
-    @apply absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full transition-all duration-200;
-    width: 2.5rem;
-    height: 2.5rem;
+    @apply absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center gap-1.5 rounded-full font-semibold transition-all duration-200;
+    height: 2.85rem;
+    padding: 0 1.1rem;
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
     cursor: pointer;
+    box-shadow: 0 8px 20px -10px hsl(15 80% 40% / 0.8);
   }
   .scroll-hero-submit:hover {
-    filter: brightness(1.08);
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+  .scroll-hero-submit-label {
+    @apply text-sm;
+  }
+  @media (max-width: 480px) {
+    .scroll-hero-input {
+      padding-right: 4.25rem;
+      padding-left: 2.85rem;
+      font-size: 1rem;
+    }
+    .scroll-hero-clear {
+      right: 3.6rem;
+    }
+    .scroll-hero-submit-label {
+      display: none;
+    }
+    .scroll-hero-submit {
+      width: 2.75rem;
+      padding: 0;
+    }
+  }
+
+  .scroll-hero-live {
+    @apply mt-4 text-sm text-muted-foreground inline-flex items-center gap-2;
+  }
+  .scroll-hero-live-link {
+    @apply font-semibold underline-offset-4 hover:underline;
+    color: hsl(var(--foreground));
+  }
+
+  .scroll-hero-chips {
+    @apply flex flex-wrap items-center justify-center gap-2 mt-5;
+    max-width: 40rem;
+  }
+  .scroll-hero-chip {
+    @apply px-3 py-1.5 rounded-full text-xs md:text-sm font-medium capitalize transition-all duration-150;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background) / 0.55);
+    color: hsl(var(--muted-foreground));
+  }
+  .scroll-hero-chip:hover {
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--primary) / 0.55);
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  .scroll-hero-stats {
+    @apply flex items-center justify-center gap-4 md:gap-6 mt-8;
+  }
+  .scroll-hero-stat {
+    @apply flex flex-col items-center min-w-[4.5rem];
+  }
+  .scroll-hero-stat-value {
+    @apply text-xl md:text-2xl font-bold tabular-nums;
+    font-family: var(--font-heading);
+  }
+  .scroll-hero-stat-label {
+    @apply text-[0.65rem] md:text-xs uppercase tracking-[0.16em] text-muted-foreground mt-0.5 font-semibold;
+  }
+  .scroll-hero-stat-sep {
+    width: 1px;
+    height: 1.75rem;
+    background: hsl(var(--border));
+  }
+
+  .scroll-hero-peek {
+    @apply absolute bottom-5 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors;
+  }
+  .scroll-hero-peek:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .skills-section {
+    scroll-margin-top: 6rem;
+    padding-top: 0.5rem;
+  }
+
+  .section-heading {
+    @apply flex items-end justify-between gap-4 mb-6 flex-wrap;
+  }
+  .section-heading-stack {
+    @apply flex-col items-start justify-start mb-8;
+  }
+  .section-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2;
+  }
+  .section-title {
+    @apply text-2xl md:text-3xl font-extrabold tracking-tight;
+    font-family: var(--font-heading);
+  }
+  .section-lead {
+    @apply text-sm md:text-base text-muted-foreground mt-2 max-w-2xl leading-relaxed;
+  }
+  .section-sub {
+    max-width: 40rem;
+  }
+
+  .landing-section {
+    @apply py-14 md:py-20;
+    border-top: 1px solid hsl(var(--border) / 0.7);
+  }
+  .landing-section-muted {
+    background:
+      linear-gradient(180deg, hsl(var(--muted) / 0.28), transparent 40%),
+      hsl(var(--background));
+  }
+  .landing-section-cta {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%, hsl(var(--primary) / 0.1), transparent 60%);
+  }
+  .section-panel {
+    @apply w-full;
+  }
+  .section-panel-narrow {
+    max-width: 48rem;
+  }
+
+  .gallery-controls-compact {
+    @apply justify-between;
+  }
+  .gallery-reset {
+    @apply text-sm font-semibold px-3 py-2 rounded-lg transition-colors;
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  .gallery-reset:hover {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  .navbar-actions {
+    @apply flex items-center gap-2 md:gap-3;
+  }
+  .account-btn {
+    @apply inline-flex items-center gap-2 rounded-full text-sm font-semibold transition-all;
+    padding: 0.35rem 0.7rem 0.35rem 0.4rem;
+    color: hsl(var(--muted-foreground));
+    border: 1px solid transparent;
+    background: transparent;
+  }
+  .account-btn:hover,
+  .account-btn.active {
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
+    background: hsl(var(--muted) / 0.45);
+  }
+  .account-btn-label {
+    @apply pr-1;
+  }
+  @media (max-width: 720px) {
+    .account-btn-label {
+      display: none;
+    }
+    .account-btn {
+      padding: 0.35rem;
+    }
+  }
+
+  .tab-btn-cta {
+    border-radius: 9999px !important;
+    border-bottom-color: transparent !important;
+    padding: 0.45rem 0.9rem !important;
+    background: hsl(var(--primary) / 0.14);
+    color: hsl(var(--foreground)) !important;
+  }
+  .tab-btn-cta:hover,
+  .tab-btn-cta.active {
+    background: hsl(var(--primary) / 0.22);
+    border-bottom-color: transparent !important;
+  }
+
+  #gallery,
+  #networks,
+  #howitworks,
+  #profile,
+  #submit,
+  #skills-section {
+    scroll-margin-top: 5.5rem;
+  }
+
+  /* Soften fixed footer so it stops competing with the hero */
+  :global(.page-footer) {
+    opacity: 0.88;
+    backdrop-filter: blur(10px);
+    background-color: hsl(var(--background) / 0.82) !important;
   }
 
   /* ── Gallery ────────────────────────────────────────────────────────── */
