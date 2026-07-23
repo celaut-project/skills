@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
-  import { get } from "svelte/store";
+  import { onMount } from "svelte";
   import { browser } from "$app/environment";
   import Theme from "./Theme.svelte";
   import { WalletButton, WalletAddressChangeHandler, walletConnected, walletAddress, walletBalance } from "wallet-svelte-component";
@@ -493,11 +492,11 @@
     if (skill) selectSkill(skill);
   }
 
-  // ── Single-scroll landing navigation ──────────────────────────────────────
-  // The homepage is one continuous page of stacked <section> anchors. Nav items
-  // smooth-scroll to a section; any open overlay (skill/network/service/profile
-  // detail) is closed first so the scroll page is on screen to scroll within.
-  const scrollSectionIds = ["gallery", "networks", "howitworks", "profile", "submit"] as const;
+  // ── Tab navigation ────────────────────────────────────────────────────────
+  // Classic header tabs: clicking a tab sets `activeTab` and swaps the main
+  // content to that tab's view. Only the Gallery tab is itself a scroll page
+  // (search hero → skills grid → how-it-works); every other route is a plain
+  // tab. Any open overlay (skill/network/service/profile detail) is closed first.
 
   function clearOverlays() {
     selectedSkill = null;
@@ -515,22 +514,16 @@
     }
   }
 
-  async function scrollToSection(id: string) {
-    activeTab = id as typeof activeTab;
+  /** Switch to a header tab, closing any open detail overlay and resetting scroll. */
+  function openTab(tab: typeof activeTab) {
+    activeTab = tab;
     clearOverlays();
-    if (browser) {
-      await tick();
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (browser) window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  async function scrollToTop() {
-    activeTab = "gallery";
-    clearOverlays();
-    if (browser) {
-      await tick();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+  /** Networks tab: the browse list renders inside the tab (no overlay). */
+  function openNetworksTab() {
+    openTab("networks");
   }
 
   // Hero search submit: the input already filters live via `searchQuery`, so the
@@ -880,9 +873,9 @@
     selectedSkill = null;
     syncSkillParam(null);
     activeTab = "submit";
-    // Reveal the submit section of the single-scroll page (the skill overlay
-    // that was open is now closed by clearing selectedSkill above).
-    if (browser) tick().then(() => document.getElementById("submit")?.scrollIntoView({ behavior: "smooth" }));
+    // The submit tab now renders on its own (the skill overlay that was open is
+    // closed by clearing selectedSkill above); just reset scroll to the top.
+    if (browser) window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   // Return from the Submit ("Modify Skill") view to the skill detail the user
@@ -1152,40 +1145,8 @@
       };
       window.addEventListener("popstate", popHandler);
 
-      // Island-header scroll behaviour: the header is shown only at the top of
-      // the page. Once the user scrolls past the threshold it stays hidden in
-      // both directions (no scroll-up reveal) — they reach it by returning to
-      // the top. requestAnimationFrame throttles the work.
-      let scrollTicking = false;
-      const updateNav = () => {
-        const y = window.scrollY;
-        navHidden = y > 80;
-        // Scroll-spy: while the single-scroll page is on screen (no overlay),
-        // highlight the nav item for the section under the upper viewport.
-        const overlayOpen =
-          get(viewedNetworkId) || get(viewedServiceId) || get(viewedProfileId) || selectedSkill;
-        if (!overlayOpen) {
-          const probe = window.innerHeight * 0.35;
-          let current: string = scrollSectionIds[0];
-          for (const id of scrollSectionIds) {
-            const el = document.getElementById(id);
-            if (el && el.getBoundingClientRect().top <= probe) current = id;
-          }
-          if (activeTab !== current) activeTab = current as typeof activeTab;
-        }
-        scrollTicking = false;
-      };
-      const scrollHandler = () => {
-        if (!scrollTicking) {
-          scrollTicking = true;
-          requestAnimationFrame(updateNav);
-        }
-      };
-      window.addEventListener("scroll", scrollHandler, { passive: true });
-
       return () => {
         window.removeEventListener("popstate", popHandler);
-        window.removeEventListener("scroll", scrollHandler);
       };
     }
   });
@@ -1311,45 +1272,45 @@
     <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
          in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
-      <a href="/" class="logo-container" on:click|preventDefault={scrollToTop}>
+      <a href="/" class="logo-container" on:click|preventDefault={() => openTab("gallery")}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
-      <!-- Single-scroll nav: each item smooth-scrolls to its section anchor.
+      <!-- Classic header tabs: each selects a route and swaps the main content.
            Order: Gallery · Networks · How it works · Profile · Submit. -->
       <nav class="navbar-tabs">
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
-          on:click={() => scrollToSection("gallery")}
+          on:click={() => openTab("gallery")}
         >
           Gallery
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "networks"}
-          on:click={() => scrollToSection("networks")}
+          on:click={openNetworksTab}
         >
           Networks
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "howitworks"}
-          on:click={() => scrollToSection("howitworks")}
+          on:click={() => openTab("howitworks")}
         >
           How it works
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "profile"}
-          on:click={() => scrollToSection("profile")}
+          on:click={() => openTab("profile")}
         >
           Profile
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "submit"}
-          on:click={() => scrollToSection("submit")}
+          on:click={() => openTab("submit")}
         >
           Submit
         </button>
@@ -1387,7 +1348,7 @@
               window.history.pushState({}, '', u);
             }
           } else {
-            activeTab = "gallery";
+            activeTab = "networks";
           }
         }}
       />
@@ -1505,15 +1466,15 @@
         {relatedSkillDirectionLabel}
         {copyToClipboard}
         {formatHash}
-        goToProfile={() => scrollToSection('profile')}
+        goToProfile={() => openTab('profile')}
       />
 
-    {:else}
-      <!-- ══ Single-scroll landing page ═══════════════════════════════════
-           One continuous page: a full-height search hero, then the gallery,
-           networks, how-it-works, profile and submit sections stacked in that
-           order. Nav items smooth-scroll to each #anchor. Detail/overlay views
-           above still REPLACE this whole page when active. -->
+    {:else if activeTab === "gallery" || activeTab === ""}
+      <!-- ══ Gallery — the only scroll page ═══════════════════════════════════
+           Search hero → skills gallery → how-it-works, stacked so a visitor can
+           search and then learn the system by scrolling. Every other route is a
+           classic header tab (below). Detail/overlay views above still REPLACE
+           this page when active. -->
 
       <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
       <section id="gallery">
@@ -1675,19 +1636,27 @@
       </div>
       </section>
 
-      <!-- b. #networks — decentralized network definitions. NetworkPage self-loads
-           its list on mount, so this section is populated without a tab click. -->
-      <section id="networks" class="container mx-auto px-8 py-8">
-        <NetworkPage networkId="browse" on:back={scrollToTop} />
-      </section>
-
-      <!-- c. #howitworks ─────────────────────────────────────────────────────── -->
-      <section id="howitworks" class="container mx-auto px-8 py-8">
+      <!-- b. how-it-works — appended below the gallery so a visitor can search,
+           then keep scrolling to learn the system. Nothing else on this page. -->
+      <section class="container mx-auto px-8 py-8">
         <HowItWorks />
       </section>
 
-      <!-- d. #profile — reputation profile (loads reactively on wallet change) ── -->
-      <section id="profile" class="container mx-auto px-8 py-8">
+    {:else if activeTab === "networks"}
+      <!-- ── Networks tab — decentralized network definitions (browse list) ──── -->
+      <section class="container mx-auto px-8 py-8">
+        <NetworkPage networkId="browse" on:back={() => openTab("gallery")} />
+      </section>
+
+    {:else if activeTab === "howitworks"}
+      <!-- ── How it works tab ─────────────────────────────────────────────────── -->
+      <section class="container mx-auto px-8 py-8">
+        <HowItWorks />
+      </section>
+
+    {:else if activeTab === "profile"}
+      <!-- ── Profile tab — reputation profile (loads reactively on wallet change) -->
+      <section class="container mx-auto px-8 py-8">
         <div class="w-full">
           <div class="submit-header">
             <div class="submit-header-titlerow">
@@ -1753,8 +1722,9 @@
         </div>
       </section>
 
-      <!-- e. #submit — publish a new skill on-chain ──────────────────────────── -->
-      <section id="submit" class="container mx-auto px-8 py-8">
+    {:else if activeTab === "submit"}
+      <!-- ── Submit tab — publish a new skill on-chain ────────────────────────── -->
+      <section class="container mx-auto px-8 py-8">
         <div class="w-full">
           {#if returnToSkill}
             <!-- Return to the skill detail this Submit view was opened from
@@ -1778,7 +1748,7 @@
             </div>
           {:else if !$demoMode && !$reputation_proof}
             <div class="submit-connect-card">
-              <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => scrollToSection('profile')}>Profile section</button>.</p>
+              <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => openTab('profile')}>Profile section</button>.</p>
             </div>
           {:else}
             <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
