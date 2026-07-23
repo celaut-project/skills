@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
+  import { get } from "svelte/store";
   import { browser } from "$app/environment";
   import Theme from "./Theme.svelte";
   import { WalletButton, WalletAddressChangeHandler, walletConnected, walletAddress, walletBalance } from "wallet-svelte-component";
@@ -10,7 +11,6 @@
   import { FileCard, FileSourceCreation, fetchFileSourcesByHash } from "source-application";
   import type { FileSource } from "source-application";
   import { writable } from "svelte/store";
-  import HeroSection from "$lib/components/HeroSection.svelte";
   import SkillCard from "$lib/components/SkillCard.svelte";
   import SkeletonCard from "$lib/components/SkeletonCard.svelte";
   import FooterComponent from "$lib/components/Footer.svelte";
@@ -493,17 +493,20 @@
     if (skill) selectSkill(skill);
   }
 
-  function openTab(tab: "gallery" | "submit" | "profile" | "howitworks") {
-    activeTab = tab;
-    if (tab === "gallery" || tab === "howitworks") {
-      selectedSkill = null;
-      syncSkillParam(null);
-    }
+  // ── Single-scroll landing navigation ──────────────────────────────────────
+  // The homepage is one continuous page of stacked <section> anchors. Nav items
+  // smooth-scroll to a section; any open overlay (skill/network/service/profile
+  // detail) is closed first so the scroll page is on screen to scroll within.
+  const scrollSectionIds = ["gallery", "networks", "howitworks", "profile", "submit"] as const;
+
+  function clearOverlays() {
+    selectedSkill = null;
     returnToSkill = null;
     viewedProfileId.set(null);
     viewedNetworkId.set(null);
     viewedServiceId.set(null);
     networkPageReturn.set(null);
+    syncSkillParam(null);
     if (browser) {
       const u = new URL(window.location.href);
       u.searchParams.delete("network");
@@ -512,21 +515,28 @@
     }
   }
 
-  function openNetworksTab() {
-    activeTab = "networks";
-    selectedSkill = null;
-    returnToSkill = null;
-    syncSkillParam(null);
-    viewedProfileId.set(null);
-    viewedServiceId.set(null);
-    networkPageReturn.set(null);
-    viewedNetworkId.set("browse");
+  async function scrollToSection(id: string) {
+    activeTab = id as typeof activeTab;
+    clearOverlays();
     if (browser) {
-      const u = new URL(window.location.href);
-      u.searchParams.delete("service");
-      u.searchParams.set("network", "browse");
-      window.history.pushState({}, "", u);
+      await tick();
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
     }
+  }
+
+  async function scrollToTop() {
+    activeTab = "gallery";
+    clearOverlays();
+    if (browser) {
+      await tick();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  // Hero search submit: the input already filters live via `searchQuery`, so the
+  // arrow/Enter simply scrolls the results (skills grid) into view.
+  function submitHeroSearch() {
+    if (browser) document.getElementById("skills-section")?.scrollIntoView({ behavior: "smooth" });
   }
 
   function openNewProfileModal() {
@@ -870,7 +880,9 @@
     selectedSkill = null;
     syncSkillParam(null);
     activeTab = "submit";
-    if (browser) window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Reveal the submit section of the single-scroll page (the skill overlay
+    // that was open is now closed by clearing selectedSkill above).
+    if (browser) tick().then(() => document.getElementById("submit")?.scrollIntoView({ behavior: "smooth" }));
   }
 
   // Return from the Submit ("Modify Skill") view to the skill detail the user
@@ -1148,6 +1160,19 @@
       const updateNav = () => {
         const y = window.scrollY;
         navHidden = y > 80;
+        // Scroll-spy: while the single-scroll page is on screen (no overlay),
+        // highlight the nav item for the section under the upper viewport.
+        const overlayOpen =
+          get(viewedNetworkId) || get(viewedServiceId) || get(viewedProfileId) || selectedSkill;
+        if (!overlayOpen) {
+          const probe = window.innerHeight * 0.35;
+          let current: string = scrollSectionIds[0];
+          for (const id of scrollSectionIds) {
+            const el = document.getElementById(id);
+            if (el && el.getBoundingClientRect().top <= probe) current = id;
+          }
+          if (activeTab !== current) activeTab = current as typeof activeTab;
+        }
         scrollTicking = false;
       };
       const scrollHandler = () => {
@@ -1179,9 +1204,10 @@
   // Enabled at the end of onMount, once initial `?profile=`/`?skill=` deep links
   // have been read — guards against this reactive stripping them during init.
   let urlSyncEnabled = false;
-  $: desiredProfileParam =
-    $viewedProfileId ??
-    (activeTab === "profile" ? $reputation_proof?.token_id ?? null : null);
+  // Only an explicitly-opened profile-detail overlay is mirrored to `?profile=`.
+  // The own-profile section of the single-scroll page is reached by scrolling,
+  // so it must NOT push history on every scroll-spy highlight.
+  $: desiredProfileParam = $viewedProfileId ?? null;
   $: if (browser && urlSyncEnabled && lastSyncedProfileParam !== desiredProfileParam) {
     const current = new URL(window.location.href);
     const currentParam = current.searchParams.get("profile");
@@ -1285,46 +1311,47 @@
     <!-- Single-row island header: logo · tabs · wallet/theme. Search now lives
          in the gallery view itself, so the old second-level row is gone. -->
     <div class="navbar-top">
-      <a href="/" class="logo-container" on:click|preventDefault={() => openTab("gallery")}>
+      <a href="/" class="logo-container" on:click|preventDefault={scrollToTop}>
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
+      <!-- Single-scroll nav: each item smooth-scrolls to its section anchor.
+           Order: Gallery · Networks · How it works · Profile · Submit. -->
       <nav class="navbar-tabs">
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
-          on:click={() => openTab("gallery")}
+          on:click={() => scrollToSection("gallery")}
         >
           Gallery
         </button>
         <button
           class="tab-btn"
-          class:active={activeTab === "submit"}
-          on:click={() => openTab("submit")}
-        >
-          Submit
-        </button>
-        <button
-          class="tab-btn"
-          class:active={activeTab === "profile"}
-          on:click={() => openTab("profile")}
-        >
-          Profile
-        </button>
-        <!-- Network list could be added in an optional advance mode -->
-        <button
-          class="tab-btn"
           class:active={activeTab === "networks"}
-          on:click={openNetworksTab}
+          on:click={() => scrollToSection("networks")}
         >
           Networks
         </button>
         <button
           class="tab-btn"
           class:active={activeTab === "howitworks"}
-          on:click={() => openTab("howitworks")}
+          on:click={() => scrollToSection("howitworks")}
         >
           How it works
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "profile"}
+          on:click={() => scrollToSection("profile")}
+        >
+          Profile
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === "submit"}
+          on:click={() => scrollToSection("submit")}
+        >
+          Submit
         </button>
       </nav>
 
@@ -1437,9 +1464,7 @@
       </div>
     </div>
 
-  {:else if activeTab === "gallery"}
-
-    {#if selectedSkill}
+  {:else if selectedSkill}
       <SkillDetailView
         selectedSkill={selectedSkill}
         {siblingSkills}
@@ -1480,12 +1505,44 @@
         {relatedSkillDirectionLabel}
         {copyToClipboard}
         {formatHash}
-        goToProfile={() => (activeTab = 'profile')}
+        goToProfile={() => scrollToSection('profile')}
       />
 
     {:else}
-      <!-- ── Hero + Skills Gallery ─────────────────────────────────────────── -->
-      <HeroSection />
+      <!-- ══ Single-scroll landing page ═══════════════════════════════════
+           One continuous page: a full-height search hero, then the gallery,
+           networks, how-it-works, profile and submit sections stacked in that
+           order. Nav items smooth-scroll to each #anchor. Detail/overlay views
+           above still REPLACE this whole page when active. -->
+
+      <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
+      <section id="gallery">
+        <!-- Above-the-fold: only the centered heading + search. Everything else
+             (filters, stats, cards) sits below the fold via min-height:100vh. -->
+        <div class="scroll-hero">
+          <div class="scroll-hero-inner">
+            <h1 class="scroll-hero-title">What skill are you looking for?</h1>
+            <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
+            <div class="scroll-hero-search">
+              <svg class="scroll-hero-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                bind:value={searchQuery}
+                placeholder="Search skills, tags, domains..."
+                class="scroll-hero-input"
+                aria-label="Search skills"
+                on:keydown={(e) => { if (e.key === 'Enter') submitHeroSearch(); }}
+              />
+              <button class="scroll-hero-submit" type="button" on:click={submitHeroSearch} aria-label="Search skills" title="Search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
 
       <div id="skills-section" class="container mx-auto px-8 pb-8">
         <!-- Stats Bar -->
@@ -1616,191 +1673,193 @@
           </div>
         {/if}
       </div>
-    {/if}
+      </section>
 
-  {:else if activeTab === "submit"}
-    <!-- ── Submit Skill ───────────────────────────────────────────────────── -->
-    <div class="container mx-auto px-8 py-8">
-      <div class="w-full">
-        {#if returnToSkill}
-          <!-- Return to the skill detail this Submit view was opened from
-               ("Modify Skill" → back navigation, matching the profile view). -->
-          <BackButton label="Back to {returnToSkill.name}" on:click={backToSkillFromSubmit} />
-        {/if}
-        <div class="submit-header">
-          <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
-          <p class="text-muted-foreground text-sm">
-            Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
-          </p>
-        </div>
+      <!-- b. #networks — decentralized network definitions. NetworkPage self-loads
+           its list on mount, so this section is populated without a tab click. -->
+      <section id="networks" class="container mx-auto px-8 py-8">
+        <NetworkPage networkId="browse" on:back={scrollToTop} />
+      </section>
 
-        {#if !$demoMode && !$walletConnected}
-          <div class="submit-connect-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
-              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
-            </svg>
-            <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
-            <WalletButton explorerUrl={$web_explorer_uri_addr} />
+      <!-- c. #howitworks ─────────────────────────────────────────────────────── -->
+      <section id="howitworks" class="container mx-auto px-8 py-8">
+        <HowItWorks />
+      </section>
+
+      <!-- d. #profile — reputation profile (loads reactively on wallet change) ── -->
+      <section id="profile" class="container mx-auto px-8 py-8">
+        <div class="w-full">
+          <div class="submit-header">
+            <div class="submit-header-titlerow">
+              <div class="submit-header-avatar">
+                <ProfileAvatar profileId={$reputation_proof?.token_id} size={48} clickable={false} title="Your profile" />
+              </div>
+              <h2 class="text-2xl md:text-3xl font-extrabold">Reputation Profile</h2>
+            </div>
+            <p class="text-muted-foreground text-sm">
+              Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
+            </p>
           </div>
-        {:else if !$demoMode && !$reputation_proof}
-          <div class="submit-connect-card">
-            <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => activeTab = 'profile'}>Profile tab</button>.</p>
-          </div>
-        {:else}
-          <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
-            <div class="form-group">
-              <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
-              <input id="skill-name" class="form-input" class:form-input-error={validationErrors["name"]} bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
-              {#if validationErrors["name"]}
-                <p class="field-error-msg">{validationErrors["name"]}</p>
-              {/if}
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="skill-prose">Description</label>
-              <textarea id="skill-prose" class="form-input form-textarea" class:form-input-error={validationErrors["prose"]} bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
-              {#if validationErrors["prose"]}
-                <p class="field-error-msg">{validationErrors["prose"]}</p>
-              {/if}
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional, JSON)</span></label>
-              <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="skill-domain">Domain</label>
-              <input id="skill-domain" class="form-input" class:form-input-error={validationErrors["domain"]} bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
-              {#if validationErrors["domain"]}
-                <p class="field-error-msg">{validationErrors["domain"]}</p>
-              {/if}
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
-              <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
-            </div>
 
-            <SubmitFormEnhancements
-              bind:this={enhancementsRef}
-              {skills}
-              name={newSkillName}
-              prose={newSkillProse}
-              domain={newSkillDomain}
-              tags={newSkillTags}
-              errors={validationErrors}
-              {prefillRelatedBoxIds}
-              on:relatedChange={(event) => relatedSkillBoxIds = event.detail}
+          {#if $demoMode}
+            <div class="submit-connect-card">
+              <p class="text-muted-foreground">Profile management is only available in live mode. Switch off demo mode to connect a wallet and create a reputation profile.</p>
+            </div>
+          {:else if !$walletConnected}
+            <div class="submit-connect-card">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+                <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
+              </svg>
+              <p class="text-muted-foreground mb-4">Connect your wallet to view or create a reputation profile.</p>
+              <WalletButton explorerUrl={$web_explorer_uri_addr} />
+            </div>
+          {:else if profileLoading}
+            <div class="submit-connect-card">
+              <p class="text-muted-foreground">Loading reputation profile…</p>
+            </div>
+          {:else if !$reputation_proof}
+            <div class="submit-connect-card">
+              <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one to start publishing on-chain (optionally sacrifice ERG to seed reputation).</p>
+              <div class="w-full grid gap-3" style="max-width: 28rem;">
+                <div class="form-group">
+                  <label class="form-label" for="profile-tab-sacrifice">Optional ERG sacrifice</label>
+                  <input id="profile-tab-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+                </div>
+                <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
+                  {#if createProfileSubmitting}
+                    <div class="submit-spinner"></div>
+                    Creating profile...
+                  {:else}
+                    Create Reputation Profile
+                  {/if}
+                </button>
+              </div>
+              {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
+              {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
+            </div>
+          {:else}
+            <ProfileDetailsCard
+              proof={$reputation_proof}
+              profiles={userProfiles}
+              activeProfileId={$reputation_proof?.token_id}
+              skills={skills}
+              on:burn={openBurnModal}
+              on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
+              on:createProfile={openNewProfileModal}
+              on:selectProfile={(e) => handleSelectProfile(e.detail)}
+              on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
             />
-
-            <button type="submit" class="submit-btn" disabled={submitting}>
-              {#if submitting}
-                <div class="submit-spinner"></div>
-                Publishing...
-              {:else}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                </svg>
-                Publish Skill On-Chain
-              {/if}
-            </button>
-          </form>
-
-          {#if submitTx}
-            <div class="submit-success">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-              <div>
-                <p class="font-semibold">Skill submitted!</p>
-                <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(var(--primary));">{submitTx}</a>
-              </div>
-            </div>
           {/if}
-          {#if submitError}
-            <div class="submit-warning">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <span>{submitError}</span>
-            </div>
-          {/if}
-        {/if}
-      </div>
-    </div>
-
-  {:else if activeTab === "profile"}
-    <!-- ── Profile ──────────────────────────────────────────────────────── -->
-    <div class="container mx-auto px-8 py-8">
-      <div class="w-full">
-        <div class="submit-header">
-          <div class="submit-header-titlerow">
-            <div class="submit-header-avatar">
-              <ProfileAvatar profileId={$reputation_proof?.token_id} size={48} clickable={false} title="Your profile" />
-            </div>
-            <h2 class="text-2xl md:text-3xl font-extrabold">Reputation Profile</h2>
-          </div>
-          <p class="text-muted-foreground text-sm">
-            Your on-chain reputation profile. Required before publishing skills, adding a service solution, or submitting benchmarks.
-          </p>
         </div>
+      </section>
 
-        {#if $demoMode}
-          <div class="submit-connect-card">
-            <p class="text-muted-foreground">Profile management is only available in live mode. Switch off demo mode to connect a wallet and create a reputation profile.</p>
+      <!-- e. #submit — publish a new skill on-chain ──────────────────────────── -->
+      <section id="submit" class="container mx-auto px-8 py-8">
+        <div class="w-full">
+          {#if returnToSkill}
+            <!-- Return to the skill detail this Submit view was opened from
+                 ("Modify Skill" → back navigation, matching the profile view). -->
+            <BackButton label="Back to {returnToSkill.name}" on:click={backToSkillFromSubmit} />
+          {/if}
+          <div class="submit-header">
+            <h2 class="text-2xl md:text-3xl font-extrabold mb-1">Submit a Skill</h2>
+            <p class="text-muted-foreground text-sm">
+              Skills are published on-chain as Reputation Boxes. Connect your wallet to sign.
+            </p>
           </div>
-        {:else if !$walletConnected}
-          <div class="submit-connect-card">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
-              <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
-            </svg>
-            <p class="text-muted-foreground mb-4">Connect your wallet to view or create a reputation profile.</p>
-            <WalletButton explorerUrl={$web_explorer_uri_addr} />
-          </div>
-        {:else if profileLoading}
-          <div class="submit-connect-card">
-            <p class="text-muted-foreground">Loading reputation profile…</p>
-          </div>
-        {:else if !$reputation_proof}
-          <div class="submit-connect-card">
-            <p class="text-muted-foreground mb-3">This wallet does not have a reputation profile yet. Create one to start publishing on-chain (optionally sacrifice ERG to seed reputation).</p>
-            <div class="w-full grid gap-3" style="max-width: 28rem;">
+
+          {#if !$demoMode && !$walletConnected}
+            <div class="submit-connect-card">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted-foreground mb-3">
+                <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10H2"/><path d="M6 14h.01M10 14h.01"/>
+              </svg>
+              <p class="text-muted-foreground mb-4">Connect your wallet to submit a skill.</p>
+              <WalletButton explorerUrl={$web_explorer_uri_addr} />
+            </div>
+          {:else if !$demoMode && !$reputation_proof}
+            <div class="submit-connect-card">
+              <p class="text-muted-foreground mb-4">You need a reputation profile before publishing on-chain. Create one in the <button type="button" class="link-btn" on:click={() => scrollToSection('profile')}>Profile section</button>.</p>
+            </div>
+          {:else}
+            <form on:submit|preventDefault={handleSubmitSkill} class="submit-form">
               <div class="form-group">
-                <label class="form-label" for="profile-tab-sacrifice">Optional ERG sacrifice</label>
-                <input id="profile-tab-sacrifice" class="form-input" bind:value={profileSacrificeErg} type="number" min="0" step="0.001" placeholder="0" />
+                <label class="form-label" for="skill-name">Name <span class="text-red-500">*</span></label>
+                <input id="skill-name" class="form-input" class:form-input-error={validationErrors["name"]} bind:value={newSkillName} placeholder="e.g. Optimal XAU/BTC Performance" required />
+                {#if validationErrors["name"]}
+                  <p class="field-error-msg">{validationErrors["name"]}</p>
+                {/if}
               </div>
-              <button class="submit-btn" type="button" disabled={createProfileSubmitting || profileLoading} on:click={handleCreateProfile}>
-                {#if createProfileSubmitting}
+              <div class="form-group">
+                <label class="form-label" for="skill-prose">Description</label>
+                <textarea id="skill-prose" class="form-input form-textarea" class:form-input-error={validationErrors["prose"]} bind:value={newSkillProse} placeholder="What problem does this skill solve?"></textarea>
+                {#if validationErrors["prose"]}
+                  <p class="field-error-msg">{validationErrors["prose"]}</p>
+                {/if}
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="skill-formal">Formal specification <span class="text-muted-foreground font-normal text-xs">(optional, JSON)</span></label>
+                <FormalSpecEditor id="skill-formal" bind:value={newSkillFormal} schema={null} />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="skill-domain">Domain</label>
+                <input id="skill-domain" class="form-input" class:form-input-error={validationErrors["domain"]} bind:value={newSkillDomain} placeholder="e.g. finance, infrastructure, nlp" />
+                {#if validationErrors["domain"]}
+                  <p class="field-error-msg">{validationErrors["domain"]}</p>
+                {/if}
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="skill-tags">Tags <span class="text-muted-foreground font-normal text-xs">(comma-separated)</span></label>
+                <input id="skill-tags" class="form-input" bind:value={newSkillTags} placeholder="trading, gold, bitcoin" />
+              </div>
+
+              <SubmitFormEnhancements
+                bind:this={enhancementsRef}
+                {skills}
+                name={newSkillName}
+                prose={newSkillProse}
+                domain={newSkillDomain}
+                tags={newSkillTags}
+                errors={validationErrors}
+                {prefillRelatedBoxIds}
+                on:relatedChange={(event) => relatedSkillBoxIds = event.detail}
+              />
+
+              <button type="submit" class="submit-btn" disabled={submitting}>
+                {#if submitting}
                   <div class="submit-spinner"></div>
-                  Creating profile...
+                  Publishing...
                 {:else}
-                  Create Reputation Profile
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                  </svg>
+                  Publish Skill On-Chain
                 {/if}
               </button>
-            </div>
-            {#if profileError}<p class="field-error-msg mt-3">{profileError}</p>{/if}
-            {#if profileCreateTx}<p class="text-xs mt-3 break-all">Tx: {profileCreateTx}</p>{/if}
-          </div>
-        {:else}
-          <ProfileDetailsCard
-            proof={$reputation_proof}
-            profiles={userProfiles}
-            activeProfileId={$reputation_proof?.token_id}
-            skills={skills}
-            on:burn={openBurnModal}
-            on:updateProfileData={(e) => handleUpdateProfileData(e.detail.data)}
-            on:createProfile={openNewProfileModal}
-            on:selectProfile={(e) => handleSelectProfile(e.detail)}
-            on:navigateSkill={(e) => handleNavigateSkill(e.detail)}
-          />
-        {/if}
-      </div>
-    </div>
+            </form>
 
-  {:else if activeTab === "howitworks"}
-    <!-- ── How it works ─────────────────────────────────────────────────────── -->
-    <div class="container mx-auto px-8 py-8">
-      <HowItWorks />
-    </div>
-
-  {/if}
+            {#if submitTx}
+              <div class="submit-success">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <div>
+                  <p class="font-semibold">Skill submitted!</p>
+                  <a href={`https://explorer.ergoplatform.com/en/transactions/${submitTx}`} target="_blank" rel="noopener noreferrer" class="text-sm break-all" style="color: hsl(var(--primary));">{submitTx}</a>
+                </div>
+              </div>
+            {/if}
+            {#if submitError}
+              <div class="submit-warning">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>{submitError}</span>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      </section>
+    {/if}
 
   {#if !$demoMode && $walletConnected && profileLoading && activeTab !== "profile"}
     <div class="container mx-auto px-8 pb-4">
@@ -2011,6 +2070,71 @@
     /* pb-12 (3rem) reserves space for the fixed page-footer (h-12 = 3rem) so
        trailing content isn't hidden behind it. */
     @apply min-h-[60vh] pb-12;
+  }
+
+  /* ── Full-viewport search hero (single-scroll landing) ──────────────────
+     The first screen is ONLY the centered heading + search. min-height:100vh
+     guarantees the gallery/filters/cards below it start under the fold. */
+  .scroll-hero {
+    @apply flex flex-col items-center justify-center text-center px-4;
+    min-height: 100vh;
+  }
+
+  .scroll-hero-inner {
+    @apply w-full flex flex-col items-center;
+    max-width: 42rem;
+    /* Nudge the block up slightly so it reads as optically centred beneath the
+       floating header rather than mathematically centred. */
+    margin-top: -3rem;
+  }
+
+  .scroll-hero-title {
+    @apply text-3xl md:text-5xl font-extrabold leading-tight mb-3;
+    letter-spacing: -0.03em;
+  }
+
+  .scroll-hero-sub {
+    @apply text-sm md:text-base text-muted-foreground mb-8 leading-relaxed;
+    font-family: var(--font-body);
+    max-width: 32rem;
+  }
+
+  .scroll-hero-search {
+    @apply relative w-full flex items-center;
+    max-width: 40rem;
+  }
+
+  .scroll-hero-search-icon {
+    @apply absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5 pointer-events-none;
+  }
+
+  .scroll-hero-input {
+    @apply w-full rounded-full text-base transition-all duration-200;
+    padding: 0.95rem 3.5rem 0.95rem 3rem;
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+  }
+  .scroll-hero-input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  .scroll-hero-input:focus {
+    @apply outline-none;
+    background: hsl(var(--background));
+    border-color: hsl(var(--foreground) / 0.3);
+    box-shadow: 0 0 0 4px hsl(var(--foreground) / 0.06);
+  }
+
+  .scroll-hero-submit {
+    @apply absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded-full transition-all duration-200;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    cursor: pointer;
+  }
+  .scroll-hero-submit:hover {
+    filter: brightness(1.08);
   }
 
   /* ── Gallery ────────────────────────────────────────────────────────── */
