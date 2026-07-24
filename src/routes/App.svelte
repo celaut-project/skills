@@ -1277,14 +1277,14 @@
       </a>
 
       <!-- Classic header tabs: each selects a route and swaps the main content.
-           Order: Gallery · Networks · How it works · Profile · Submit. -->
+           Order: Search · Networks · How it works · Profile · Submit. -->
       <nav class="navbar-tabs">
         <button
           class="tab-btn"
           class:active={activeTab === "gallery"}
           on:click={() => openTab("gallery")}
         >
-          Gallery
+          Search
         </button>
         <button
           class="tab-btn"
@@ -1470,11 +1470,10 @@
       />
 
     {:else if activeTab === "gallery" || activeTab === ""}
-      <!-- ══ Gallery — the only scroll page ═══════════════════════════════════
-           Search hero → skills gallery → how-it-works, stacked so a visitor can
-           search and then learn the system by scrolling. Every other route is a
-           classic header tab (below). Detail/overlay views above still REPLACE
-           this page when active. -->
+      <!-- ══ Search — the only scroll page ═══════════════════════════════════
+           Search hero → skills gallery. How it works is its own header tab now,
+           not appended here. Every other route is a classic header tab (below).
+           Detail/overlay views above still REPLACE this page when active. -->
 
       <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
       <section id="gallery">
@@ -1634,12 +1633,6 @@
           </div>
         {/if}
       </div>
-      </section>
-
-      <!-- b. how-it-works — appended below the gallery so a visitor can search,
-           then keep scrolling to learn the system. Nothing else on this page. -->
-      <section class="container mx-auto px-8 py-8">
-        <HowItWorks />
       </section>
 
     {:else if activeTab === "networks"}
