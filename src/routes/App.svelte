@@ -2079,10 +2079,11 @@
   }
   #gallery.searching .scroll-hero-inner {
     margin-top: 0;
-    /* Left-align the pinned bar with the results grid below rather than centring
-       a lone search box in the viewport. */
-    max-width: none;
-    align-items: stretch;
+    /* Keep the pinned bar horizontally centred (like the empty state), just
+       anchored near the top instead of the viewport middle. The constrained
+       max-width + centred items line the search box up with the centred
+       results/cards column below it. */
+    align-items: center;
   }
   #gallery.searching .scroll-hero-search {
     max-width: 40rem;
