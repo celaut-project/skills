@@ -16,7 +16,6 @@
 
   // ── Feature expansion components ───────────────────────────────────────────
   import Toast from "$lib/components/celaut/Toast.svelte";
-  import StatsBar from "$lib/components/celaut/StatsBar.svelte";
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
@@ -101,6 +100,10 @@
   // Minimum-reputation gallery filter: hide skills whose aggregate reputation
   // falls below this threshold. 0 = show everything (default).
   let minReputation = 0;
+  // Secondary filters (e.g. min-reputation) are collapsed behind a small
+  // "Filters" disclosure to keep the results view Google-clean; only opened on
+  // demand.
+  let showAdvancedFilters = false;
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "networks" | "howitworks" | "" = "gallery";
   let detailVisible = false;
@@ -1510,8 +1513,10 @@
              results grid renders right below it. -->
         <div class="scroll-hero">
           <div class="scroll-hero-inner">
-            <h1 class="scroll-hero-title">What skill are you looking for?</h1>
-            <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
+            {#if !hasQuery}
+              <h1 class="scroll-hero-title">What skill are you looking for?</h1>
+              <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
+            {/if}
             <div class="scroll-hero-search">
               <svg class="scroll-hero-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1535,78 +1540,66 @@
 
       {#if hasQuery}
       <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- Stats Bar -->
-        <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
-
-        <!-- Category Filter -->
+        <!-- Category Filter — the one primary facet kept inline. -->
         <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
 
-        <div class="gallery-header">
-          <div>
-            <h2 class="gallery-title">
-              {#if searchQuery}
-                Search Results
-              {:else}
-                All Skills
-              {/if}
-            </h2>
-            <p class="text-sm text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
-              {#if galleryUnfiltered && hiddenFromListing > 0}
-                <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
-                <InfoTip title="Why fewer cards than the total?">
-                  <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
-                  <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
-                </InfoTip>
-              {:else}
-                <span>
-                  {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
-                  {searchQuery ? ` matching "${searchQuery}"` : ""}
-                  {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
-                </span>
-              {/if}
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
+        <!-- Compact results toolbar: count · sort · a small "Filters" disclosure
+             for secondary options. Everything low-value (stats bar, redundant
+             search box, inline min-reputation) is trimmed or collapsed to keep
+             the results view Google-clean. -->
+        <div class="gallery-toolbar">
+          <p class="gallery-count">
+            {#if galleryUnfiltered && hiddenFromListing > 0}
+              <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
+              <InfoTip title="Why fewer cards than the total?">
+                <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
+                <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
+              </InfoTip>
+            {:else}
+              <span>
+                {displayedSkills.length} result{displayedSkills.length !== 1 ? "s" : ""}
+                {searchQuery ? ` for "${searchQuery}"` : ""}
+                {activeCategory !== "all" ? ` in ${activeCategory}` : ""}
+              </span>
+            {/if}
+          </p>
+          <div class="flex items-center gap-2">
             <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
+            <button
+              class="filters-toggle"
+              class:filters-toggle-active={showAdvancedFilters || minReputation > 0}
+              on:click={() => (showAdvancedFilters = !showAdvancedFilters)}
+              aria-expanded={showAdvancedFilters}
+              title="Filters"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filters{#if minReputation > 0}<span class="filters-badge">1</span>{/if}
+            </button>
+          </div>
+        </div>
+
+        {#if showAdvancedFilters}
+          <div class="gallery-advanced">
+            <label class="gallery-minrep">
+              <span class="gallery-minrep-label">Min reputation</span>
+              <span class="gallery-minrep-field">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  bind:value={minReputation}
+                  class="gallery-minrep-input"
+                  aria-label="Minimum reputation in ERGs"
+                />
+                <span class="gallery-minrep-suffix">ERGs</span>
+              </span>
+            </label>
             <button class="refresh-btn" on:click={loadSkills}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
               Refresh
             </button>
           </div>
-        </div>
-
-        <!-- Gallery search + min-reputation filter (moved out of the header). -->
-        <div class="gallery-controls">
-          <div class="gallery-search">
-            <svg class="gallery-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              bind:value={searchQuery}
-              placeholder="Search skills, tags, domains..."
-              class="search-input"
-              aria-label="Search skills"
-            />
-            {#if searchQuery}
-              <button class="gallery-search-clear" on:click={() => (searchQuery = "")} aria-label="Clear search" title="Clear search">✕</button>
-            {/if}
-          </div>
-          <label class="gallery-minrep">
-            <span class="gallery-minrep-label">Min reputation</span>
-            <span class="gallery-minrep-field">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                bind:value={minReputation}
-                class="gallery-minrep-input"
-                aria-label="Minimum reputation in ERGs"
-              />
-              <span class="gallery-minrep-suffix">ERGs</span>
-            </span>
-          </label>
-        </div>
+        {/if}
 
         {#if loading}
           <div class="skills-grid">
@@ -2074,17 +2067,23 @@
     min-height: 100vh;
   }
 
-  /* Search-first collapse: once the user types a query the hero shrinks so the
-     results grid sits right under the search box (no full-viewport spacer). */
+  /* Search-first collapse: once the user types a query the hero pins to the top
+     (Google-after-search). The heading disappears entirely (removed from the DOM
+     above) and the search box animates up so results sit right under it. */
   #gallery.searching .scroll-hero {
-    @apply py-8;
+    @apply pt-6 pb-4;
     min-height: auto;
+    justify-content: flex-start;
   }
   #gallery.searching .scroll-hero-inner {
     margin-top: 0;
+    /* Left-align the pinned bar with the results grid below rather than centring
+       a lone search box in the viewport. */
+    max-width: none;
+    align-items: stretch;
   }
-  #gallery.searching .scroll-hero-title {
-    @apply text-2xl md:text-3xl mb-2;
+  #gallery.searching .scroll-hero-search {
+    max-width: 40rem;
   }
 
   .scroll-hero-inner {
@@ -2093,6 +2092,8 @@
     /* Nudge the block up slightly so it reads as optically centred beneath the
        floating header rather than mathematically centred. */
     margin-top: -3rem;
+    /* Smoothly animate the collapse from centred hero → pinned top bar. */
+    transition: margin-top 0.3s ease, max-width 0.3s ease;
   }
 
   .scroll-hero-title {
@@ -2145,35 +2146,43 @@
   }
 
   /* ── Gallery ────────────────────────────────────────────────────────── */
-  .gallery-header {
-    @apply flex items-end justify-between mb-6 pb-4 border-b;
-    border-bottom-color: hsl(var(--border) / 0.5);
+  /* Compact results toolbar: result count on the left, sort + Filters on the
+     right. Minimal chrome — no heavy title bar or duplicate search box. */
+  .gallery-toolbar {
+    @apply flex items-center justify-between gap-3 mb-5 flex-wrap;
   }
 
-  .gallery-title {
-    @apply text-xl font-bold;
+  .gallery-count {
+    @apply text-sm text-muted-foreground inline-flex items-center gap-1 flex-wrap;
   }
 
-  /* ── Gallery search + min-reputation controls ───────────────────────── */
-  .gallery-controls {
-    @apply flex items-center gap-3 mb-6 flex-wrap;
+  /* Small "Filters" disclosure that reveals secondary options on demand. */
+  .filters-toggle {
+    @apply inline-flex items-center gap-1.5 text-sm text-muted-foreground px-3 py-1.5 rounded-lg transition-all duration-200;
+    border: 1px solid transparent;
   }
-  .gallery-search {
-    @apply relative flex-1;
-    min-width: 220px;
-  }
-  .gallery-search-icon {
-    @apply absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none;
-  }
-  .gallery-search .search-input {
-    @apply pr-9;
-  }
-  .gallery-search-clear {
-    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs leading-none px-1.5 py-1 rounded;
-  }
-  .gallery-search-clear:hover {
+  .filters-toggle:hover {
     @apply text-foreground;
     background: hsl(var(--muted) / 0.5);
+  }
+  .filters-toggle-active {
+    @apply text-foreground;
+    border-color: hsl(var(--border));
+    background: hsl(var(--muted) / 0.5);
+  }
+  .filters-badge {
+    @apply ml-1 inline-flex items-center justify-center text-xs font-semibold rounded-full;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.3rem;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  /* Secondary-filter drawer, revealed by the Filters toggle. */
+  .gallery-advanced {
+    @apply flex items-center gap-3 mb-6 flex-wrap pb-4 border-b;
+    border-bottom-color: hsl(var(--border) / 0.5);
   }
   .gallery-minrep {
     @apply flex items-center gap-2 text-sm text-muted-foreground;
