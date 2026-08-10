@@ -133,6 +133,9 @@
   // Feature expansion state
   let activeCategory = "all";
   let currentSort = "name";
+  // Count of active secondary filters, shown as a badge on the "Filters"
+  // disclosure so users know facets are applied even while the panel is closed.
+  $: activeFilterCount = (activeCategory !== "all" ? 1 : 0) + (minReputation > 0 ? 1 : 0);
   let validationErrors: Record<string, string> = {};
   let enhancementsRef: SubmitFormEnhancements;
 
@@ -1524,7 +1527,7 @@
               <input
                 type="text"
                 bind:value={searchQuery}
-                placeholder="Search skills, tags, domains..."
+                placeholder="Search skills..."
                 class="scroll-hero-input"
                 aria-label="Search skills"
                 on:keydown={(e) => { if (e.key === 'Enter') submitHeroSearch(); }}
@@ -1540,13 +1543,11 @@
 
       {#if hasQuery}
       <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- Category Filter — the one primary facet kept inline. -->
-        <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
-
-        <!-- Compact results toolbar: count · sort · a small "Filters" disclosure
-             for secondary options. Everything low-value (stats bar, redundant
-             search box, inline min-reputation) is trimmed or collapsed to keep
-             the results view Google-clean. -->
+        <!-- Results view — progressive disclosure. By default the results view
+             is just [ N results ] + a single subtle "Filters" control + cards.
+             ALL secondary controls (category facets, sort, min-reputation,
+             refresh) live behind the Filters disclosure so the default view
+             stays calm and search-first. -->
         <div class="gallery-toolbar">
           <p class="gallery-count">
             {#if galleryUnfiltered && hiddenFromListing > 0}
@@ -1558,46 +1559,52 @@
             {:else}
               <span>
                 {displayedSkills.length} result{displayedSkills.length !== 1 ? "s" : ""}
-                {searchQuery ? ` for "${searchQuery}"` : ""}
-                {activeCategory !== "all" ? ` in ${activeCategory}` : ""}
               </span>
             {/if}
           </p>
           <div class="flex items-center gap-2">
-            <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
             <button
               class="filters-toggle"
-              class:filters-toggle-active={showAdvancedFilters || minReputation > 0}
+              class:filters-toggle-active={showAdvancedFilters || activeFilterCount > 0}
               on:click={() => (showAdvancedFilters = !showAdvancedFilters)}
               aria-expanded={showAdvancedFilters}
               title="Filters"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-              Filters{#if minReputation > 0}<span class="filters-badge">1</span>{/if}
+              Filters{#if activeFilterCount > 0}<span class="filters-badge">{activeFilterCount}</span>{/if}
             </button>
           </div>
         </div>
 
         {#if showAdvancedFilters}
-          <div class="gallery-advanced">
-            <label class="gallery-minrep">
-              <span class="gallery-minrep-label">Min reputation</span>
-              <span class="gallery-minrep-field">
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  bind:value={minReputation}
-                  class="gallery-minrep-input"
-                  aria-label="Minimum reputation in ERGs"
-                />
-                <span class="gallery-minrep-suffix">ERGs</span>
-              </span>
-            </label>
-            <button class="refresh-btn" on:click={loadSkills}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
-              Refresh
-            </button>
+          <div class="gallery-advanced gallery-advanced-panel">
+            <!-- Category — moved behind the disclosure (no longer a primary
+                 inline facet on the default results view). -->
+            <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
+            <div class="gallery-advanced-row">
+              <div class="gallery-advanced-control">
+                <span class="gallery-advanced-label">Sort</span>
+                <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
+              </div>
+              <label class="gallery-minrep">
+                <span class="gallery-minrep-label">Min reputation</span>
+                <span class="gallery-minrep-field">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    bind:value={minReputation}
+                    class="gallery-minrep-input"
+                    aria-label="Minimum reputation in ERGs"
+                  />
+                  <span class="gallery-minrep-suffix">ERGs</span>
+                </span>
+              </label>
+              <button class="refresh-btn" on:click={loadSkills}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+                Refresh
+              </button>
+            </div>
           </div>
         {/if}
 
@@ -1643,11 +1650,6 @@
                 prose={skill.prose}
                 tags={skill.tags}
                 domain={skill.domain}
-                coverageCount={skill.coverages.length}
-                benchmarkCount={skill.benchmarks.length}
-                resultCount={skill.resultCount}
-                isDuplicate={skillNameCounts[skill.name] > 1}
-                reputation={calculateSkillReputation(skill).total}
                 profileId={skill.profileId}
                 index={i}
                 on:click={() => selectSkill(skill)}
@@ -2183,6 +2185,20 @@
   .gallery-advanced {
     @apply flex items-center gap-3 mb-6 flex-wrap pb-4 border-b;
     border-bottom-color: hsl(var(--border) / 0.5);
+  }
+  /* Disclosure panel that holds ALL secondary controls (category, sort,
+     min-reputation, refresh) — stacked so it reads as one calm group. */
+  .gallery-advanced-panel {
+    @apply flex-col items-stretch;
+  }
+  .gallery-advanced-row {
+    @apply flex items-center gap-4 flex-wrap;
+  }
+  .gallery-advanced-control {
+    @apply flex items-center gap-2 text-sm text-muted-foreground;
+  }
+  .gallery-advanced-label {
+    @apply whitespace-nowrap;
   }
   .gallery-minrep {
     @apply flex items-center gap-2 text-sm text-muted-foreground;
