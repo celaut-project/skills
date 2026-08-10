@@ -32,6 +32,11 @@ export async function loadSkills(): Promise<Skill[]> {
   return getProvider().loadSkills();
 }
 
+/** Hydrate a single skill's heavy relations on demand (idempotent). */
+export async function hydrateSkill(skill: Skill): Promise<void> {
+  return getProvider().hydrateSkill(skill);
+}
+
 /** Load coverages for a given skill box ID. */
 export async function loadCoverages(skillBoxId: string): Promise<Coverage[]> {
   return getProvider().loadCoverages(skillBoxId);

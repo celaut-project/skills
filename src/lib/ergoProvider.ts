@@ -17,7 +17,7 @@ import type {
   StrictDefinitionCreationInput,
   TrustFrameworkCreationInput
 } from './types';
-import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults, applySkillInheritance } from './api';
+import { loadSkills as apiLoadSkills, loadCoverages as apiLoadCoverages, loadBenchmarkCoverages as apiLoadBenchmarkCoverages, loadBenchmarks as apiLoadBenchmarks, loadResults as apiLoadResults } from './api';
 import { ApiError } from './types';
 import { create_profile, create_opinion } from 'reputation-system';
 import type { RPBox } from 'source-application';
@@ -47,44 +47,53 @@ function getMainBox(inputMainBox: unknown, entityName: string): RPBox {
 
 class ErgoDataProvider implements DataProvider {
   async loadSkills(): Promise<Skill[]> {
-    // `apiLoadSkills()` returns skills with EMPTY coverages/benchmarks — the
-    // explorer query only yields the skill boxes themselves. mockDb, by
-    // contrast, ships fully-populated skills (getDemoSkills). To reach parity
-    // we hydrate each skill's direct relations (coverages, benchmarks, and the
-    // results under each benchmark) before applying inheritance — otherwise
-    // applySkillInheritance has nothing to merge and the UI sees empty skills.
-    const skills = await apiLoadSkills();
+    // LIGHTWEIGHT initial load. `apiLoadSkills()` returns skill boxes with
+    // their names/tags/domain/prose/profileId/boxId already populated (and
+    // EMPTY coverages/benchmarks). That is everything the gallery, search and
+    // cards need to render — so we no longer eagerly fan out to the explorer
+    // to hydrate every skill's coverages/benchmarks/results up front. Instead
+    // each skill is hydrated on demand via `hydrateSkill()` when the user
+    // actually searches for or opens it.
+    //
+    // NOTE: applySkillInheritance is intentionally SKIPPED here. It merges
+    // inherited coverages/benchmarks from extended skills, which requires the
+    // per-skill relations to already be hydrated. In the lightweight path
+    // there is nothing to merge yet, so running it would be a no-op at best;
+    // inheritance is (re)applied lazily per skill during hydration instead.
+    return apiLoadSkills();
+  }
+
+  /**
+   * Hydrate ONE skill's heavy relations on demand: its coverages, benchmarks,
+   * and each benchmark's results + benchmark-coverages. Idempotent — a skill
+   * that is already hydrated returns immediately.
+   */
+  async hydrateSkill(skill: Skill): Promise<void> {
+    if (skill.__hydrated) return;
+
+    const [coverages, benchmarks] = await Promise.all([
+      apiLoadCoverages(skill.boxId),
+      apiLoadBenchmarks(skill.boxId)
+    ]);
 
     await Promise.all(
-      skills.map(async (skill) => {
-        const [coverages, benchmarks] = await Promise.all([
-          apiLoadCoverages(skill.boxId),
-          apiLoadBenchmarks(skill.boxId)
+      benchmarks.map(async (benchmark) => {
+        const [results, benchmarkCoverages] = await Promise.all([
+          apiLoadResults(benchmark.id),
+          apiLoadBenchmarkCoverages(benchmark.id)
         ]);
-
-        await Promise.all(
-          benchmarks.map(async (benchmark) => {
-            const [results, benchmarkCoverages] = await Promise.all([
-              apiLoadResults(benchmark.id),
-              apiLoadBenchmarkCoverages(benchmark.id)
-            ]);
-            benchmark.results = results;
-            benchmark.coverages = benchmarkCoverages;
-          })
-        );
-
-        skill.coverages = coverages;
-        skill.benchmarks = benchmarks;
-        skill.resultCount = benchmarks.reduce(
-          (sum, benchmark) => sum + benchmark.results.length,
-          0
-        );
+        benchmark.results = results;
+        benchmark.coverages = benchmarkCoverages;
       })
     );
 
-    // Now that direct relations are loaded, merge inherited coverages/benchmarks
-    // from extended skills (same logic mockDb relies on).
-    return applySkillInheritance(skills);
+    skill.coverages = coverages;
+    skill.benchmarks = benchmarks;
+    skill.resultCount = benchmarks.reduce(
+      (sum, benchmark) => sum + benchmark.results.length,
+      0
+    );
+    skill.__hydrated = true;
   }
 
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {

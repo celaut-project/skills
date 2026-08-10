@@ -73,6 +73,11 @@ class MockDatabase implements DataProvider {
     return applySkillInheritance(this.clone(this.skills));
   }
 
+  async hydrateSkill(_skill: Skill): Promise<void> {
+    // No-op: demo skills ship fully populated (getDemoSkills), so there is
+    // nothing to lazily fetch.
+  }
+
   async loadCoverages(skillBoxId: string): Promise<Coverage[]> {
     const skill = applySkillInheritance(this.clone(this.skills)).find(s => s.boxId === skillBoxId);
     if (!skill) return [];

@@ -42,7 +42,7 @@
   // ── API & Types ────────────────────────────────────────────────────────────
   import { formatServiceId, formatSourceHash, EXPLORER_API } from "$lib/api";
   import { fetchProfileById, type ReputationProof } from "reputation-system";
-  import { loadSkills as loadSkillsFromData } from "$lib/data";
+  import { loadSkills as loadSkillsFromData, hydrateSkill as hydrateSkillFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
   import { categoryIcon, categoryColor } from "$lib/categoryIcons";
@@ -74,6 +74,30 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
+  // Google-style landing: the hero shows only the centered search box until the
+  // user types a non-empty query. All the gallery/stats/controls below the hero
+  // are gated on `hasQuery` so the initial page is search-first with no scroll.
+  $: hasQuery = searchQuery.trim().length > 0;
+
+  // Lazy hydration: skills load lightweight (names/tags only). We hydrate the
+  // heavy relations (coverages/benchmarks/results) only for skills the user
+  // actually surfaces via search or opens in detail.
+  let hydratedBoxIds = new Set<string>();
+  async function ensureHydrated(list: Skill[]) {
+    let changed = false;
+    for (const s of list) {
+      if (hydratedBoxIds.has(s.boxId)) continue;
+      hydratedBoxIds.add(s.boxId);
+      try {
+        await hydrateSkillFromData(s);
+        changed = true;
+      } catch (e) {
+        // Leave this skill's coverage/benchmark/result counts at 0 rather than
+        // blocking the gallery; a later interaction can retry.
+      }
+    }
+    if (changed) skills = skills; // force Svelte reactivity after in-place hydration
+  }
   // Minimum-reputation gallery filter: hide skills whose aggregate reputation
   // falls below this threshold. 0 = show everything (default).
   let minReputation = 0;
@@ -697,6 +721,9 @@
     ),
     currentSort
   );
+  // Once the user searches, hydrate whichever skills are actually displayed so
+  // their coverage/benchmark/result counts fill in on demand.
+  $: if (hasQuery && displayedSkills.length) ensureHydrated(displayedSkills);
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
@@ -838,6 +865,7 @@
 
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
+    ensureHydrated([skill]); // pull in coverages/benchmarks/results for the detail view
     detailVisible = false;
     selectedSkill = skill;
     detailTab = "benchmarks";
@@ -1476,9 +1504,10 @@
            Detail/overlay views above still REPLACE this page when active. -->
 
       <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
-      <section id="gallery">
-        <!-- Above-the-fold: only the centered heading + search. Everything else
-             (filters, stats, cards) sits below the fold via min-height:100vh. -->
+      <section id="gallery" class:searching={hasQuery}>
+        <!-- Google-style landing: only the centered heading + search show until
+             the user types a query. When searching, the hero collapses and the
+             results grid renders right below it. -->
         <div class="scroll-hero">
           <div class="scroll-hero-inner">
             <h1 class="scroll-hero-title">What skill are you looking for?</h1>
@@ -1504,6 +1533,7 @@
           </div>
         </div>
 
+      {#if hasQuery}
       <div id="skills-section" class="container mx-auto px-8 pb-8">
         <!-- Stats Bar -->
         <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
@@ -1633,6 +1663,7 @@
           </div>
         {/if}
       </div>
+      {/if}
       </section>
 
     {:else if activeTab === "networks"}
@@ -2041,6 +2072,19 @@
   .scroll-hero {
     @apply flex flex-col items-center justify-center text-center px-4;
     min-height: 100vh;
+  }
+
+  /* Search-first collapse: once the user types a query the hero shrinks so the
+     results grid sits right under the search box (no full-viewport spacer). */
+  #gallery.searching .scroll-hero {
+    @apply py-8;
+    min-height: auto;
+  }
+  #gallery.searching .scroll-hero-inner {
+    margin-top: 0;
+  }
+  #gallery.searching .scroll-hero-title {
+    @apply text-2xl md:text-3xl mb-2;
   }
 
   .scroll-hero-inner {

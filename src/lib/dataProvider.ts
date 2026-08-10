@@ -19,8 +19,14 @@ import type {
 } from './types';
 
 export interface DataProvider {
-  /** Load all skills. */
+  /** Load all skills (lightweight — heavy relations hydrated lazily). */
   loadSkills(): Promise<Skill[]>;
+
+  /**
+   * Hydrate a single skill's heavy relations (coverages, benchmarks,
+   * per-benchmark results). Idempotent and on-demand.
+   */
+  hydrateSkill(skill: Skill): Promise<void>;
 
   /** Load coverages for a given skill box ID. */
   loadCoverages(skillBoxId: string): Promise<Coverage[]>;
