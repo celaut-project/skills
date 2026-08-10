@@ -16,6 +16,77 @@ The server speaks MCP over stdio. Point any MCP-aware client at
 
 Optional env: `CELAUT_EXPLORER_API` (defaults to `https://api.ergoplatform.com`).
 
+## Connect a client
+
+Running the server is not enough — an MCP client has to be told where to find
+it. Use the absolute path to `mcp/server.mjs` in this repo.
+
+**Claude Code / Claude Desktop (one-liner):**
+
+```bash
+claude mcp add celaut-skills -- node /path/to/skills/mcp/server.mjs
+```
+
+**Generic `mcpServers` config block** (Claude Desktop `claude_desktop_config.json`,
+or any client that reads this shape):
+
+```json
+{
+  "mcpServers": {
+    "celaut-skills": {
+      "command": "node",
+      "args": ["/path/to/skills/mcp/server.mjs"],
+      "env": {
+        "CELAUT_EXPLORER_API": "https://api.ergoplatform.com"
+      }
+    }
+  }
+}
+```
+
+Replace `/path/to/skills` with the absolute path to your clone. The `env` block
+is optional (the default explorer API is used when it is omitted). Run
+`npm install` in the repo first so `node` can resolve the server's dependencies.
+
+## Discovery flow — start with `load_skills`
+
+Four of the five tools require a `skillBoxId` or `benchmarkId`, and **only
+`load_skills` takes no arguments**. There is no other entry point, so every
+session starts by listing skills and picking a box id from the results:
+
+```
+load_skills                         (no args)  → [ { boxId, name, ... }, ... ]
+   │  pick a boxId
+   ▼
+load_skill_tree { skillBoxId }      → skill + coverages + benchmarks + results
+```
+
+Worked example:
+
+```jsonc
+// 1. List skills — the only argument-free tool.
+load_skills()
+// → [
+//     { "boxId": "3f1c9a...e7", "name": "Optimal XAU/BTC Performance",
+//       "tags": ["trading", "gold"], "extendedSkillBoxIds": [] },
+//     { "boxId": "8b204d...aa", "name": "Sat-sorter", "tags": ["utxo"] }
+//   ]
+
+// 2. Take a boxId from step 1 and load the full tree in one call.
+load_skill_tree({ "skillBoxId": "3f1c9a...e7" })
+// → {
+//     "skill":      { "boxId": "3f1c9a...e7", "name": "Optimal XAU/BTC Performance", ... },
+//     "coverages":  [ { "boxId": "c0ffee...", "serviceId": "9a77..." } ],
+//     "benchmarks": [ { "id": "bench01...", "name": "12-month backtest",
+//                       "results": [ { "id": "res01...", "serviceId": "9a77..." } ] } ]
+//   }
+```
+
+If you need finer-grained access, the same `skillBoxId` feeds `load_coverages`
+and `load_benchmarks`, and a `benchmarkId` from `load_benchmarks` feeds
+`load_results`. `load_skill_tree` is just the convenience call that bundles all
+of them.
+
 ## Architecture — one data layer, no duplication
 
 `mcp/server.mjs` is a **thin wrapper**. It contains only the MCP tool registry

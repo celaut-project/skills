@@ -1,98 +1,112 @@
-**# Celaut Skills**  
-**El “App Store de problemas” descentralizado para agentes IA en Celaut + Ergo**
+# Celaut Skills
 
-**Celaut Skills** es un registro **100 % on-chain**, sin servidores centrales y sin confianza donde los **problemas (skills)** son los protagonistas.  
+**The decentralized "App Store of problems" for AI agents on Celaut + Ergo**
 
-En vez de buscar servicios Celaut directamente, buscas una **skill** (“Optimal XAU/BTC Performance”, “Sat-sorter”, etc.) y dentro encuentras automáticamente:
+**Celaut Skills** is a **100% on-chain**, serverless, trustless registry where the **problems (skills)** are the protagonists.
 
-- Servicios que la cubren (Coverage)  
-- Benchmarks comparativos reales  
-- Comentarios y discusiones de la comunidad  
-- Ordenamiento inteligente por reputación y métricas verificables  
+Instead of searching for Celaut services directly, you search for a **skill** ("Optimal XAU/BTC Performance", "Sat-sorter", etc.) and inside it you automatically find:
 
-Todo construido sobre **Ergo + Celaut**, **skin-in-the-game** nativo del sistema de reputación.
+- Services that cover it (Coverage)
+- Real comparative benchmarks
+- Community comments and discussion
+- Smart ranking by reputation and verifiable metrics
 
----
-
-### Filosofía y motivación
-
-Celaut **no tiene** un registry central de servicios (por diseño descentralizado).  
-**Celaut Skills** lo soluciona invirtiendo el modelo:
-
-- Los agentes IA buscan **problemas**, no soluciones.  
-- Un solo **Result** comparativo dice más que 100 opiniones sueltas.  
-- Las skills se **componen** (referencian otras skills) → duplicados se resuelven de forma orgánica y descentralizada.  
-- Todo es opinión con **skin-in-the-game** → nadie spamea sin arriesgar reputación.
-
+All built on **Ergo + Celaut**, with **skin-in-the-game** native to the reputation system.
 
 ---
 
-### Las tres librerías principales (todas oficiales de ergo-basics y reputation-systems)
+## Interface surface — how to reach this registry
 
-1. **Template base**  
-   https://github.com/ergo-basics/template  
+There are exactly two ways to interact with the registry, and there is **no CLI at this time**:
+
+| Purpose | Interface | How |
+|---|---|---|
+| **Read** (discover skills, coverages, benchmarks, results) | **MCP server** (read-only) | `npm run mcp` — see [MCP.md](./MCP.md). Wire it into any MCP client (Claude, etc.). |
+| **Publish** (create skills, coverages, benchmarks, results) | **`reputation-system` TypeScript library** | `createReputationBox({...})` — see [REPUTATION_LIBRARY.md](./REPUTATION_LIBRARY.md) and the example below. Requires a connected Ergo wallet. |
+
+- **No `nodo` CLI and no standalone Celaut Skills CLI exists** for reading or publishing skills. Agents read through the MCP server; humans/apps publish through the `reputation-system` library (typically from the Svelte web app in this repo). A CLI is **not on the roadmap and not yet shipped** — if that changes it will be documented here.
+- The MCP server is read-only by design: it never creates or mutates on-chain state. See the "Explicitly omitted" section of [MCP.md](./MCP.md).
+
+---
+
+## Philosophy and motivation
+
+Celaut has **no** central service registry (by decentralized design).
+**Celaut Skills** solves this by inverting the model:
+
+- AI agents search for **problems**, not solutions.
+- A single comparative **Result** says more than 100 loose opinions.
+- Skills **compose** (they reference other skills) → duplicates resolve organically and in a decentralized way.
+- **Everything is opinion with skin-in-the-game → nobody spams without risking reputation.**
+
+---
+
+## The main libraries (all official, from ergo-basics and reputation-systems)
+
+1. **Base template**
+   https://github.com/ergo-basics/template
    (Svelte 4 + Vite + Tailwind + Ergo Explorer integration)
 
-2. **Wallet Svelte Component** (conexión real con Nautilus y SAFEW)  
-   https://github.com/ergo-basics/wallet-svelte-component  
-   Componente listo para usar, con stores reactivos y soporte completo de Ergo.
+2. **Wallet Svelte Component** (real connection to Nautilus and SAFEW)
+   https://github.com/ergo-basics/wallet-svelte-component
+   Ready-to-use component with reactive stores and full Ergo support.
 
-3. **Reputation System** (núcleo de tipos y reputación)  
+3. **Reputation System** (core of types and reputation)
    https://github.com/reputation-systems/reputation-system
 
-4. **Forum Application** (comentarios on-chain en cualquier entidad)  
+4. **Forum Application** (on-chain comments on any entity)
    https://github.com/reputation-systems/forum-application
 
 ---
 
-### Los 4 Tipos / Entidades (esquema oficial)
+## The Types / Entities (official schema)
 
-Cada tipo es un **Type NFT (Digital Public Good)** del reputation-system.  
-Las cajas reales son **Reputation Boxes** con estructura fija:
+Each type is a **Type NFT (Digital Public Good)** from the reputation-system.
+The actual boxes are **Reputation Boxes** with a fixed structure:
 
-- **R4** = TokenId del Type NFT  
-- **R5** = Identificador único  
-- **R6** = `locked` (true/false)  
-- **R7** = `blake2b256(ownerScript)`  
-- **R8** = `polarizacion = true`  
+- **R4** = TokenId of the Type NFT
+- **R5** = Unique identifier
+- **R6** = `locked` (true/false)
+- **R7** = `blake2b256(ownerScript)`
+- **R8** = `polarization = true`
 - **R9** = JSON
 
-#### 1. Skill (`celaut:skill:v1`)
-**Type NFT** → R4 = `"celaut:skill:v1"`  
-**Cajas**: R5 = `skill-tag`, R6 = `true`, R9 =  `Skill`
+### 1. Skill (`celaut:skill:v1`)
+**Type NFT** → R4 = `"celaut:skill:v1"`
+**Boxes**: R5 = `skill-tag`, R6 = `true`, R9 = `Skill`
 
-#### 2. Benchmark (`celaut:benchmark:v1`)
-**Type NFT** → R4 = `"celaut:benchmark:v1"`  
-**Cajas**: R5 = `skill_box_id`, R6 = `true`, R9 =  `Benchmark`
+### 2. Benchmark (`celaut:benchmark:v1`)
+**Type NFT** → R4 = `"celaut:benchmark:v1"`
+**Boxes**: R5 = `skill_box_id`, R6 = `true`, R9 = `Benchmark`
 
-#### 3. Result (`celaut:result:v1`)
-**Type NFT** → R4 = `"celaut:result:v1"`  
-**Cajas**: R5 = `benchmark_box_id`, R6 = `false` (actualizable), R9 =  `Result`
+### 3. Result (`celaut:result:v1`)
+**Type NFT** → R4 = `"celaut:result:v1"`
+**Boxes**: R5 = `benchmark_box_id`, R6 = `false` (updatable), R9 = `Result`
 
-#### 4. Coverage (`celaut:coverage:v1`)
-**Type NFT** → R4 = `"celaut:coverage:v1"`  
-**Cajas**: R5 = `skill_box_id`, R6 = `false`, R9 =  `Coverage`
+### 4. Coverage (`celaut:coverage:v1`)
+**Type NFT** → R4 = `"celaut:coverage:v1"`
+**Boxes**: R5 = `skill_box_id`, R6 = `false`, R9 = `Coverage`
 
-#### 5. Service Data (`celaut:service-data:v1`)
-**Type NFT** → R4 = `"celaut:service-data:v1"`  
-**Cajas**: R5 = `service_id`, R9 = fragmento **funcional** de la especificación del servicio: un JSON que puede contener **`container`** (arquitectura, …), **`api`** y **`network`** con sus respectivos campos — o bien un hash blake2b.
+### 5. Service Data (`celaut:service-data:v1`)
+**Type NFT** → R4 = `"celaut:service-data:v1"`
+**Boxes**: R5 = `service_id`, R9 = **functional** fragment of the service specification: a JSON that may contain **`container`** (architecture, …), **`api`** and **`network`** with their respective fields — or a blake2b hash.
 
-#### 6. Service Metadata (`celaut:service-metadata:v1`)
-**Type NFT** → R4 = `"celaut:service-metadata:v1"`  
-**Cajas**: R5 = `service_id`, R9 = **JSON arbitrario** con metadata descriptiva del servicio (p. ej. `name` / `description` / `tags`) — o bien un hash blake2b.
+### 6. Service Metadata (`celaut:service-metadata:v1`)
+**Type NFT** → R4 = `"celaut:service-metadata:v1"`
+**Boxes**: R5 = `service_id`, R9 = **arbitrary JSON** with descriptive metadata for the service (e.g. `name` / `description` / `tags`) — or a blake2b hash.
 
-> **Service Data + Service Metadata** ponen *parte* de la especificación de un servicio on-chain (indexada por `service_id` en R5) para que los clientes puedan mostrar la api/red/arquitectura/nombre de un servicio en la UI de skills **sin descargar el servicio completo**. Se pueden **publicar** desde la app (formulario en la tarjeta de servicio) y la UI pondera las asertaciones en competencia por su **reputación**.
+> **Service Data + Service Metadata** put *part* of a service's specification on-chain (indexed by `service_id` in R5) so that clients can display a service's api/network/architecture/name in the skills UI **without downloading the full service**. They can be **published** from the app (a form on the service card) and the UI weighs competing assertions by their **reputation**.
 >
-> **Modo de R9 (para ambos):**
-> - **inline** — R9 es el JSON directamente on-chain (Data: `container`/`api`/`network`; Metadata: JSON libre).
-> - **source** — R9 es un hash **blake2b256** de un contenido cualquiera; el cliente busca ese contenido en `sources` (source-application). Este modo se detecta simplemente porque el payload de R9 es una cadena hash.
+> **R9 mode (for both):**
+> - **inline** — R9 is the JSON directly on-chain (Data: `container`/`api`/`network`; Metadata: free-form JSON).
+> - **source** — R9 is a **blake2b256** hash of arbitrary content; the client looks that content up in `sources` (source-application). This mode is detected simply because the R9 payload is a hash string.
 
 ---
 
-### Integración del Wallet (wallet-svelte-component)
+## Wallet integration (wallet-svelte-component)
 
-Este es el componente oficial que usaremos para toda la conexión de wallet.  
-Se instala con un solo comando y se usa así:
+This is the official component used for all wallet connection.
+It installs with a single command and is used like this:
 
 ```svelte
 <script>
@@ -111,31 +125,31 @@ Se instala con un solo comando y se usa así:
 </header>
 
 {#if $walletConnected}
-  <p>Conectado: {$walletAddress}</p>
+  <p>Connected: {$walletAddress}</p>
   <p>Balance: {Number($walletBalance.nanoErgs) / 1e9} ERG</p>
 {/if}
 
 <WalletAddressChangeHandler />
 ```
 
-Funciones útiles:
+Useful functions:
 - `walletManager.connectWallet('nautilus')`
 - `walletManager.disconnectWallet()`
 - `walletManager.refreshBalance()`
 
-El componente detecta automáticamente Nautilus y SAFEW y maneja todo el estado reactivo.
+The component auto-detects Nautilus and SAFEW and manages all reactive state.
 
 ---
 
-### Cómo crear y publicar entidades
+## How to create and publish entities
 
-Ejemplo completo con la librería **reputation-system** + wallet conectado:
+Publishing goes through the **`reputation-system`** library (there is no CLI — see "Interface surface" above). Full example with a connected wallet:
 
 ```typescript
 import { createReputationBox } from 'reputation-system';
 import { walletManager } from 'wallet-svelte-component';
 
-// ... después de conectar wallet
+// ... after connecting the wallet
 const skillProtoBytes = new Skill({ name: "Optimal XAU/BTC", ... }).serializeBinary();
 
 await createReputationBox({
@@ -150,9 +164,22 @@ await createReputationBox({
 
 ---
 
-### Comentarios con Forum Application
+## Discovering skills (agent read path)
 
-Cualquier Servicio, Skill, Result, Benchmark o Coverage puede tener discusión on-chain:
+Agents read the registry through the MCP server. Only `load_skills` takes no
+arguments — the other four tools need a `skillBoxId` or `benchmarkId` you can
+only obtain by listing skills first. So discovery always starts the same way:
+
+1. **`load_skills`** (no args) → pick a `boxId` from the returned skills.
+2. **`load_skill_tree`** `{ skillBoxId }` → the whole tree (coverages, benchmarks, results) in one call.
+
+See [MCP.md](./MCP.md) for the full tool signatures and a worked example.
+
+---
+
+## Comments with Forum Application
+
+Any Service, Skill, Result, Benchmark or Coverage can have on-chain discussion:
 
 ```svelte
 <script>
@@ -160,18 +187,18 @@ Cualquier Servicio, Skill, Result, Benchmark o Coverage puede tener discusión o
 </script>
 
 <Forum 
-  topicIdentifier={currentBoxId}  // o service_id ... 
+  topicIdentifier={currentBoxId}  // or service_id ... 
   reputationTokenId={globalRepToken}
 />
 ```
 
 ---
 
-### Flujo de la UI
+## UI flow
 
-1. **/skills** → Galería de Skills (ordenadas por reputación).  
-2. Click en Skill → carga recursivamente `extended_skill_boxes`.  
-3. Muestra tabla comparativa + **sección Foro** completa.  
-4. Agentes IA consumen los mismos datos vía nodo Celaut.
+1. **/skills** → Skills gallery (ordered by reputation).
+2. Click a Skill → recursively loads `extended_skill_boxes`.
+3. Shows a comparative table + full **Forum section**.
+4. AI agents consume the same data via the Celaut node.
 
 ---
