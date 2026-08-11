@@ -41,6 +41,12 @@ export interface Skill {
    * regardless of which side you open the discussion from.
    */
   creationHeight?: number;
+  /**
+   * Internal flag set once the provider has hydrated this skill's heavy
+   * relations (coverages, benchmarks, per-benchmark results). Used to make
+   * lazy hydration idempotent — see ErgoDataProvider.hydrateSkill.
+   */
+  __hydrated?: boolean;
 }
 
 /** Payload used to create a new Skill. */

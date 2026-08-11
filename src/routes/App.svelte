@@ -16,7 +16,6 @@
 
   // ── Feature expansion components ───────────────────────────────────────────
   import Toast from "$lib/components/celaut/Toast.svelte";
-  import StatsBar from "$lib/components/celaut/StatsBar.svelte";
   import CategoryFilter from "$lib/components/celaut/CategoryFilter.svelte";
   import RunServiceButton from "$lib/components/celaut/RunServiceButton.svelte";
   import ServiceInfoFilterBar from "$lib/components/celaut/ServiceInfoFilterBar.svelte";
@@ -42,7 +41,7 @@
   // ── API & Types ────────────────────────────────────────────────────────────
   import { formatServiceId, formatSourceHash, EXPLORER_API } from "$lib/api";
   import { fetchProfileById, type ReputationProof } from "reputation-system";
-  import { loadSkills as loadSkillsFromData } from "$lib/data";
+  import { loadSkills as loadSkillsFromData, hydrateSkill as hydrateSkillFromData } from "$lib/data";
   import { createSkill, createBenchmark as createBenchmarkEntity } from "$lib/data";
   import type { Skill, Coverage, Benchmark, Result } from "$lib/types";
   import { categoryIcon, categoryColor } from "$lib/categoryIcons";
@@ -74,9 +73,37 @@
   let loading = true;
   let error: string | null = null;
   let searchQuery = "";
+  // Google-style landing: the hero shows only the centered search box until the
+  // user types a non-empty query. All the gallery/stats/controls below the hero
+  // are gated on `hasQuery` so the initial page is search-first with no scroll.
+  $: hasQuery = searchQuery.trim().length > 0;
+
+  // Lazy hydration: skills load lightweight (names/tags only). We hydrate the
+  // heavy relations (coverages/benchmarks/results) only for skills the user
+  // actually surfaces via search or opens in detail.
+  let hydratedBoxIds = new Set<string>();
+  async function ensureHydrated(list: Skill[]) {
+    let changed = false;
+    for (const s of list) {
+      if (hydratedBoxIds.has(s.boxId)) continue;
+      hydratedBoxIds.add(s.boxId);
+      try {
+        await hydrateSkillFromData(s);
+        changed = true;
+      } catch (e) {
+        // Leave this skill's coverage/benchmark/result counts at 0 rather than
+        // blocking the gallery; a later interaction can retry.
+      }
+    }
+    if (changed) skills = skills; // force Svelte reactivity after in-place hydration
+  }
   // Minimum-reputation gallery filter: hide skills whose aggregate reputation
   // falls below this threshold. 0 = show everything (default).
   let minReputation = 0;
+  // Secondary filters (e.g. min-reputation) are collapsed behind a small
+  // "Filters" disclosure to keep the results view Google-clean; only opened on
+  // demand.
+  let showAdvancedFilters = false;
   // "" = no tab highlighted (used while the profile-detail view is open).
   let activeTab: "gallery" | "submit" | "profile" | "networks" | "howitworks" | "" = "gallery";
   let detailVisible = false;
@@ -106,6 +133,9 @@
   // Feature expansion state
   let activeCategory = "all";
   let currentSort = "name";
+  // Count of active secondary filters, shown as a badge on the "Filters"
+  // disclosure so users know facets are applied even while the panel is closed.
+  $: activeFilterCount = (activeCategory !== "all" ? 1 : 0) + (minReputation > 0 ? 1 : 0);
   let validationErrors: Record<string, string> = {};
   let enhancementsRef: SubmitFormEnhancements;
 
@@ -697,6 +727,9 @@
     ),
     currentSort
   );
+  // Once the user searches, hydrate whichever skills are actually displayed so
+  // their coverage/benchmark/result counts fill in on demand.
+  $: if (hasQuery && displayedSkills.length) ensureHydrated(displayedSkills);
   $: totalServices = skills.reduce((sum, s) => sum + s.coverages.length, 0);
   $: totalResults = skills.reduce((sum, s) => sum + s.resultCount, 0);
 
@@ -838,6 +871,7 @@
 
   // ── Select skill with transition ───────────────────────────────────────────
   function selectSkill(skill: Skill) {
+    ensureHydrated([skill]); // pull in coverages/benchmarks/results for the detail view
     detailVisible = false;
     selectedSkill = skill;
     detailTab = "benchmarks";
@@ -1476,13 +1510,16 @@
            Detail/overlay views above still REPLACE this page when active. -->
 
       <!-- a. #gallery — full-viewport search hero + the skills gallery ─────── -->
-      <section id="gallery">
-        <!-- Above-the-fold: only the centered heading + search. Everything else
-             (filters, stats, cards) sits below the fold via min-height:100vh. -->
+      <section id="gallery" class:searching={hasQuery}>
+        <!-- Google-style landing: only the centered heading + search show until
+             the user types a query. When searching, the hero collapses and the
+             results grid renders right below it. -->
         <div class="scroll-hero">
           <div class="scroll-hero-inner">
-            <h1 class="scroll-hero-title">What skill are you looking for?</h1>
-            <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
+            {#if !hasQuery}
+              <h1 class="scroll-hero-title">What skill are you looking for?</h1>
+              <p class="scroll-hero-sub">Search any skill, tag or domain. Powered by a decentralized registry.</p>
+            {/if}
             <div class="scroll-hero-search">
               <svg class="scroll-hero-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -1490,7 +1527,7 @@
               <input
                 type="text"
                 bind:value={searchQuery}
-                placeholder="Search skills, tags, domains..."
+                placeholder="Search skills..."
                 class="scroll-hero-input"
                 aria-label="Search skills"
                 on:keydown={(e) => { if (e.key === 'Enter') submitHeroSearch(); }}
@@ -1504,79 +1541,72 @@
           </div>
         </div>
 
+      {#if hasQuery}
       <div id="skills-section" class="container mx-auto px-8 pb-8">
-        <!-- Stats Bar -->
-        <StatsBar totalSkills={skills.length} {totalServices} {totalResults} />
-
-        <!-- Category Filter -->
-        <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
-
-        <div class="gallery-header">
-          <div>
-            <h2 class="gallery-title">
-              {#if searchQuery}
-                Search Results
-              {:else}
-                All Skills
-              {/if}
-            </h2>
-            <p class="text-sm text-muted-foreground mt-0.5 inline-flex items-center gap-1 flex-wrap">
-              {#if galleryUnfiltered && hiddenFromListing > 0}
-                <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
-                <InfoTip title="Why fewer cards than the total?">
-                  <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
-                  <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
-                </InfoTip>
-              {:else}
-                <span>
-                  {displayedSkills.length} skill{displayedSkills.length !== 1 ? "s" : ""}
-                  {searchQuery ? ` matching "${searchQuery}"` : ""}
-                  {activeCategory !== "all" ? ` in ${activeCategory}` : " registered on-chain"}
-                </span>
-              {/if}
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
-            <button class="refresh-btn" on:click={loadSkills}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
-              Refresh
+        <!-- Results view — progressive disclosure. By default the results view
+             is just [ N results ] + a single subtle "Filters" control + cards.
+             ALL secondary controls (category facets, sort, min-reputation,
+             refresh) live behind the Filters disclosure so the default view
+             stays calm and search-first. -->
+        <div class="gallery-toolbar">
+          <p class="gallery-count">
+            {#if galleryUnfiltered && hiddenFromListing > 0}
+              <span>{displayedSkills.length} of {skills.length} skill{skills.length !== 1 ? "s" : ""} shown</span>
+              <InfoTip title="Why fewer cards than the total?">
+                <p>The counter above shows every <strong>Skill registered on-chain</strong> ({skills.length}). The gallery lists <strong>{displayedSkills.length}</strong> of them.</p>
+                <p>The other {hiddenFromListing} {hiddenFromListing === 1 ? "is" : "are"} hidden because they're <strong>nested under a parent skill</strong> (a higher-reputation skill that extends them) or are duplicate-named submissions collapsed to their canonical entry. Open a skill to reach its nested and sibling skills.</p>
+              </InfoTip>
+            {:else}
+              <span>
+                {displayedSkills.length} result{displayedSkills.length !== 1 ? "s" : ""}
+              </span>
+            {/if}
+          </p>
+          <div class="flex items-center gap-2">
+            <button
+              class="filters-toggle"
+              class:filters-toggle-active={showAdvancedFilters || activeFilterCount > 0}
+              on:click={() => (showAdvancedFilters = !showAdvancedFilters)}
+              aria-expanded={showAdvancedFilters}
+              title="Filters"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filters{#if activeFilterCount > 0}<span class="filters-badge">{activeFilterCount}</span>{/if}
             </button>
           </div>
         </div>
 
-        <!-- Gallery search + min-reputation filter (moved out of the header). -->
-        <div class="gallery-controls">
-          <div class="gallery-search">
-            <svg class="gallery-search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              bind:value={searchQuery}
-              placeholder="Search skills, tags, domains..."
-              class="search-input"
-              aria-label="Search skills"
-            />
-            {#if searchQuery}
-              <button class="gallery-search-clear" on:click={() => (searchQuery = "")} aria-label="Clear search" title="Clear search">✕</button>
-            {/if}
+        {#if showAdvancedFilters}
+          <div class="gallery-advanced gallery-advanced-panel">
+            <!-- Category — moved behind the disclosure (no longer a primary
+                 inline facet on the default results view). -->
+            <CategoryFilter {activeCategory} {skills} on:filter={(e) => { activeCategory = e.detail; }} />
+            <div class="gallery-advanced-row">
+              <div class="gallery-advanced-control">
+                <span class="gallery-advanced-label">Sort</span>
+                <SortDropdown {currentSort} on:sort={(e) => { currentSort = e.detail; }} />
+              </div>
+              <label class="gallery-minrep">
+                <span class="gallery-minrep-label">Min reputation</span>
+                <span class="gallery-minrep-field">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    bind:value={minReputation}
+                    class="gallery-minrep-input"
+                    aria-label="Minimum reputation in ERGs"
+                  />
+                  <span class="gallery-minrep-suffix">ERGs</span>
+                </span>
+              </label>
+              <button class="refresh-btn" on:click={loadSkills}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M22 12A10 10 0 0 0 3.25 7.25M2 12a10 10 0 0 0 18.75 4.75"/></svg>
+                Refresh
+              </button>
+            </div>
           </div>
-          <label class="gallery-minrep">
-            <span class="gallery-minrep-label">Min reputation</span>
-            <span class="gallery-minrep-field">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                bind:value={minReputation}
-                class="gallery-minrep-input"
-                aria-label="Minimum reputation in ERGs"
-              />
-              <span class="gallery-minrep-suffix">ERGs</span>
-            </span>
-          </label>
-        </div>
+        {/if}
 
         {#if loading}
           <div class="skills-grid">
@@ -1620,11 +1650,6 @@
                 prose={skill.prose}
                 tags={skill.tags}
                 domain={skill.domain}
-                coverageCount={skill.coverages.length}
-                benchmarkCount={skill.benchmarks.length}
-                resultCount={skill.resultCount}
-                isDuplicate={skillNameCounts[skill.name] > 1}
-                reputation={calculateSkillReputation(skill).total}
                 profileId={skill.profileId}
                 index={i}
                 on:click={() => selectSkill(skill)}
@@ -1633,6 +1658,7 @@
           </div>
         {/if}
       </div>
+      {/if}
       </section>
 
     {:else if activeTab === "networks"}
@@ -2043,12 +2069,34 @@
     min-height: 100vh;
   }
 
+  /* Search-first collapse: once the user types a query the hero pins to the top
+     (Google-after-search). The heading disappears entirely (removed from the DOM
+     above) and the search box animates up so results sit right under it. */
+  #gallery.searching .scroll-hero {
+    @apply pt-6 pb-4;
+    min-height: auto;
+    justify-content: flex-start;
+  }
+  #gallery.searching .scroll-hero-inner {
+    margin-top: 0;
+    /* Keep the pinned bar horizontally centred (like the empty state), just
+       anchored near the top instead of the viewport middle. The constrained
+       max-width + centred items line the search box up with the centred
+       results/cards column below it. */
+    align-items: center;
+  }
+  #gallery.searching .scroll-hero-search {
+    max-width: 40rem;
+  }
+
   .scroll-hero-inner {
     @apply w-full flex flex-col items-center;
     max-width: 42rem;
     /* Nudge the block up slightly so it reads as optically centred beneath the
        floating header rather than mathematically centred. */
     margin-top: -3rem;
+    /* Smoothly animate the collapse from centred hero → pinned top bar. */
+    transition: margin-top 0.3s ease, max-width 0.3s ease;
   }
 
   .scroll-hero-title {
@@ -2101,35 +2149,57 @@
   }
 
   /* ── Gallery ────────────────────────────────────────────────────────── */
-  .gallery-header {
-    @apply flex items-end justify-between mb-6 pb-4 border-b;
-    border-bottom-color: hsl(var(--border) / 0.5);
+  /* Compact results toolbar: result count on the left, sort + Filters on the
+     right. Minimal chrome — no heavy title bar or duplicate search box. */
+  .gallery-toolbar {
+    @apply flex items-center justify-between gap-3 mb-5 flex-wrap;
   }
 
-  .gallery-title {
-    @apply text-xl font-bold;
+  .gallery-count {
+    @apply text-sm text-muted-foreground inline-flex items-center gap-1 flex-wrap;
   }
 
-  /* ── Gallery search + min-reputation controls ───────────────────────── */
-  .gallery-controls {
-    @apply flex items-center gap-3 mb-6 flex-wrap;
+  /* Small "Filters" disclosure that reveals secondary options on demand. */
+  .filters-toggle {
+    @apply inline-flex items-center gap-1.5 text-sm text-muted-foreground px-3 py-1.5 rounded-lg transition-all duration-200;
+    border: 1px solid transparent;
   }
-  .gallery-search {
-    @apply relative flex-1;
-    min-width: 220px;
-  }
-  .gallery-search-icon {
-    @apply absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none;
-  }
-  .gallery-search .search-input {
-    @apply pr-9;
-  }
-  .gallery-search-clear {
-    @apply absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs leading-none px-1.5 py-1 rounded;
-  }
-  .gallery-search-clear:hover {
+  .filters-toggle:hover {
     @apply text-foreground;
     background: hsl(var(--muted) / 0.5);
+  }
+  .filters-toggle-active {
+    @apply text-foreground;
+    border-color: hsl(var(--border));
+    background: hsl(var(--muted) / 0.5);
+  }
+  .filters-badge {
+    @apply ml-1 inline-flex items-center justify-center text-xs font-semibold rounded-full;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.3rem;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  /* Secondary-filter drawer, revealed by the Filters toggle. */
+  .gallery-advanced {
+    @apply flex items-center gap-3 mb-6 flex-wrap pb-4 border-b;
+    border-bottom-color: hsl(var(--border) / 0.5);
+  }
+  /* Disclosure panel that holds ALL secondary controls (category, sort,
+     min-reputation, refresh) — stacked so it reads as one calm group. */
+  .gallery-advanced-panel {
+    @apply flex-col items-stretch;
+  }
+  .gallery-advanced-row {
+    @apply flex items-center gap-4 flex-wrap;
+  }
+  .gallery-advanced-control {
+    @apply flex items-center gap-2 text-sm text-muted-foreground;
+  }
+  .gallery-advanced-label {
+    @apply whitespace-nowrap;
   }
   .gallery-minrep {
     @apply flex items-center gap-2 text-sm text-muted-foreground;

@@ -18,7 +18,7 @@
 
   import { formatServiceId, formatSourceHash } from '$lib/api';
   import { categoryIcon, categoryColor } from '$lib/categoryIcons';
-  import { calculateSkillReputation, formatReputation } from '$lib/reputation';
+  import { calculateSkillReputation, formatReputation, trimDecimals, NANOERG_PER_ERG } from '$lib/reputation';
   import { formatMetricValue } from '$lib/scoring';
   import { openForum } from '$lib/components/celaut/forumSidebar';
 
@@ -113,6 +113,11 @@
 
   // ── Local reactive ────────────────────────────────────────────────────────
   $: DetailCategoryIcon = categoryIcon(selectedSkill.domain);
+  // ERG staked behind this skill's reputation. Reputation is stored on-chain as
+  // burned nanoERG; render it as a plain ERG figure for the detail-view
+  // "N ERG staked" section (this is stake — a trust signal — NOT a price, which
+  // is exactly why it was removed from the search cards).
+  $: stakedErg = trimDecimals((selectedSkillReputation?.total ?? 0) / NANOERG_PER_ERG, 4);
 </script>
 
 <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
@@ -145,19 +150,9 @@
             <p>Each skill is a UTXO of the Skill Type NFT — click the explorer icon next to it to see the box on-chain.</p>
           </InfoTip>
           <ExplorerLink boxId={selectedSkill.boxId} liveTooltip="View Skill box on Ergo Explorer" />
-          {#if selectedSkillReputation}
-            <span class="detail-reputation-badge" title="Reputation: {selectedSkillReputation.label}">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-              </svg>
-              {formatReputation(selectedSkillReputation.total)}
-              <span class="detail-reputation-label">{selectedSkillReputation.label}</span>
-            </span>
-            <InfoTip title="Skill reputation">
-              <p>Sum of the burn-backed reputation of the Skill's profile plus its coverages, benchmarks, and results. Computed from on-chain <code>create_opinion</code> proofs via the <code>reputation-system</code> library.</p>
-              <p>Labels (Trusted / Verified / Endorsed) are thresholds, not separate scores.</p>
-            </InfoTip>
-          {/if}
+          <!-- Reputation now lives in a dedicated, clearly-labelled section below
+               the prose (see .detail-reputation-section) rather than as an inline
+               header badge, so the ERG stake reads as a trust signal, not noise. -->
         </div>
         {#if selectedSkill.domain}
           <span class="detail-domain-badge">{selectedSkill.domain}</span>
@@ -178,6 +173,30 @@
         </div>
       </div>
       <p class="skill-detail-prose">{selectedSkill.prose || "No description."}</p>
+
+      <!-- Reputation section — the correct home for the ERG stake (moved off the
+           search cards, where "N ERGs" was misread as a price). Clearly labelled
+           and explained here as a trust signal. -->
+      {#if selectedSkillReputation}
+        <section class="detail-reputation-section" aria-label="Reputation">
+          <div class="detail-reputation-head">
+            <span class="detail-reputation-heading">Reputation</span>
+            {#if selectedSkillReputation.label}
+              <span class="detail-reputation-tier">{selectedSkillReputation.label}</span>
+            {/if}
+          </div>
+          <div class="detail-reputation-stake">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <span class="detail-reputation-amount">{stakedErg} ERG staked</span>
+          </div>
+          <p class="detail-reputation-note">
+            Reputation is backed by ERG stake — a signal of commitment and trust behind this skill, not a price to use it.
+          </p>
+        </section>
+      {/if}
+
       {#if selectedSkill.sourceHash}
         <details class="source-details mb-4">
           <summary class="source-summary">
@@ -830,18 +849,40 @@
     border-color: hsl(var(--foreground) / 0.2);
   }
 
-  .detail-reputation-badge {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold;
+  /* Dedicated Reputation section — calm, labelled, with the ERG-stake figure
+     and a one-line explanation. This is where stake belongs (not the cards). */
+  .detail-reputation-section {
+    @apply mb-5 mt-1 p-4 rounded-xl;
+    background: hsl(var(--muted) / 0.4);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+  .detail-reputation-head {
+    @apply flex items-center gap-2 mb-2;
+  }
+  .detail-reputation-heading {
+    @apply text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .detail-reputation-tier {
+    @apply text-[11px] font-medium px-2 py-0.5 rounded-full;
     background: hsl(45 90% 50% / 0.15);
     color: hsl(45 80% 35%);
   }
-  :global(.dark) .detail-reputation-badge {
+  :global(.dark) .detail-reputation-tier {
     background: hsl(45 90% 50% / 0.12);
     color: hsl(45 80% 70%);
   }
-
-  .detail-reputation-label {
-    @apply text-xs font-medium opacity-75 ml-0.5;
+  .detail-reputation-stake {
+    @apply flex items-center gap-2;
+    color: hsl(45 80% 40%);
+  }
+  :global(.dark) .detail-reputation-stake {
+    color: hsl(45 80% 68%);
+  }
+  .detail-reputation-amount {
+    @apply text-lg font-bold;
+  }
+  .detail-reputation-note {
+    @apply text-xs text-muted-foreground mt-1.5 leading-relaxed;
   }
 
   .detail-tag {
