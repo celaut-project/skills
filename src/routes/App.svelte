@@ -1361,7 +1361,7 @@
         </button>
       </nav>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 navbar-actions">
         <WalletButton explorerUrl={$web_explorer_uri_addr} />
         <Theme />
       </div>
@@ -2031,20 +2031,58 @@
     background: hsl(var(--muted) / 0.3);
   }
 
-  /* ── Mobile header: stack logo + wallet on row 1, tabs scroll on row 2 ──────
-     On phones the single-row island overflowed its right edge (logo + 4 tabs +
-     wallet + theme don't fit at ~390px). Wrap the tabs to their own full-width
-     row and let them scroll horizontally instead of pushing past the island. */
+  /* ── Mobile header: keep logo + wallet + theme on a compact row 1, tabs on
+       row 2 ─────────────────────────────────────────────────────────────────
+     The Connect Wallet button ships at a full h-10 pill with generous padding
+     and the label "Connect Wallet" (whitespace-nowrap). At ~390px that made
+     row 1 too wide, so the wallet/theme group wrapped BELOW the logo, adding a
+     whole extra button-row of height (the "header too tall on mobile" bug).
+
+     Fix: shrink the wallet button (and theme toggle) on phones so logo +
+     wallet + theme fit on ONE row, and let the logo flex/truncate rather than
+     force overflow. The tabs still drop to their own full-width scroll row.
+     Only the tabs row is allowed to wrap. */
   @media (max-width: 640px) {
     .navbar-content {
       @apply px-4 py-3 gap-2;
       border-radius: 1rem;
+      /* Clip so a wide row never stretches the island past the viewport; the
+         tabs row scrolls via its own overflow-x below. */
+      overflow: hidden;
     }
+    /* Row 1 (logo · wallet · theme) stays on a single line; only the tabs,
+       which carry flex-basis:100%, wrap to their own row below. */
     .navbar-top {
       @apply flex-wrap gap-2;
+      row-gap: 0.75rem;
+      min-width: 0;
+    }
+    .logo-container {
+      /* Let the logo shrink/truncate so a long wallet button never forces the
+         wallet/theme group to wrap onto a second line. Shrinkable to 0 so the
+         wallet + theme actions always stay on-screen. */
+      min-width: 0;
+      flex: 1 1 0;
+      overflow: hidden;
     }
     .logo-text {
       @apply text-lg;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Wallet + theme group hugs the right edge and never wraps. */
+    .navbar-actions {
+      gap: 0.375rem;
+      flex: 0 0 auto;
+    }
+    /* Compact the Connect Wallet button: shorter height, tighter padding, and a
+       smaller label so it stops inflating the header height on phones. Applies
+       to both the disconnected ("Connect Wallet") and connected states. */
+    :global(.wallet-connect-button),
+    :global(.wallet-connected-button) {
+      height: 2rem !important;
+      padding: 0 0.75rem !important;
+      font-size: 0.8125rem !important;
     }
     .navbar-tabs {
       order: 3;
