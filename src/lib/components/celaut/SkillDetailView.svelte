@@ -118,6 +118,22 @@
   // "N ERG staked" section (this is stake — a trust signal — NOT a price, which
   // is exactly why it was removed from the search cards).
   $: stakedErg = trimDecimals((selectedSkillReputation?.total ?? 0) / NANOERG_PER_ERG, 4);
+  // Lazy hydration: on the live Ergo path a skill's coverages/benchmarks/results
+  // are fetched on demand. Until that resolves the arrays are empty, so any tab
+  // count would read a misleading 0 that doesn't match a list still filling in.
+  // Gate the numeric badges on `__hydrated` (demo skills ship pre-hydrated, so
+  // this is always true there) and show a small placeholder until then, so the
+  // displayed counter always equals the length of the list actually rendered.
+  $: skillHydrated = selectedSkill.__hydrated !== false;
+  // The "Service solutions" list only renders coverages that pass the active
+  // service filters (see the `serviceMatches` guard in the coverages tab). Count
+  // the SAME predicate here so the tab badge always equals the number of cards
+  // actually shown — otherwise a filtered-out coverage still inflates the count.
+  // With no filters active `serviceMatches` returns true for all, so this equals
+  // coverages.length (the common case).
+  $: visibleCoverageCount = selectedSkill.coverages.filter((cov) =>
+    serviceMatches(cov.serviceId, $serviceInfoRegistry, $serviceFilters)
+  ).length;
 </script>
 
 <!-- ── Skill Detail ──────────────────────────────────────────────────── -->
@@ -520,7 +536,11 @@
         on:click={() => { detailTab = "benchmarks"; selectedBenchmarkId = null; }}
       >
         Benchmarks
-        <span class="detail-tab-count">{selectedSkill.benchmarks.length}</span>
+        {#if skillHydrated}
+          <span class="detail-tab-count">{selectedSkill.benchmarks.length}</span>
+        {:else}
+          <span class="detail-tab-count detail-tab-count-loading" aria-hidden="true">…</span>
+        {/if}
       </button>
       <button
         class="detail-tab-btn"
@@ -528,7 +548,11 @@
         on:click={() => detailTab = "coverages"}
       >
         Service solutions
-        <span class="detail-tab-count">{selectedSkill.coverages.length}</span>
+        {#if skillHydrated}
+          <span class="detail-tab-count">{visibleCoverageCount}</span>
+        {:else}
+          <span class="detail-tab-count detail-tab-count-loading" aria-hidden="true">…</span>
+        {/if}
       </button>
       <button
         class="detail-tab-btn"
@@ -995,6 +1019,11 @@
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
     font-weight: 600;
+  }
+
+  .detail-tab-count-loading {
+    opacity: 0.5;
+    letter-spacing: 0.05em;
   }
 
   .detail-section {

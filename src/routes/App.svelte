@@ -95,7 +95,18 @@
         // blocking the gallery; a later interaction can retry.
       }
     }
-    if (changed) skills = skills; // force Svelte reactivity after in-place hydration
+    if (changed) {
+      skills = skills; // force Svelte reactivity after in-place hydration
+      // If the skill currently open in the detail view was just hydrated, its
+      // coverages/benchmarks arrays were replaced in place — but `selectedSkill`
+      // still points at the same object reference, so the detail view's counters
+      // (`selectedSkill.benchmarks.length`) and lists would stay frozen on the
+      // pre-hydration (empty) snapshot. Reassign to publish the hydrated data so
+      // the counter and its list always reflect the same, populated arrays.
+      if (selectedSkill && list.some((s) => s.boxId === selectedSkill!.boxId)) {
+        selectedSkill = selectedSkill;
+      }
+    }
   }
   // Minimum-reputation gallery filter: hide skills whose aggregate reputation
   // falls below this threshold. 0 = show everything (default).
