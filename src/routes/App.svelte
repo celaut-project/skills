@@ -1321,6 +1321,9 @@
         <span class="logo-text">Unstoppable Skills</span>
       </a>
 
+      <!-- Right cluster: nav links + wallet + theme all hug the far-right edge,
+           so the row reads logo-left / everything-else-right (space-between). -->
+      <div class="navbar-right">
       <!-- Classic header tabs: each selects a route and swaps the main content.
            Order: Search · Networks · How it works · Profile · Submit. -->
       <nav class="navbar-tabs">
@@ -1361,9 +1364,10 @@
         </button>
       </nav>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 navbar-actions">
         <WalletButton explorerUrl={$web_explorer_uri_addr} />
         <Theme />
+      </div>
       </div>
     </div>
   </div>
@@ -1947,46 +1951,52 @@
     background-color: hsl(var(--background));
   }
 
-  /* ── Navbar (floating island) ───────────────────────────────────────── */
-  /* The header floats as a centred pill that hides on scroll-down and reveals
-     on scroll-up (see the scroll handler in onMount). */
+  /* ── Navbar (minimal, Google-style) ─────────────────────────────────────
+     A thin, borderless, shadowless header that reads as part of the page
+     background rather than a separate floating element. It still hides on
+     scroll-down and reveals on scroll-up (see the scroll handler in onMount).
+     No pill, no border, no box-shadow, no bottom divider — light + integrated. */
   .navbar-container {
-    @apply sticky z-50 w-full px-4 pointer-events-none;
-    top: 0.75rem;
+    @apply sticky top-0 z-50 w-full;
+    background-color: hsl(var(--background) / 0.85);
+    backdrop-filter: blur(8px);
     transition: transform 200ms ease, opacity 200ms ease;
   }
 
   .navbar-hidden {
-    transform: translateY(calc(-100% - 1.5rem));
+    transform: translateY(-100%);
     opacity: 0;
   }
 
   .navbar-content {
-    @apply flex flex-col gap-3 px-10 py-4 pointer-events-auto;
-    max-width: 1200px;
+    @apply flex flex-col px-6;
+    max-width: 1280px;
     margin: 0 auto;
     width: 100%;
-    border-radius: 1.5rem;
-    border: 1px solid hsl(var(--border));
-    background-color: hsl(var(--background) / 0.8);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 8px 30px hsl(0 0% 0% / 0.08);
   }
 
+  /* Corner-anchored single row: logo far-left, nav + wallet + theme far-right. */
   .navbar-top {
-    @apply flex items-center gap-4 w-full;
+    @apply flex items-center justify-between gap-4 w-full;
+    min-height: 3rem;
+  }
+
+  /* Nav + actions hug the right edge together. */
+  .navbar-right {
+    @apply flex items-center gap-4;
+    min-width: 0;
   }
 
   .navbar-tabs {
-    @apply flex items-center justify-center gap-2 flex-1;
+    @apply flex items-center gap-1;
   }
 
   .logo-container {
-    @apply flex items-center gap-2.5 text-foreground no-underline whitespace-nowrap;
+    @apply flex items-center gap-2 text-foreground no-underline whitespace-nowrap;
   }
 
   .logo-text {
-    @apply text-2xl font-bold tracking-tight leading-none;
+    @apply text-lg font-semibold tracking-tight leading-none;
     font-family: var(--font-heading);
   }
 
@@ -2017,37 +2027,96 @@
     box-shadow: 0 0 0 3px hsl(var(--foreground) / 0.06);
   }
 
-  /* ── Tabs (inside island header) ────────────────────────────────────── */
-  /* Text-only labels (no icons) at a larger size for prominence. */
+  /* ── Tabs (discreet, text-only) ─────────────────────────────────────────
+     Quiet, low-weight nav links — muted colour, lighter weight, small size,
+     no active pill or heavy underline. Hover/active just lift the colour a
+     touch so the header stays calm and borderless. */
   .tab-btn {
-    @apply flex items-center py-3 px-4 text-base font-semibold border-b-2 border-transparent text-muted-foreground transition-all duration-200 rounded-t-md;
+    @apply flex items-center py-1.5 px-2.5 text-sm font-normal text-muted-foreground transition-colors duration-150 rounded-md;
   }
   .tab-btn.active {
-    border-bottom-color: hsl(var(--foreground));
+    @apply font-medium;
     color: hsl(var(--foreground));
   }
   .tab-btn:hover:not(.active) {
-    @apply text-foreground;
-    background: hsl(var(--muted) / 0.3);
+    color: hsl(var(--foreground) / 0.85);
   }
 
-  /* ── Mobile header: stack logo + wallet on row 1, tabs scroll on row 2 ──────
-     On phones the single-row island overflowed its right edge (logo + 4 tabs +
-     wallet + theme don't fit at ~390px). Wrap the tabs to their own full-width
-     row and let them scroll horizontally instead of pushing past the island. */
+  /* ── Right-side actions (wallet + theme) sized for the thin header ─────── */
+  .navbar-actions :global(.theme-toggle-motion) :global(button) {
+    height: 2rem;
+    width: 2rem;
+  }
+  .navbar-actions :global(.theme-toggle-motion) :global(svg) {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  /* ── Mobile header: keep logo + wallet + theme on a compact row 1, tabs on
+       row 2 ─────────────────────────────────────────────────────────────────
+     The Connect Wallet button ships at a full h-10 pill with generous padding
+     and the label "Connect Wallet" (whitespace-nowrap). At ~390px that made
+     row 1 too wide, so the wallet/theme group wrapped BELOW the logo, adding a
+     whole extra button-row of height (the "header too tall on mobile" bug).
+
+     Fix: shrink the wallet button (and theme toggle) on phones so logo +
+     wallet + theme fit on ONE row, and let the logo flex/truncate rather than
+     force overflow. The tabs still drop to their own full-width scroll row.
+     Only the tabs row is allowed to wrap. */
   @media (max-width: 640px) {
     .navbar-content {
-      @apply px-4 py-3 gap-2;
-      border-radius: 1rem;
+      @apply px-4;
+      /* Clip so a wide row never stretches past the viewport; the tabs row
+         scrolls via its own overflow-x below. */
+      overflow: hidden;
     }
+    /* Row 1 (logo · wallet · theme) stays on a single compact line; the tabs
+       (flex-basis:100%) wrap to their own scroll row below. */
     .navbar-top {
       @apply flex-wrap gap-2;
+      row-gap: 0.5rem;
+      min-width: 0;
+      min-height: 0;
+      padding-block: 0.5rem;
+    }
+    .logo-container {
+      /* Let the logo shrink/truncate so a long wallet button never forces the
+         wallet/theme group to wrap onto a second line. Shrinkable to 0 so the
+         wallet + theme actions always stay on-screen. */
+      min-width: 0;
+      flex: 1 1 0;
+      overflow: hidden;
     }
     .logo-text {
-      @apply text-lg;
+      @apply text-base;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* The right cluster must itself wrap so its child tabs row can drop below
+       the wallet/theme group. */
+    .navbar-right {
+      @apply flex-wrap justify-end gap-2;
+      row-gap: 0.5rem;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    /* Wallet + theme group hugs the right edge and never wraps. */
+    .navbar-actions {
+      gap: 0.375rem;
+      flex: 0 0 auto;
+      order: 1;
+    }
+    /* Compact the Connect Wallet button: shorter height, tighter padding, and a
+       smaller label so it stops inflating the header height on phones. Applies
+       to both the disconnected ("Connect Wallet") and connected states. */
+    :global(.wallet-connect-button),
+    :global(.wallet-connected-button) {
+      height: 2rem !important;
+      padding: 0 0.75rem !important;
+      font-size: 0.8125rem !important;
     }
     .navbar-tabs {
-      order: 3;
+      order: 2;
       flex: 1 0 100%;
       justify-content: flex-start;
       gap: 0.25rem;
@@ -2059,7 +2128,7 @@
       display: none;
     }
     .tab-btn {
-      @apply py-2 px-2.5 text-sm;
+      @apply py-1 px-2 text-sm;
       flex: 0 0 auto;
       white-space: nowrap;
     }
