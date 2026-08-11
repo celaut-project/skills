@@ -419,6 +419,11 @@ export function parseSkillBox(box: any): Skill | null {
       benchmarks: [],
       resultCount: 0,
       reputation: 0,
+      // Lightweight load: relations are empty until hydrateSkill() fetches them.
+      // Mark the un-hydrated state explicitly so the detail view can hide its
+      // benchmark/service-solution counters (which would otherwise read a
+      // misleading 0) until the real, populated arrays are available.
+      __hydrated: false,
       // Ergo boxes expose creationHeight; settlement/inclusion are fallbacks
       // when an explorer payload omits it. Drives canonical relationship topic
       // ordering (newer skill first in `{skill_nueva}_{skill_antigua}`).
