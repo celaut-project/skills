@@ -1958,8 +1958,10 @@
      No pill, no border, no box-shadow, no bottom divider — light + integrated. */
   .navbar-container {
     @apply sticky top-0 z-50 w-full;
-    background-color: hsl(var(--background) / 0.85);
-    backdrop-filter: blur(8px);
+    /* Flush with the page: same solid colour as the body background so there is
+       no distinct "bar" tint — it just reads as the top of the page while still
+       cleanly covering content that scrolls beneath it. */
+    background-color: hsl(var(--background));
     transition: transform 200ms ease, opacity 200ms ease;
   }
 
@@ -1969,7 +1971,9 @@
   }
 
   .navbar-content {
-    @apply flex flex-col px-6;
+    /* Tighter side padding so the logo hugs the far-left corner and the
+       wallet/theme cluster hugs the far-right corner. */
+    @apply flex flex-col px-4;
     max-width: 1280px;
     margin: 0 auto;
     width: 100%;
@@ -2065,13 +2069,21 @@
      Only the tabs row is allowed to wrap. */
   @media (max-width: 640px) {
     .navbar-content {
-      @apply px-4;
+      /* Push logo/actions right into the phone's corners. */
+      @apply px-3;
       /* Clip so a wide row never stretches past the viewport; the tabs row
          scrolls via its own overflow-x below. */
       overflow: hidden;
     }
     /* Row 1 (logo · wallet · theme) stays on a single compact line; the tabs
-       (flex-basis:100%) wrap to their own scroll row below. */
+       drop to their own full-width scroll row below.
+
+       `.navbar-right` collapses to `display: contents` on mobile so its
+       children (tabs + actions) become direct flex items of `.navbar-top`.
+       That flattens the previously-nested wrap — the old version wrapped the
+       tabs INSIDE navbar-right, which let the wallet/theme cluster overflow and
+       get clipped on narrow phones (iPhone SE). Now navbar-top lays out three
+       items directly: logo (left) · actions (right) · tabs (full-width row 2). */
     .navbar-top {
       @apply flex-wrap gap-2;
       row-gap: 0.5rem;
@@ -2079,12 +2091,14 @@
       min-height: 0;
       padding-block: 0.5rem;
     }
+    .navbar-right {
+      display: contents;
+    }
     .logo-container {
       /* Let the logo shrink/truncate so a long wallet button never forces the
-         wallet/theme group to wrap onto a second line. Shrinkable to 0 so the
-         wallet + theme actions always stay on-screen. */
+         wallet/theme group to wrap onto a second line. */
       min-width: 0;
-      flex: 1 1 0;
+      flex: 0 1 auto;
       overflow: hidden;
     }
     .logo-text {
@@ -2092,19 +2106,12 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* The right cluster must itself wrap so its child tabs row can drop below
-       the wallet/theme group. */
-    .navbar-right {
-      @apply flex-wrap justify-end gap-2;
-      row-gap: 0.5rem;
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-    /* Wallet + theme group hugs the right edge and never wraps. */
+    /* Wallet + theme group hugs the right edge on row 1 and never shrinks. */
     .navbar-actions {
       gap: 0.375rem;
       flex: 0 0 auto;
       order: 1;
+      margin-left: auto;
     }
     /* Compact the Connect Wallet button: shorter height, tighter padding, and a
        smaller label so it stops inflating the header height on phones. Applies
