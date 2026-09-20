@@ -5,6 +5,7 @@
 
 import { writable, derived } from 'svelte/store';
 import type { Skill, Benchmark, ActiveTab } from './types';
+import { buildSearchIndex, searchSkills } from './search';
 
 // ── Core Stores ──────────────────────────────────────────────────────────────
 
@@ -31,19 +32,22 @@ export const error = writable<string | null>(null);
 
 // ── Derived Stores ───────────────────────────────────────────────────────────
 
-/** Filtered skills based on the current search query. */
+/**
+ * Filtered skills based on the current search query, via `search.ts`'s
+ * MiniSearch (primary) + Fuse.js (typo fallback) indexes. The index is only
+ * rebuilt when `$skills` is a new array reference — i.e. an actual reload, not
+ * every `searchQuery` keystroke.
+ */
+let lastIndexedSkills: Skill[] | null = null;
+
 export const filteredSkills = derived(
   [skills, searchQuery],
   ([$skills, $searchQuery]) => {
-    if (!$searchQuery) return $skills;
-    const q = $searchQuery.toLowerCase();
-    return $skills.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.prose.toLowerCase().includes(q) ||
-        s.tags.some((t) => t.toLowerCase().includes(q)) ||
-        s.domain.toLowerCase().includes(q)
-    );
+    if ($skills !== lastIndexedSkills) {
+      buildSearchIndex($skills);
+      lastIndexedSkills = $skills;
+    }
+    return searchSkills($searchQuery);
   }
 );
 
