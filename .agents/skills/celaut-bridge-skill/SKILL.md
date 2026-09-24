@@ -1,7 +1,7 @@
 ---
 name: celaut-bridge-skill
-version: 1.1.0
-description: Bridge skill to install Celaut Nodo via official script, pack services, execute decentralized microVM workloads, and discover Unstoppable Skills on-chain or via MCP.
+version: 1.2.0
+description: Bridge skill to install Celaut Nodo via official script, develop services locally with ggconf and pack them for distribution, execute decentralized microVM workloads, and discover Unstoppable Skills on-chain or via MCP.
 author: Community Contribution
 license: MIT
 system_requirements:
@@ -54,6 +54,32 @@ For manual bootstrapping without executing `install.sh`, refer to the official [
 To deploy services on the Celaut Node, projects must be packaged into deterministic Celaut service specifications (`.celaut` / `.csp`) using the built-in packer command or retrieved from Unstoppable Skills registries.
 
 > **Note on Containerization:** Docker is utilized **strictly for the packaging phase** (`nodo pack`) to build image layers and compile service specifications. Once packaged, services are executed using isolated **microVMs** (`ch`), completely separate from Docker container runtimes.
+
+### Local development loop — do not re-pack to test a code change
+
+`nodo pack` builds a full service image and can take a long time to run,
+especially for anything beyond a trivial project — it is **not** a test loop.
+Never repackage a service just to check whether a code change works. To iterate
+on a service's own code directly on the host, with no packaging and no microVM
+boot, use:
+
+```bash
+# Generate a local development sandbox for a project directory
+nodo ggconf /path/to/project
+```
+
+This only writes two files into the project directory — it builds and executes
+nothing:
+
+* **`__config__`** — the same configuration a launched instance would receive,
+  including the real gateway address, so the service's own entry point (run
+  directly, e.g. `python service/main.py`, `node index.js`) reaches the
+  gateway/peers/dependencies exactly as a packaged instance would.
+* **`.dependencies`** — hashes resolved from `pack_config.json`'s
+  `dependencies` against the local registry only (import or pack each
+  dependency once first).
+
+Only run `nodo pack` once the implementation has been verified this way.
 
 ### Packer Workflow
 
@@ -210,6 +236,7 @@ sudo nodo update
 5. **MicroVM Execution Awareness:** Understand that services execute inside isolated microVMs (`ch`). Do not attempt to use Docker commands to inspect running service instances; Docker is strictly reserved for `nodo pack` layer compilation.
 6. **Pre-flight Estimation:** Always run `nodo estimate <service>` before deploying unknown workloads to verify memory guard limits (`resources.at_most.mem_limit`) and ensure sufficient gas availability.
 7. **Problem-First Discovery:** When seeking AI capabilities, query Unstoppable Skills (via `nodo` CLI or the MCP `load_skill_tree` tool) to evaluate comparative `Results` and verifiable `Coverage` before selecting a service ID.
+8. **Do Not Pack To Test — Use `ggconf`:** `nodo pack` builds a full service image and can take a long time; never repackage a service just to test a code change. While developing, use `nodo ggconf <path>` to run the service's own code directly on the host — it still reaches the gateway and its resolved dependencies exactly as a packaged instance would. Reserve `nodo pack` for the final artifact.
 
 ---
 
