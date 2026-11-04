@@ -20,7 +20,7 @@ import {
 // Shared hash predicate used below by resolveServiceInfoSources / parse helpers.
 // Lives in the framework-agnostic registry core (single source of truth, shared
 // with the MCP server); re-exported so app callers can import it from '$lib/api'.
-import { looksLikeBlake2bHash } from './registry/core.mjs';
+import { looksLikeBlake2bHash, applySkillInheritance as coreApplySkillInheritance } from './registry/core.mjs';
 export { looksLikeBlake2bHash };
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -195,98 +195,13 @@ function demoReputationFor(profileId: string): number {
   return (total + 1) * 1e9;
 }
 
-function cloneCoverage(coverage: Coverage): Coverage {
-  return { ...coverage };
-}
-
-function cloneResult(result: Result): Result {
-  return { ...result };
-}
-
-function cloneBenchmark(benchmark: Benchmark): Benchmark {
-  return {
-    ...benchmark,
-    results: benchmark.results.map(cloneResult)
-  };
-}
-
-function cloneSkill(skill: Skill): Skill {
-  return {
-    ...skill,
-    tags: [...skill.tags],
-    extendedSkillBoxIds: [...skill.extendedSkillBoxIds],
-    coverages: skill.coverages.map(cloneCoverage),
-    benchmarks: skill.benchmarks.map(cloneBenchmark)
-  };
-}
-
-function dedupeBy<T>(items: T[], keyFn: (item: T) => string): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const item of items) {
-    const key = keyFn(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
-  }
-  return out;
-}
-
 /**
- * Merge coverages and benchmarks from related skills into each skill.
- *
- * The merge is idempotent and cycle-safe: own entries stay first, related data
- * is appended once per unique box/id.
+ * Merge coverages and benchmarks from the skills that each skill extends. The one
+ * implementation is in `registry/core.mjs` (the MCP server uses it too); it marks what
+ * is inherited with `inheritedFrom`.
  */
 export function applySkillInheritance(skills: Skill[]): Skill[] {
-  const skillMap = new Map(skills.map((skill) => [skill.boxId, skill] as const));
-  const memo = new Map<string, Skill>();
-  const active = new Set<string>();
-
-  const resolve = (skill: Skill): Skill => {
-    const cached = memo.get(skill.boxId);
-    if (cached) return cloneSkill(cached);
-
-    if (active.has(skill.boxId)) {
-      return cloneSkill(skill);
-    }
-
-    active.add(skill.boxId);
-
-    const base = cloneSkill(skill);
-    const inherited = skill.extendedSkillBoxIds
-      .map((refId) => skillMap.get(refId))
-      .filter(Boolean) as Skill[];
-
-    const relatedSkills = inherited.map(resolve);
-
-    base.coverages = dedupeBy(
-      [
-        ...base.coverages,
-        ...relatedSkills.flatMap((related) => related.coverages.map(cloneCoverage))
-      ],
-      (coverage) => coverage.boxId
-    ).map(cloneCoverage);
-
-    base.benchmarks = dedupeBy(
-      [
-        ...base.benchmarks,
-        ...relatedSkills.flatMap((related) => related.benchmarks.map(cloneBenchmark))
-      ],
-      (benchmark) => benchmark.id
-    ).map(cloneBenchmark);
-
-    base.resultCount = base.benchmarks.reduce(
-      (sum, benchmark) => sum + benchmark.results.length,
-      0
-    );
-
-    active.delete(skill.boxId);
-    memo.set(skill.boxId, base);
-    return cloneSkill(base);
-  };
-
-  return skills.map(resolve);
+  return coreApplySkillInheritance(skills) as Skill[];
 }
 
 /**

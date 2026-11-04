@@ -153,13 +153,45 @@ Results submitted against one Benchmark.
   indexes line up positionally with the parent Benchmark's `caseDescriptors`
   and `performanceMetrics`.
 
+### `load_benchmark_coverages`
+
+Coverages that target a Benchmark: the services that **run** it. A service with a
+Result in the benchmark is a *solution* of the skill (it is in `load_coverages`), and it
+is deliberately not derived here.
+
+- **Args:** `{ benchmarkId: string }` (hex Benchmark box id).
+- **Returns:** array of `{ boxId, profileId, serviceId?, benchmarkId }`.
+
 ### `load_skill_tree`
 
-Convenience tool — returns a Skill plus its Coverages, Benchmarks, and the
-Results under each Benchmark in a single nested payload.
+Convenience tool — returns a Skill plus its Coverages, Benchmarks, the Results under each
+Benchmark and the services that run it, in a single nested payload.
 
-- **Args:** `{ skillBoxId: string }`.
-- **Returns:** `{ skill, coverages[], benchmarks: (Benchmark & { results: Result[] })[] }`.
+- **Args:** `{ skillBoxId: string, inherit?: boolean }`. `inherit` is `true` by default.
+- **Returns:** `{ skill, coverages[], benchmarks: (Benchmark & { results: Result[], coverages: Coverage[] })[], extends[], extendedBy[] }`.
+
+#### Extended skills
+
+A skill lists the skills it extends in `extended_skill_boxes`. The one that extends is the
+*parent* (the web app shows it, and nests the extended one under it), and it **inherits the
+coverages and benchmarks** of the skills that it extends, through any depth. So a general
+skill extends the specific ones, and the services of the specific ones are services of the
+general one:
+
+```
+"Celaut Service Packing"  ──extends──▶  "…from a Dockerfile"   (services, benchmarks)
+```
+
+With `inherit` (the default), `load_skill_tree` includes those coverages and benchmarks.
+Each inherited entry has `inheritedFrom`, the box id of the skill that owns it; an own entry
+has none. A service is listed once (the own coverage first, then the nearest). `extends`
+lists the skills reached (`{ boxId, name }`, nearest first) and `extendedBy` the skills
+that extend this one directly. A cycle is cut where it closes. `inherit: false` gives only
+what the skill itself has. `load_coverages`, `load_benchmarks` and `load_results` never
+inherit: they are one skill's own boxes.
+
+The inheritance is one function (`applySkillInheritance` in `src/lib/registry/core.mjs`),
+which the web app uses too.
 
 ## Explicitly omitted
 

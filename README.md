@@ -197,7 +197,7 @@ Any Service, Skill, Result, Benchmark or Coverage can have on-chain discussion:
 ## UI flow
 
 1. **/skills** → Skills gallery (ordered by reputation).
-2. Click a Skill → recursively loads `extended_skill_boxes`.
+2. Click a Skill → its coverages and benchmarks, and (with `applySkillInheritance`, see [MCP.md](./MCP.md#extended-skills)) those of the skills it extends. The MCP server's `load_skill_tree` does the same.
 3. Shows a comparative table + full **Forum section**.
 4. AI agents consume the same data via the Celaut node.
 
