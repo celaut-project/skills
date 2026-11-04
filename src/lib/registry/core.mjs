@@ -288,18 +288,197 @@ export async function loadCoverages(skillBoxId, explorerUri = DEFAULT_EXPLORER_A
   return merged;
 }
 
-/** A skill with its coverages, benchmarks, and per-benchmark results. */
-export async function loadSkillTree(skillBoxId, explorerUri = DEFAULT_EXPLORER_API) {
-  const [skills, coverages, benchmarks] = await Promise.all([
-    loadSkills(explorerUri),
+/**
+ * Coverages that target a Benchmark (R5 = the benchmark id). These are the services
+ * that RUN the benchmark. A service with a Result in it is a solution of the skill
+ * (see `loadCoverages`), not a runner, so it is deliberately not derived here.
+ */
+export async function loadBenchmarkCoverages(benchmarkId, explorerUri = DEFAULT_EXPLORER_API) {
+  if (!isHexId(COVERAGE_TYPE_ID) || !isHexId(benchmarkId)) return [];
+  const boxes = await collectBoxes(COVERAGE_TYPE_ID, benchmarkId, 100, explorerUri);
+  const seen = new Set();
+  const out = [];
+  for (const box of boxes) {
+    const coverage = { ...parseCoverageBox(box), benchmarkId };
+    if (coverage.serviceId) {
+      if (seen.has(coverage.serviceId)) continue;
+      seen.add(coverage.serviceId);
+    }
+    out.push(coverage);
+  }
+  return out;
+}
+
+// ── Extended skills ─────────────────────────────────────────────────────────
+//
+// A skill that lists another in `extended_skill_boxes` inherits that skill's
+// coverages and benchmarks (the extender is the "parent" in the gallery and the
+// extended one is nested under it). So a general skill extends the specific ones,
+// and the services of the specific ones show up under the general one.
+
+/**
+ * The skills that `boxId` extends, directly or not, nearest first. Cycle-safe: a skill
+ * is visited once, `boxId` itself is never in the list, and an id that is not in
+ * `skills` is skipped.
+ */
+export function collectExtended(skills, boxId) {
+  const byBox = new Map(skills.map((s) => [s.boxId, s]));
+  const start = byBox.get(boxId);
+  if (!start) return [];
+  const seen = new Set([boxId]);
+  const out = [];
+  let level = [start];
+  while (level.length) {
+    const next = [];
+    for (const skill of level) {
+      for (const refId of skill.extendedSkillBoxIds || []) {
+        if (seen.has(refId)) continue;
+        seen.add(refId);
+        const target = byBox.get(refId);
+        if (!target) continue;
+        out.push(target);
+        next.push(target);
+      }
+    }
+    level = next;
+  }
+  return out;
+}
+
+/**
+ * The skills that extend `boxId` directly (the other direction of `extended_skill_boxes`).
+ */
+export function collectExtenders(skills, boxId) {
+  return skills.filter((s) => s.boxId !== boxId && (s.extendedSkillBoxIds || []).includes(boxId));
+}
+
+const cloneCoverage = (c) => ({ ...c });
+const cloneBenchmark = (b) => ({
+  ...b,
+  results: (b.results || []).map((r) => ({ ...r })),
+  ...(b.coverages ? { coverages: b.coverages.map(cloneCoverage) } : {})
+});
+const cloneSkill = (s) => ({
+  ...s,
+  tags: [...(s.tags || [])],
+  extendedSkillBoxIds: [...(s.extendedSkillBoxIds || [])],
+  coverages: (s.coverages || []).map(cloneCoverage),
+  benchmarks: (s.benchmarks || []).map(cloneBenchmark)
+});
+
+function dedupeBy(items, keyFn) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const key = keyFn(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+/**
+ * Merge the coverages and benchmarks of the extended skills into each skill.
+ * Idempotent and cycle-safe: own entries stay first, inherited ones are appended once
+ * per box id, and each inherited entry says where it comes from (`inheritedFrom`, the
+ * box id of the skill that owns it). This is the one implementation: the web app
+ * (`api.ts`) and the MCP server use it.
+ */
+export function applySkillInheritance(skills) {
+  const skillMap = new Map(skills.map((skill) => [skill.boxId, skill]));
+  const memo = new Map();
+  const active = new Set();
+
+  const resolve = (skill) => {
+    const cached = memo.get(skill.boxId);
+    if (cached) return cloneSkill(cached);
+    if (active.has(skill.boxId)) return cloneSkill(skill);
+    active.add(skill.boxId);
+
+    const base = cloneSkill(skill);
+    const related = (skill.extendedSkillBoxIds || [])
+      .map((refId) => skillMap.get(refId))
+      .filter(Boolean)
+      .map(resolve);
+    const from = (parent, item) => ({ ...item, inheritedFrom: item.inheritedFrom ?? parent.boxId });
+
+    base.coverages = dedupeBy(
+      [...base.coverages, ...related.flatMap((r) => r.coverages.map((c) => from(r, c)))],
+      (coverage) => coverage.boxId
+    ).map(cloneCoverage);
+    base.benchmarks = dedupeBy(
+      [...base.benchmarks, ...related.flatMap((r) => r.benchmarks.map((b) => from(r, b)))],
+      (benchmark) => benchmark.id
+    ).map(cloneBenchmark);
+    base.resultCount = base.benchmarks.reduce((sum, b) => sum + (b.results || []).length, 0);
+
+    active.delete(skill.boxId);
+    memo.set(skill.boxId, base);
+    return cloneSkill(base);
+  };
+
+  return skills.map(resolve);
+}
+
+/** A skill with its own coverages, benchmarks (with results and runners) — no inheritance. */
+async function loadOwnTree(skillBoxId, explorerUri) {
+  const [coverages, benchmarks] = await Promise.all([
     loadCoverages(skillBoxId, explorerUri),
     loadBenchmarks(skillBoxId, explorerUri)
   ]);
-  const skill = skills.find((s) => s.boxId === skillBoxId) || null;
-  const benchmarksWithResults = await Promise.all(
-    benchmarks.map(async (b) => ({ ...b, results: await loadResults(b.id, explorerUri) }))
+  const withDetail = await Promise.all(
+    benchmarks.map(async (b) => {
+      const [results, runners] = await Promise.all([
+        loadResults(b.id, explorerUri),
+        loadBenchmarkCoverages(b.id, explorerUri)
+      ]);
+      return { ...b, results, coverages: runners };
+    })
   );
-  return { skill, coverages, benchmarks: benchmarksWithResults };
+  return { coverages, benchmarks: withDetail };
+}
+
+/**
+ * A skill with its coverages, benchmarks, per-benchmark results and the services that run
+ * each benchmark. With `inherit` (the default) the coverages and benchmarks of the skills
+ * that it extends are included (marked `inheritedFrom`), and the result says which skills
+ * those are (`extends`) and which skills extend this one (`extendedBy`). Coverages of the
+ * same service are listed once, the own one first.
+ */
+export async function loadSkillTree(skillBoxId, explorerUri = DEFAULT_EXPLORER_API, { inherit = true } = {}) {
+  const skills = await loadSkills(explorerUri);
+  const skill = skills.find((s) => s.boxId === skillBoxId) || null;
+  const own = await loadOwnTree(skillBoxId, explorerUri);
+  if (!inherit || !skill) {
+    return { skill, ...own, extends: [], extendedBy: skill ? collectExtenders(skills, skillBoxId).map(brief) : [] };
+  }
+
+  const extended = collectExtended(skills, skillBoxId);
+  const trees = await Promise.all(extended.map((e) => loadOwnTree(e.boxId, explorerUri)));
+  // Every skill of the chain keeps what it extends, so a chain of any depth inherits.
+  const pool = [{ ...skill, ...own }, ...extended.map((e, i) => ({ ...e, ...trees[i] }))];
+  const merged = applySkillInheritance(pool)[0];
+  return {
+    skill,
+    coverages: dedupeServices(merged.coverages),
+    benchmarks: merged.benchmarks,
+    extends: extended.map(brief),
+    extendedBy: collectExtenders(skills, skillBoxId).map(brief)
+  };
+}
+
+const brief = (s) => ({ boxId: s.boxId, name: s.name });
+
+/** The same service is once (the first one wins: the own coverage, then the nearest). */
+function dedupeServices(coverages) {
+  const seen = new Set();
+  return coverages.filter((c) => {
+    if (!c.serviceId) return true;
+    if (seen.has(c.serviceId)) return false;
+    seen.add(c.serviceId);
+    return true;
+  });
 }
 
 // ── Service info (metadata + data) ──────────────────────────────────────────

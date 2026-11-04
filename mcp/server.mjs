@@ -31,6 +31,7 @@ import {
   loadBenchmarks,
   loadResults,
   loadSkillTree,
+  loadBenchmarkCoverages,
   loadServiceData,
   loadServiceMetadata
 } from '../src/lib/registry/core.mjs';
@@ -80,12 +81,25 @@ const TOOLS = [
     }
   },
   {
-    name: 'load_skill_tree',
-    description: 'Load a Skill with all of its Coverages, Benchmarks and per-Benchmark Results in a single nested payload.',
+    name: 'load_benchmark_coverages',
+    description: 'Load the Coverages that target a Benchmark: the services that RUN it. A service with a Result is a solution of the skill (see load_coverages), not a runner.',
     inputSchema: {
       type: 'object',
       properties: {
-        skillBoxId: { type: 'string', description: 'Hex box id of the Skill.' }
+        benchmarkId: { type: 'string', description: 'Hex box id of the Benchmark.' }
+      },
+      required: ['benchmarkId'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'load_skill_tree',
+    description: 'Load a Skill with its Coverages, Benchmarks (with Results and the services that run each) in a single nested payload. By default it also includes what the skills it extends have (`inheritedFrom` says which skill owns each entry), and lists `extends` and `extendedBy`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        skillBoxId: { type: 'string', description: 'Hex box id of the Skill.' },
+        inherit: { type: 'boolean', description: 'Include the coverages and benchmarks of the skills it extends (default true). Pass false for only its own.' }
       },
       required: ['skillBoxId'],
       additionalProperties: false
@@ -238,7 +252,9 @@ const HANDLERS = {
   load_coverages: async ({ skillBoxId }) => loadCoverages(skillBoxId),
   load_benchmarks: async ({ skillBoxId }) => loadBenchmarks(skillBoxId),
   load_results: async ({ benchmarkId }) => loadResults(benchmarkId),
-  load_skill_tree: async ({ skillBoxId }) => loadSkillTree(skillBoxId),
+  load_benchmark_coverages: async ({ benchmarkId }) => loadBenchmarkCoverages(benchmarkId),
+  load_skill_tree: async ({ skillBoxId, inherit }) =>
+    loadSkillTree(skillBoxId, undefined, { inherit: inherit !== false }),
   load_service_data: async ({ serviceId }) => loadServiceData(serviceId),
   load_service_metadata: async ({ serviceId }) => loadServiceMetadata(serviceId),
   // Publish handlers lazy-import the publish surface so the read-only tools keep

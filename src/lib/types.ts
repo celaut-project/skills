@@ -79,6 +79,8 @@ export interface Coverage {
    * benchmark's specification. Absent for plain skill-level coverages.
    */
   benchmarkId?: string;
+  /** Box id of the extended skill that owns this coverage, when it was inherited. */
+  inheritedFrom?: string;
   reputation?: number;
 }
 
@@ -137,6 +139,8 @@ export interface Benchmark {
    * skill following this benchmark's spec. Loaded lazily; defaults to [].
    */
   coverages?: Coverage[];
+  /** Box id of the extended skill that owns this benchmark, when it was inherited. */
+  inheritedFrom?: string;
   reputation?: number;
   /** Blake2b256 hash of off-chain source file */
   sourceHash?: string;
